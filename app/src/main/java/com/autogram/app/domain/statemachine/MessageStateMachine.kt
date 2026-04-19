@@ -18,7 +18,7 @@ class MessageStateMachine @Inject constructor() {
         MessageState.FAILED to setOf(MessageState.QUEUED, MessageState.PERMANENTLY_FAILED),
         MessageState.PERMANENTLY_FAILED to emptySet(),
         MessageState.SENT to emptySet(),
-        MessageState.RECEIVED to setOf(MessageState.PLAYING, MessageState.PENDING_PLAYBACK),
+        MessageState.RECEIVED to setOf(MessageState.PLAYING, MessageState.PENDING_PLAYBACK, MessageState.ARCHIVED),
         MessageState.PENDING_PLAYBACK to setOf(MessageState.PLAYING),
         MessageState.PLAYING to setOf(MessageState.PLAYED, MessageState.PAUSED),
         MessageState.PAUSED to setOf(MessageState.PLAYING),

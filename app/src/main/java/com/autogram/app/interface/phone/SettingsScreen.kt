@@ -58,7 +58,14 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true
+                singleLine = true,
+                // BUG-39: Validate token format
+                isError = state.botToken.isNotBlank() && !state.botToken.matches(Regex("\\d+:[A-Za-z0-9_-]{30,}")),
+                supportingText = {
+                    if (state.botToken.isNotBlank() && !state.botToken.matches(Regex("\\d+:[A-Za-z0-9_-]{30,}"))) {
+                        Text("Formato inválido. Esperado: número:hash")
+                    }
+                }
             )
 
             OutlinedTextField(
@@ -66,9 +73,16 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 onValueChange = viewModel::updateChatId,
                 label = { Text("Chat ID") },
                 placeholder = { Text("-1001234567890") },
+                // BUG-28: Validate chatId is numeric
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true
+                singleLine = true,
+                isError = state.chatId.isNotBlank() && state.chatId.toLongOrNull() == null,
+                supportingText = {
+                    if (state.chatId.isNotBlank() && state.chatId.toLongOrNull() == null) {
+                        Text("El Chat ID debe ser numérico")
+                    }
+                }
             )
 
             OutlinedTextField(

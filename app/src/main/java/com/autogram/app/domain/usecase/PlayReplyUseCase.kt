@@ -1,12 +1,16 @@
 package com.autogram.app.domain.usecase
 
-import android.content.Context
 import com.autogram.app.domain.model.*
 import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.infrastructure.audio.AudioPlayer
-import com.autogram.app.infrastructure.telegram.TelegramApiClient
+import com.autogram.app.infrastructure.persistence.dao.PendingPlaybackDao
+import com.autogram.app.infrastructure.persistence.entity.PendingPlaybackEntity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import timber.log.Timber
@@ -21,13 +25,16 @@ import javax.inject.Inject
 class PlayReplyUseCase @Inject constructor(
     private val audioPlayer: AudioPlayer,
     private val messageRepository: MessageRepository,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val pendingPlaybackDao: PendingPlaybackDao  // BUG-05: Persist pending queue
 ) {
     private val _playbackStatus = MutableStateFlow<PlaybackStatus>(PlaybackStatus.Idle)
     val playbackStatus: StateFlow<PlaybackStatus> = _playbackStatus
 
     private val pendingQueue = mutableListOf<Message>()
     private var currentPlayingId: String? = null
+    // BUG-12: Dedicated scope for MediaPlayer callbacks instead of runBlocking
+    private val playbackScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     sealed class PlaybackStatus {
         object Idle : PlaybackStatus()
@@ -70,8 +77,8 @@ class PlayReplyUseCase @Inject constructor(
         _playbackStatus.value = PlaybackStatus.Playing(message.id)
 
         val result = audioPlayer.play(audioFile) {
-            // Callback de finalización
-            kotlinx.coroutines.runBlocking {
+            // BUG-12: Use CoroutineScope instead of runBlocking in MediaPlayer callback
+            playbackScope.launch {
                 messageRepository.update(message.copy(
                     state = MessageState.PLAYED,
                     playedAt = System.currentTimeMillis()
@@ -141,8 +148,33 @@ class PlayReplyUseCase @Inject constructor(
         )
         messageRepository.update(message.copy(state = MessageState.PENDING_PLAYBACK))
         pendingQueue.add(message)
+        // BUG-05: Persist to database
+        pendingPlaybackDao.insert(PendingPlaybackEntity(
+            id = playback.id,
+            messageId = playback.messageId,
+            enqueuedAt = playback.enqueuedAt,
+            reason = playback.reason,
+            playedAt = null
+        ))
         _playbackStatus.value = PlaybackStatus.PendingCount(pendingQueue.size)
         Timber.d("Mensaje ${message.id} encolado. Razón: $reason. Pendientes: ${pendingQueue.size}")
+    }
+
+    /**
+     * BUG-05: Restore pending queue from database after service restart.
+     */
+    suspend fun restorePendingQueue() {
+        val entities = pendingPlaybackDao.getAll()
+        for (entity in entities) {
+            val message = messageRepository.getById(entity.messageId) ?: continue
+            if (message.state == MessageState.PENDING_PLAYBACK && !pendingQueue.any { it.id == message.id }) {
+                pendingQueue.add(message)
+            }
+        }
+        if (pendingQueue.isNotEmpty()) {
+            _playbackStatus.value = PlaybackStatus.PendingCount(pendingQueue.size)
+            Timber.d("Restaurados ${pendingQueue.size} mensajes pendientes de reproducción")
+        }
     }
 
     /**
@@ -154,6 +186,10 @@ class PlayReplyUseCase @Inject constructor(
             return
         }
         val next = pendingQueue.removeAt(0)
+        // BUG-05: Remove from DB when dequeued
+        playbackScope.launch {
+            try { pendingPlaybackDao.deleteAll() } catch (_: Exception) {}
+        }
         playVoiceMessage(next)
     }
 

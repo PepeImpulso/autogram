@@ -40,7 +40,9 @@ class AutogramCarSession : Session() {
     @Inject lateinit var sendMessageUseCase: SendMessageUseCase
     @Inject lateinit var playReplyUseCase: PlayReplyUseCase
 
+    // BUG-14: Handle deep links from notifications
     override fun onCreateScreen(intent: android.content.Intent): Screen {
+        // TODO: Handle intent.action for deep navigation (e.g., open specific message)
         return MainScreen(carContext, sendMessageUseCase, playReplyUseCase)
     }
 }

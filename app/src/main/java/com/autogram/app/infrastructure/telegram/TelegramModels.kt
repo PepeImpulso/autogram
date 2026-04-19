@@ -9,7 +9,9 @@ import retrofit2.http.*
 
 data class TelegramUpdate(
     val update_id: Long,
-    val message: TelegramMessage? = null
+    val message: TelegramMessage? = null,
+    // BUG-27: Handle edited messages
+    val edited_message: TelegramMessage? = null
 )
 
 data class TelegramMessage(
@@ -81,18 +83,18 @@ interface TelegramApi {
         @Part voice: MultipartBody.Part
     ): TelegramResponse<TelegramMessage>
 
-    @Multipart
+    // BUG-13: Use @Query params instead of @Multipart for text messages
     @POST("sendMessage")
     suspend fun sendMessage(
-        @Part("chat_id") chatId: RequestBody,
-        @Part("text") text: RequestBody
+        @Query("chat_id") chatId: String,
+        @Query("text") text: String
     ): TelegramResponse<TelegramMessage>
 
     @GET("getUpdates")
     suspend fun getUpdates(
         @Query("offset") offset: Long? = null,
         @Query("timeout") timeout: Int = 30,
-        @Query("allowed_updates") allowedUpdates: String = "[\"message\"]"
+        @Query("allowed_updates") allowedUpdates: String = "[\"message\",\"edited_message\"]"
     ): TelegramResponse<List<TelegramUpdate>>
 
     @GET("getFile")

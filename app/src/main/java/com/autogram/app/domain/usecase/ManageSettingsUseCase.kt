@@ -15,11 +15,7 @@ class ManageSettingsUseCase @Inject constructor(
     suspend fun get(): AppSettings = settingsRepository.get()
     suspend fun update(settings: AppSettings) = settingsRepository.update(settings)
 
-    suspend fun updateBotToken(token: String) {
-        val settings = settingsRepository.get()
-        // El token se guarda en la conversación, no en settings
-        // Esto se gestiona desde ConversationRepository
-    }
+    // BUG-30: Removed empty updateBotToken() — tokens are managed via ConversationRepository
 
     suspend fun updateSilentMode(enabled: Boolean) {
         val settings = settingsRepository.get()

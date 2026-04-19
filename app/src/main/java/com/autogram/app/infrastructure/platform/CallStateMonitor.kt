@@ -3,12 +3,16 @@ package com.autogram.app.infrastructure.platform
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import android.telephony.PhoneStateListener
+import android.telephony.TelephonyCallback
 import android.telephony.TelephonyManager
+import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import timber.log.Timber
+import java.util.concurrent.Executor
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -24,7 +28,8 @@ class CallStateMonitor @Inject constructor(
     val isInCall: StateFlow<Boolean> = _isInCall
 
     private var telephonyManager: TelephonyManager? = null
-    private var listener: PhoneStateListener? = null
+    private var legacyListener: PhoneStateListener? = null
+    private var telephonyCallback: TelephonyCallback? = null
 
     /**
      * Inicia la monitorización del estado de llamadas.
@@ -39,19 +44,35 @@ class CallStateMonitor @Inject constructor(
         }
 
         telephonyManager = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
-        listener = object : PhoneStateListener() {
-            @Deprecated("Deprecated in API 31+")
-            override fun onCallStateChanged(state: Int) {
-                _isInCall.value = when (state) {
-                    TelephonyManager.CALL_STATE_OFFHOOK -> true
-                    TelephonyManager.CALL_STATE_RINGING -> true
-                    else -> false
+
+        // BUG-33: Use TelephonyCallback on API 31+, PhoneStateListener on older
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val callback = object : TelephonyCallback(), TelephonyCallback.CallStateListener {
+                override fun onCallStateChanged(state: Int) {
+                    _isInCall.value = state == TelephonyManager.CALL_STATE_OFFHOOK ||
+                            state == TelephonyManager.CALL_STATE_RINGING
+                    Timber.d("Estado de llamada: $state, isInCall=${_isInCall.value}")
                 }
-                Timber.d("Estado de llamada: $state, isInCall=${_isInCall.value}")
             }
+            telephonyCallback = callback
+            telephonyManager?.registerTelephonyCallback(context.mainExecutor, callback)
+        } else {
+            @Suppress("DEPRECATION")
+            val listener = object : PhoneStateListener() {
+                @Deprecated("Deprecated in API 31+")
+                override fun onCallStateChanged(state: Int) {
+                    _isInCall.value = when (state) {
+                        TelephonyManager.CALL_STATE_OFFHOOK -> true
+                        TelephonyManager.CALL_STATE_RINGING -> true
+                        else -> false
+                    }
+                    Timber.d("Estado de llamada: $state, isInCall=${_isInCall.value}")
+                }
+            }
+            legacyListener = listener
+            @Suppress("DEPRECATION")
+            telephonyManager?.listen(listener, PhoneStateListener.LISTEN_CALL_STATE)
         }
-        @Suppress("DEPRECATION")
-        telephonyManager?.listen(listener, PhoneStateListener.LISTEN_CALL_STATE)
         Timber.d("CallStateMonitor iniciado")
     }
 
@@ -59,9 +80,14 @@ class CallStateMonitor @Inject constructor(
      * Detiene la monitorización.
      */
     fun stop() {
-        @Suppress("DEPRECATION")
-        telephonyManager?.listen(listener, PhoneStateListener.LISTEN_NONE)
-        listener = null
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            telephonyCallback?.let { telephonyManager?.unregisterTelephonyCallback(it) }
+        } else {
+            @Suppress("DEPRECATION")
+            telephonyManager?.listen(legacyListener, PhoneStateListener.LISTEN_NONE)
+        }
+        legacyListener = null
+        telephonyCallback = null
         Timber.d("CallStateMonitor detenido")
     }
 }

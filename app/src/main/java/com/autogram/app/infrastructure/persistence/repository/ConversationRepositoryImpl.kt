@@ -25,8 +25,8 @@ class ConversationRepositoryImpl @Inject constructor(
     }
 
     override suspend fun setActive(id: String) {
-        conversationDao.deactivateAll()
-        conversationDao.setActive(id)
+        // BUG-20: Use atomic transaction to avoid race condition
+        conversationDao.setActiveAtomic(id)
     }
 
     private fun ConversationEntity.toDomain() = Conversation(

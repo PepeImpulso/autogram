@@ -34,6 +34,7 @@ abstract class AutogramDatabase : RoomDatabase() {
     abstract fun settingsDao(): SettingsDao
     abstract fun quickReplyDao(): QuickReplyDao
     abstract fun deliveryAttemptDao(): DeliveryAttemptDao
+    abstract fun pendingPlaybackDao(): PendingPlaybackDao
 }
 
 @Module
@@ -47,7 +48,8 @@ object DatabaseModule {
             context,
             AutogramDatabase::class.java,
             "autogram.db"
-        ).build()
+        ).fallbackToDestructiveMigration()  // BUG-31: Prevent crash on schema changes during dev
+            .build()
     }
 
     @Provides fun provideMessageDao(db: AutogramDatabase) = db.messageDao()
@@ -55,4 +57,5 @@ object DatabaseModule {
     @Provides fun provideSettingsDao(db: AutogramDatabase) = db.settingsDao()
     @Provides fun provideQuickReplyDao(db: AutogramDatabase) = db.quickReplyDao()
     @Provides fun provideDeliveryAttemptDao(db: AutogramDatabase) = db.deliveryAttemptDao()
+    @Provides fun providePendingPlaybackDao(db: AutogramDatabase) = db.pendingPlaybackDao()
 }

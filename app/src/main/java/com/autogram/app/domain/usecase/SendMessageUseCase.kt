@@ -53,6 +53,13 @@ class SendMessageUseCase @Inject constructor(
      * @param context Contexto de la aplicación para acceder al directorio de archivos
      */
     suspend fun startRecording(context: android.content.Context): Result<Message> {
+        // BUG-18: Verify RECORD_AUDIO permission before recording
+        if (android.content.pm.PackageManager.PERMISSION_GRANTED !=
+            context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+        ) {
+            return Result.failure(IllegalStateException("Permiso RECORD_AUDIO no concedido"))
+        }
+
         if (audioRecorder.isRecording()) {
             return Result.failure(IllegalStateException("Ya hay una grabación en curso"))
         }
@@ -107,31 +114,32 @@ class SendMessageUseCase @Inject constructor(
             return Result.failure(Exception(errorMsg))
         }
 
-        // Transición a RECORDED → VALIDATING
-        transition(message, MessageState.RECORDED)
-        transition(message, MessageState.VALIDATING)
+        // BUG-04: Chain transitions — each uses the result of the previous one
+        var msg = transition(message, MessageState.RECORDED)
+        msg = transition(msg, MessageState.VALIDATING)
         _currentStatus.value = SendStatus.Validating
 
         // Validar audio (duración mínima, silencio)
         val settings = settingsRepository.get()
         val filterResult = emptyMessageFilter.validate(audioFile, settings.minRecordingDurationMs)
         if (!filterResult.accepted) {
-            transition(message, MessageState.DISCARDED)
+            transition(msg, MessageState.DISCARDED)
             _currentStatus.value = SendStatus.Discarded(filterResult.reason ?: "Mensaje vacío")
             // Limpiar archivo
             audioFile.delete()
-            transition(message, MessageState.IDLE)
+            transition(msg, MessageState.IDLE)
             currentMessage = null
             return Result.failure(Exception("Mensaje descartado: ${filterResult.reason}"))
         }
 
         // Transición a QUEUED → SENDING
-        transition(message, MessageState.QUEUED)
+        msg = transition(msg, MessageState.QUEUED)
         _currentStatus.value = SendStatus.Sending
-        transition(message, MessageState.SENDING)
+        msg = transition(msg, MessageState.SENDING)
 
         // Enviar a Telegram
-        val conversation = conversationRepository.getById(message.conversationId)!!
+        val conversation = conversationRepository.getById(msg.conversationId)
+            ?: return Result.failure(Exception("Conversación no encontrada"))  // BUG-19: safe null handling
         telegramApiClient.configure(conversation.botToken)
 
         val sendResult = telegramApiClient.sendVoice(
@@ -141,7 +149,7 @@ class SendMessageUseCase @Inject constructor(
 
         return if (sendResult.isSuccess) {
             val telegramMsg = sendResult.getOrThrow()
-            val sentMessage = message.copy(
+            val sentMessage = msg.copy(
                 state = MessageState.SENT,
                 telegramMessageId = telegramMsg.message_id,
                 sentAt = System.currentTimeMillis(),
@@ -153,10 +161,10 @@ class SendMessageUseCase @Inject constructor(
             Result.success(sentMessage)
         } else {
             val error = sendResult.exceptionOrNull()?.message ?: "Error de envío"
-            val failedMessage = message.copy(
+            val failedMessage = msg.copy(
                 state = MessageState.FAILED,
                 errorMessage = error,
-                retryCount = message.retryCount + 1
+                retryCount = msg.retryCount + 1
             )
             messageRepository.update(failedMessage)
             _currentStatus.value = SendStatus.Error(error)
@@ -228,22 +236,24 @@ class SendMessageUseCase @Inject constructor(
             return Result.failure(Exception("Se agotaron los reintentos"))
         }
 
-        val conversation = conversationRepository.getById(message.conversationId)!!
+        val conversation = conversationRepository.getById(message.conversationId)
+            ?: return Result.failure(Exception("Conversación no encontrada"))  // BUG-19: safe null handling
         telegramApiClient.configure(conversation.botToken)
 
-        transition(message, MessageState.QUEUED)
-        transition(message, MessageState.SENDING)
+        // BUG-04: Chain transitions properly
+        var msg = transition(message, MessageState.QUEUED)
+        msg = transition(msg, MessageState.SENDING)
 
-        val result = if (message.audioFilePath != null) {
-            telegramApiClient.sendVoice(conversation.targetChatId, message.audioFilePath)
-        } else if (message.textContent != null) {
-            telegramApiClient.sendMessage(conversation.targetChatId, message.textContent)
+        val result = if (msg.audioFilePath != null) {
+            telegramApiClient.sendVoice(conversation.targetChatId, msg.audioFilePath)
+        } else if (msg.textContent != null) {
+            telegramApiClient.sendMessage(conversation.targetChatId, msg.textContent)
         } else {
             return Result.failure(Exception("Mensaje sin contenido"))
         }
 
         return if (result.isSuccess) {
-            val sent = message.copy(
+            val sent = msg.copy(
                 state = MessageState.SENT,
                 telegramMessageId = result.getOrThrow().message_id,
                 sentAt = System.currentTimeMillis(),
@@ -252,21 +262,26 @@ class SendMessageUseCase @Inject constructor(
             messageRepository.update(sent)
             Result.success(sent)
         } else {
-            val failed = message.copy(
+            val failed = msg.copy(
                 state = MessageState.FAILED,
                 errorMessage = result.exceptionOrNull()?.message,
-                retryCount = message.retryCount + 1
+                retryCount = msg.retryCount + 1
             )
             messageRepository.update(failed)
             Result.failure(result.exceptionOrNull()!!)
         }
     }
 
-    private suspend fun transition(message: Message, target: MessageState) {
-        stateMachine.transition(message.state, target).onSuccess {
-            messageRepository.update(message.copy(state = it))
-        }.onFailure {
+    // BUG-04: transition() now returns the updated message so callers can chain correctly
+    private suspend fun transition(message: Message, target: MessageState): Message {
+        val result = stateMachine.transition(message.state, target)
+        return if (result.isSuccess) {
+            val updated = message.copy(state = result.getOrThrow())
+            messageRepository.update(updated)
+            updated
+        } else {
             Timber.e("Transición inválida: ${message.state} → $target")
+            message // Return unchanged message
         }
     }
 

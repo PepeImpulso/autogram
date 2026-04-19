@@ -1,7 +1,5 @@
 package com.autogram.app.infrastructure.telegram
 
-import android.content.Context
-import com.autogram.app.infrastructure.persistence.entity.ConversationEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -28,7 +26,9 @@ class TelegramApiClient @Inject constructor(
     /**
      * Configura el cliente con el token del bot.
      * Si el token no ha cambiado, no recrea el cliente Retrofit.
+     * BUG-06: Synchronized to prevent race conditions from concurrent callers.
      */
+    @Synchronized
     fun configure(botToken: String) {
         if (botToken == currentBotToken && api != null) return
         currentBotToken = botToken
@@ -70,9 +70,15 @@ class TelegramApiClient @Inject constructor(
                     Timber.d("Voz enviada correctamente. Message ID: ${response.result.message_id}")
                     Result.success(response.result)
                 } else {
-                    val error = "Telegram API error: ${response.description} (code: ${response.error_code})"
+                    // BUG-07: Handle FLOOD_WAIT (429) with retry_after
+                    val retryAfter = response.parameters?.retry_after
+                    val error = if (response.error_code == 429 && retryAfter != null) {
+                        "Rate limited. Reintentar en ${retryAfter}s"
+                    } else {
+                        "Telegram API error: ${response.description} (code: ${response.error_code})"
+                    }
                     Timber.e(error)
-                    Result.failure(Exception(error))
+                    Result.failure(Exception(error, TelegramRateLimitException(retryAfter)))
                 }
             } catch (e: Exception) {
                 Timber.e(e, "Error enviando voz a Telegram")
@@ -86,18 +92,22 @@ class TelegramApiClient @Inject constructor(
     suspend fun sendMessage(chatId: String, text: String): Result<TelegramMessage> =
         withContext(Dispatchers.IO) {
             try {
-                val chatIdBody = chatId.toRequestBody("text/plain".toMediaTypeOrNull())
-                val textBody = text.toRequestBody("text/plain".toMediaTypeOrNull())
-
-                val response = requireApi().sendMessage(chatId = chatIdBody, text = textBody)
+                // BUG-13: Now uses @Query params (no RequestBody needed)
+                val response = requireApi().sendMessage(chatId = chatId, text = text)
 
                 if (response.ok && response.result != null) {
                     Timber.d("Mensaje enviado. Message ID: ${response.result.message_id}")
                     Result.success(response.result)
                 } else {
-                    val error = "Telegram API error: ${response.description}"
+                    // BUG-07: Handle FLOOD_WAIT (429) with retry_after
+                    val retryAfter = response.parameters?.retry_after
+                    val error = if (response.error_code == 429 && retryAfter != null) {
+                        "Rate limited. Reintentar en ${retryAfter}s"
+                    } else {
+                        "Telegram API error: ${response.description}"
+                    }
                     Timber.e(error)
-                    Result.failure(Exception(error))
+                    Result.failure(Exception(error, TelegramRateLimitException(retryAfter)))
                 }
             } catch (e: Exception) {
                 Timber.e(e, "Error enviando mensaje a Telegram")
@@ -163,15 +173,17 @@ class TelegramApiClient @Inject constructor(
                 val outputFile = File(outputDir, "${System.currentTimeMillis()}.ogg")
 
                 val request = okhttp3.Request.Builder().url(url).build()
+                // BUG-08: Use execute().body?.use{} to ensure response body is closed
                 val response = okHttpClient.newCall(request).execute()
+                response.use { resp ->
+                    if (!resp.isSuccessful) {
+                        return@withContext Result.failure(Exception("Error descargando: HTTP ${resp.code}"))
+                    }
 
-                if (!response.isSuccessful) {
-                    return@withContext Result.failure(Exception("Error descargando: HTTP ${response.code}"))
-                }
-
-                response.body?.byteStream()?.use { input ->
-                    outputFile.outputStream().use { output ->
-                        input.copyTo(output)
+                    resp.body?.byteStream()?.use { input ->
+                        outputFile.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
                     }
                 }
 
@@ -201,3 +213,6 @@ class TelegramApiClient @Inject constructor(
             }
         }
 }
+
+/** BUG-07: Exception to carry retry_after info for FLOOD_WAIT responses */
+class TelegramRateLimitException(val retryAfterSeconds: Int?) : Exception()

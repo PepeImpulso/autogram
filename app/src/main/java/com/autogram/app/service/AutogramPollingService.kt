@@ -4,10 +4,11 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.app.Service
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import androidx.preference.PreferenceManager
 import com.autogram.app.R
 import com.autogram.app.domain.model.*
 import com.autogram.app.domain.repository.ConversationRepository
@@ -39,7 +40,7 @@ class AutogramPollingService : Service() {
         const val ACTION_STOP = "com.autogram.app.STOP_POLLING"
 
         var isRunning = false
-            private set
+            @Volatile private set
     }
 
     @Inject lateinit var telegramApiClient: TelegramApiClient
@@ -49,14 +50,23 @@ class AutogramPollingService : Service() {
     @Inject lateinit var playReplyUseCase: PlayReplyUseCase
     @Inject lateinit var callStateMonitor: CallStateMonitor
 
-    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    // BUG-32: Mutable scope to handle START_STICKY recreation
+    private var serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var pollingJob: Job? = null
     private var lastUpdateId: Long = 0
+    // BUG-25: Persist lastUpdateId to survive service restarts
+    private lateinit var prefs: SharedPreferences
 
     override fun onCreate() {
         super.onCreate()
+        // BUG-32: Cancel any stale scope from previous onCreate (START_STICKY recreation)
+        serviceScope.cancel()
+        serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification("Conectando..."))
+        // BUG-25: Restore lastUpdateId from SharedPreferences
+        prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        lastUpdateId = prefs.getLong("last_update_id", 0)
         isRunning = true
         callStateMonitor.start()
         Timber.i("AutogramPollingService creado")
@@ -117,6 +127,8 @@ class AutogramPollingService : Service() {
                         val updates = result.getOrThrow()
                         for (update in updates) {
                             lastUpdateId = update.update_id
+                            // BUG-25: Persist update ID to survive restarts
+                            prefs.edit().putLong("last_update_id", lastUpdateId).apply()
                             processUpdate(update, conversation)
                         }
                     } else {
@@ -139,7 +151,8 @@ class AutogramPollingService : Service() {
      * Procesa una actualización recibida de Telegram.
      */
     private suspend fun processUpdate(update: com.autogram.app.infrastructure.telegram.TelegramUpdate, conversation: Conversation) {
-        val message = update.message ?: return
+        // BUG-27: Handle both new and edited messages
+        val message = update.message ?: update.edited_message ?: return
 
         // Ignorar mensajes que no son del chat configurado
         if (message.chat.id.toString() != conversation.targetChatId) {
@@ -176,6 +189,11 @@ class AutogramPollingService : Service() {
             createdAt = System.currentTimeMillis()
         )
         messageRepository.insert(dbMessage)
+
+        // BUG-16: Archive text-only messages (no audio to play)
+        if (audioFilePath == null) {
+            messageRepository.update(dbMessage.copy(state = MessageState.ARCHIVED))
+        }
 
         // Actualizar timestamp de última actividad
         conversationRepository.upsert(conversation.copy(lastMessageAt = System.currentTimeMillis()))

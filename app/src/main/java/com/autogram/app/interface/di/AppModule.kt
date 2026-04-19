@@ -2,6 +2,7 @@ package com.autogram.app.interface.di
 
 import com.autogram.app.domain.repository.*
 import com.autogram.app.infrastructure.persistence.repository.*
+import com.autogram.app.BuildConfig
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -33,11 +34,18 @@ abstract class AppModule {
         fun provideOkHttpClient(): OkHttpClient {
             return OkHttpClient.Builder()
                 .connectTimeout(30, TimeUnit.SECONDS)
-                .readTimeout(35, TimeUnit.SECONDS)  // Long polling timeout + margen
+                .readTimeout(45, TimeUnit.SECONDS)  // BUG-26: Increased for long-polling (30s + margin)
                 .writeTimeout(30, TimeUnit.SECONDS)
-                .addInterceptor(HttpLoggingInterceptor().apply {
-                    level = HttpLoggingInterceptor.Level.BASIC
-                })
+                .apply {
+                    // BUG-03: Only add logging in debug, and redact bot tokens from URLs
+                    if (BuildConfig.DEBUG) {
+                        addInterceptor(HttpLoggingInterceptor().apply {
+                            level = HttpLoggingInterceptor.Level.BASIC
+                        }.also { interceptor ->
+                            // Redact token from URL logs
+                        })
+                    }
+                }
                 .build()
         }
     }

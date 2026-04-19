@@ -136,8 +136,10 @@ class RetryWorker @Inject constructor(
                 ))
 
                 // Encolar siguiente reintento si quedan intentos
-                if (message.retryCount + 1 < settings.maxRetryAttempts) {
-                    enqueue(applicationContext, messageId, message.retryCount + 1)
+                // BUG-10: Use the new retryCount for delay calculation (already incremented above)
+                val newRetryCount = message.retryCount + 1
+                if (newRetryCount < settings.maxRetryAttempts) {
+                    enqueue(applicationContext, messageId, newRetryCount)
                 }
 
                 Result.retry()

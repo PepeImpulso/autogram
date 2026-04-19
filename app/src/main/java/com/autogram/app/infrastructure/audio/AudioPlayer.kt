@@ -67,6 +67,10 @@ class AudioPlayer @Inject constructor(
             Result.success(Unit)
         } catch (e: Exception) {
             Timber.e(e, "Error al reproducir audio")
+            // BUG-17: Release MediaPlayer on error to prevent resource leak
+            try { mediaPlayer?.release() } catch (_: Exception) {}
+            mediaPlayer = null
+            isPlaying = false
             abandonAudioFocus()
             Result.failure(e)
         }
@@ -110,47 +114,30 @@ class AudioPlayer @Inject constructor(
     /**
      * Solicita audio focus temporal para reproducción de voz.
      */
+    // BUG-38: minSdk=29, so we always have API O. Removed dead < O branches.
     private fun requestAudioFocus(): Boolean {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            audioFocusRequest = AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .build()
-                )
-                .setOnAudioFocusChangeListener { focusChange ->
-                    if (focusChange == android.media.AudioManager.AUDIOFOCUS_LOSS) {
-                        pause()
-                    }
+        audioFocusRequest = AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .build()
+            )
+            .setOnAudioFocusChangeListener { focusChange ->
+                if (focusChange == android.media.AudioManager.AUDIOFOCUS_LOSS) {
+                    pause()
                 }
-                .build()
-            audioManager.requestAudioFocus(audioFocusRequest!!) == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-        } else {
-            @Suppress("DEPRECATION")
-            audioManager.requestAudioFocus(
-                { focusChange ->
-                    if (focusChange == android.media.AudioManager.AUDIOFOCUS_LOSS) {
-                        pause()
-                    }
-                },
-                android.media.AudioManager.STREAM_MUSIC,
-                android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
-            ) == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-        }
+            }
+            .build()
+        return audioManager.requestAudioFocus(audioFocusRequest!!) == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED
     }
 
+    // BUG-38: minSdk=29, always API O+
     private fun abandonAudioFocus() {
         try {
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
-            } else {
-                @Suppress("DEPRECATION")
-                audioManager.abandonAudioFocus(null)
-            }
+            audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
         } catch (_: Exception) {
         }
         audioFocusRequest = null

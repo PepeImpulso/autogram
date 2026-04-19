@@ -62,6 +62,11 @@ class MainActivity : ComponentActivity() {
         val serviceIntent = Intent(this, AutogramPollingService::class.java).apply {
             action = AutogramPollingService.ACTION_START
         }
-        startForegroundService(serviceIntent)
+        // BUG-15: Use ContextCompat for safer foreground service start on Android 12+
+        try {
+            androidx.core.content.ContextCompat.startForegroundService(this, serviceIntent)
+        } catch (e: Exception) {
+            timber.log.Timber.e(e, "Error starting foreground service")
+        }
     }
 }

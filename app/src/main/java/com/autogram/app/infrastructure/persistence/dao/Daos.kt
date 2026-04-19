@@ -48,6 +48,13 @@ interface ConversationDao {
 
     @Query("UPDATE conversations SET isActive = 1 WHERE id = :id")
     suspend fun setActive(id: String)
+
+    // BUG-20: Atomic set active operation
+    @Transaction
+    suspend fun setActiveAtomic(id: String) {
+        deactivateAll()
+        setActive(id)
+    }
 }
 
 @Dao
@@ -84,4 +91,20 @@ interface DeliveryAttemptDao {
 
     @Query("SELECT * FROM delivery_attempts WHERE messageId = :messageId ORDER BY attemptNumber DESC")
     suspend fun getByMessageId(messageId: String): List<com.autogram.app.infrastructure.persistence.entity.DeliveryAttemptEntity>
+}
+
+// BUG-05: DAO for persisting pending playbacks across restarts
+@Dao
+interface PendingPlaybackDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(playback: com.autogram.app.infrastructure.persistence.entity.PendingPlaybackEntity)
+
+    @Query("SELECT * FROM pending_playbacks ORDER BY enqueuedAt ASC")
+    suspend fun getAll(): List<com.autogram.app.infrastructure.persistence.entity.PendingPlaybackEntity>
+
+    @Query("DELETE FROM pending_playbacks WHERE id = :id")
+    suspend fun delete(id: String)
+
+    @Query("DELETE FROM pending_playbacks")
+    suspend fun deleteAll()
 }

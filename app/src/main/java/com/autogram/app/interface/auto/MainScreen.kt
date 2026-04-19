@@ -4,9 +4,13 @@ import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.car.app.constraints.ConstraintManager
 import androidx.car.app.model.*
-import com.autogram.app.domain.model.Message
 import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.domain.usecase.SendMessageUseCase
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import timber.log.Timber
 
 /**
  * Pantalla principal de Android Auto.
@@ -19,8 +23,17 @@ class MainScreen(
     private val playReplyUseCase: PlayReplyUseCase
 ) : Screen(carContext) {
 
-    // Observamos el estado del envío
-    private var lastStatus: SendMessageUseCase.SendStatus = SendMessageUseCase.SendStatus.Idle
+    // Coroutine scope for async operations
+    private val screenScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
+    init {
+        // BUG-23: Observe status changes to auto-invalidate the screen
+        screenScope.launch {
+            sendMessageUseCase.currentStatus.collect {
+                invalidate()
+            }
+        }
+    }
 
     override fun onGetTemplate(): Template {
         return when (val status = sendMessageUseCase.currentStatus.value) {
@@ -43,6 +56,11 @@ class MainScreen(
 
         val items = ItemList.Builder()
 
+        // BUG-22: Respect ConstraintManager grid item limits
+        val constraintManager = carContext.getCarService(ConstraintManager::class.java)
+        val maxItems = constraintManager.getContentLimit(ConstraintManager.CONTENT_LIMIT_GRID_ITEMS)
+        var itemCount = 0
+
         // Botón de grabación
         items.addItem(
             GridItem.Builder()
@@ -59,24 +77,19 @@ class MainScreen(
                 }
                 .build()
         )
+        itemCount++
 
-        // Botón de parar (si está grabando)
-        if (sendMessageUseCase.currentStatus.value is SendMessageUseCase.SendStatus.Recording) {
-            items.addItem(
-                GridItem.Builder()
-                    .setTitle("Parar")
-                    .setOnClick {
-                        stopAndSend()
-                    }
-                    .build()
-            )
-        }
+        // BUG-09: Removed dead "Parar" button from main grid
+        // (This code was unreachable since buildMainGrid is only called when NOT recording)
 
         // Respuestas rápidas
-        listOf("Conduciendo" to "Estoy conduciendo, te respondo luego.",
+        val quickReplies = listOf(
+            "Conduciendo" to "Estoy conduciendo, te respondo luego.",
             "Después" to "Ahora no puedo, hablamos luego.",
             "OK" to "OK, entendido."
-        ).forEach { (label, text) ->
+        )
+        for ((label, text) in quickReplies) {
+            if (itemCount >= maxItems) break
             items.addItem(
                 GridItem.Builder()
                     .setTitle(label)
@@ -85,17 +98,18 @@ class MainScreen(
                     }
                     .build()
             )
+            itemCount++
         }
 
         // Indicador de pendientes
         val pendingCount = playReplyUseCase.pendingCount()
-        if (pendingCount > 0) {
+        if (pendingCount > 0 && itemCount < maxItems) {
             items.addItem(
                 GridItem.Builder()
                     .setTitle("$pendingCount pendientes")
                     .setOnClick {
-                        // Reproducir pendientes
-                        kotlinx.coroutines.runBlocking {
+                        // BUG-01: Use coroutine instead of runBlocking
+                        screenScope.launch {
                             playReplyUseCase.playAllPending()
                         }
                         invalidate()
@@ -127,7 +141,8 @@ class MainScreen(
                     .setTitle("Cancelar")
                     .setBackgroundColor(CarColor.SECONDARY)
                     .setOnClick {
-                        kotlinx.coroutines.runBlocking {
+                        // BUG-01: Use coroutine instead of runBlocking
+                        screenScope.launch {
                             sendMessageUseCase.cancelRecording()
                         }
                         invalidate()
@@ -156,35 +171,31 @@ class MainScreen(
             .build()
     }
 
+    // BUG-01: Replaced all runBlocking with coroutine-based async calls
     private fun startRecording() {
-        kotlinx.coroutines.runBlocking {
+        screenScope.launch {
             val result = sendMessageUseCase.startRecording(carContext)
             if (result.isFailure) {
                 Timber.e(result.exceptionOrNull(), "Error al iniciar grabación")
             }
+            invalidate()
         }
-        invalidate()
     }
 
     private fun stopAndSend() {
-        kotlinx.coroutines.runBlocking {
+        screenScope.launch {
             val result = sendMessageUseCase.stopAndSend()
             if (result.isFailure) {
                 Timber.e(result.exceptionOrNull(), "Error al enviar")
             }
+            invalidate()
         }
-        invalidate()
     }
 
     private fun sendQuickReply(text: String) {
-        kotlinx.coroutines.runBlocking {
+        screenScope.launch {
             sendMessageUseCase.sendQuickReply(text)
+            invalidate()
         }
-        invalidate()
     }
-}
-
-// Re-export para Timber en este archivo
-private object Timber {
-    fun e(e: Throwable?, msg: String) = timber.log.Timber.e(e, msg)
 }
