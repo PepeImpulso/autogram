@@ -6,53 +6,83 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
+import com.autogram.app.domain.repository.SettingsRepository
+import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.interface.theme.AutogramTheme
 import com.autogram.app.service.AutogramPollingService
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 /**
  * Actividad principal de la aplicación en el teléfono.
- * Muestra acceso a configuración, historial y control del servicio de polling.
+ * Si no hay conversación configurada, redirige a OnboardingActivity.
+ * Si la hay, arranca el servicio de polling y muestra el menú principal.
  */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject lateinit var settingsRepository: SettingsRepository
+    @Inject lateinit var conversationRepository: ConversationRepository
+
+    override fun onResume() {
+        super.onResume()
+        lifecycleScope.launch {
+            val active = conversationRepository.getActive()
+            if (active == null || active.botToken.isBlank() || active.targetChatId.isBlank()) {
+                val i = Intent(this@MainActivity, OnboardingActivity::class.java)
+                i.flags = Intent.FLAG_ACTIVITY_NO_HISTORY
+                startActivity(i)
+                finish()
+                return@launch
+            }
+            startPollingService()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // Iniciar el servicio de polling
-        startPollingService()
-
         setContent {
             AutogramTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Autogram", style = MaterialTheme.typography.headlineLarge)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text("Voice messaging for Android Auto", style = MaterialTheme.typography.bodyMedium)
-                            Spacer(modifier = Modifier.height(32.dp))
-                            Button(onClick = {
-                                startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
-                            }) {
-                                Text("Configuración")
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Button(onClick = {
-                                startActivity(Intent(this@MainActivity, HistoryActivity::class.java))
-                            }) {
-                                Text("Historial")
-                            }
-                        }
-                    }
+                    MainMenu()
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun MainMenu() {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Autogram", style = MaterialTheme.typography.headlineLarge)
+                Spacer(Modifier.height(8.dp))
+                Text("Voice messaging for Android Auto", style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(32.dp))
+                Button(onClick = {
+                    startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
+                }, modifier = Modifier.width(220.dp)) {
+                    Text("Configuración")
+                }
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = {
+                    startActivity(Intent(this@MainActivity, HistoryActivity::class.java))
+                }, modifier = Modifier.width(220.dp)) {
+                    Text("Historial")
+                }
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = {
+                    startActivity(Intent(this@MainActivity, StatsActivity::class.java))
+                }, modifier = Modifier.width(220.dp)) {
+                    Text("Estadísticas")
                 }
             }
         }
