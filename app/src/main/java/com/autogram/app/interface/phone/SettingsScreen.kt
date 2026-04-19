@@ -210,6 +210,62 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            // --- Battery optimization opt-out ---
+            Text(
+                context.getString(com.autogram.app.R.string.settings_battery_section),
+                style = MaterialTheme.typography.titleMedium
+            )
+            BatteryOptimizationRow(context)
         }
+    }
+}
+
+@Composable
+private fun BatteryOptimizationRow(context: android.content.Context) {
+    val powerManager = context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+    var isIgnoring by remember {
+        mutableStateOf(powerManager.isIgnoringBatteryOptimizations(context.packageName))
+    }
+    DisposableEffect(Unit) {
+        // Refresh state on resume — user may grant/revoke from system settings.
+        val lifecycleOwner = (context as? androidx.lifecycle.LifecycleOwner)
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                isIgnoring = powerManager.isIgnoringBatteryOptimizations(context.packageName)
+            }
+        }
+        lifecycleOwner?.lifecycle?.addObserver(observer)
+        onDispose { lifecycleOwner?.lifecycle?.removeObserver(observer) }
+    }
+
+    Button(
+        onClick = {
+            if (!isIgnoring) {
+                @Suppress("BatteryLife")
+                val intent = android.content.Intent(
+                    android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+                ).setData(android.net.Uri.parse("package:${context.packageName}"))
+                try {
+                    context.startActivity(intent)
+                } catch (_: android.content.ActivityNotFoundException) {
+                    val fallback = android.content.Intent(
+                        android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS
+                    )
+                    context.startActivity(fallback)
+                }
+            }
+        },
+        enabled = !isIgnoring,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            context.getString(
+                if (isIgnoring) com.autogram.app.R.string.settings_battery_button_already
+                else com.autogram.app.R.string.settings_battery_button_request
+            )
+        )
     }
 }
