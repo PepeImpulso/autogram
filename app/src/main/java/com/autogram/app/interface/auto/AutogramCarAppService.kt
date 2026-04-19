@@ -4,6 +4,8 @@ import androidx.car.app.CarAppService
 import androidx.car.app.Screen
 import androidx.car.app.Session
 import androidx.car.app.validation.HostValidator
+import com.autogram.app.domain.repository.QuickReplyRepository
+import com.autogram.app.domain.usecase.ManageSettingsUseCase
 import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.domain.usecase.SendMessageUseCase
 import dagger.hilt.android.AndroidEntryPoint
@@ -39,10 +41,18 @@ class AutogramCarSession : Session() {
 
     @Inject lateinit var sendMessageUseCase: SendMessageUseCase
     @Inject lateinit var playReplyUseCase: PlayReplyUseCase
+    @Inject lateinit var manageSettingsUseCase: ManageSettingsUseCase
+    @Inject lateinit var quickReplyRepository: QuickReplyRepository
 
     // BUG-14: Handle deep links from notifications
     override fun onCreateScreen(intent: android.content.Intent): Screen {
         // TODO: Handle intent.action for deep navigation (e.g., open specific message)
-        return MainScreen(carContext, sendMessageUseCase, playReplyUseCase)
+        return MainScreen(
+            carContext,
+            sendMessageUseCase,
+            playReplyUseCase,
+            manageSettingsUseCase,
+            quickReplyRepository
+        )
     }
 }
