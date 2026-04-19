@@ -36,7 +36,7 @@
 
         <!-- Phone UI -->
         <activity
-            android:name=".interface.phone.MainActivity"
+            android:name=".ui.phone.MainActivity"
             android:exported="true"
             android:theme="@style/Theme.Autogram">
             <intent-filter>
@@ -46,22 +46,22 @@
         </activity>
 
         <activity
-            android:name=".interface.phone.SettingsActivity"
+            android:name=".ui.phone.SettingsActivity"
             android:exported="false"
             android:label="@string/settings_title" />
 
         <activity
-            android:name=".interface.phone.HistoryActivity"
+            android:name=".ui.phone.HistoryActivity"
             android:exported="false"
             android:label="@string/history_title" />
 
         <activity
-            android:name=".interface.phone.StatsActivity"
+            android:name=".ui.phone.StatsActivity"
             android:exported="false"
             android:label="@string/stats_title" />
 
         <activity
-            android:name=".interface.phone.OnboardingActivity"
+            android:name=".ui.phone.OnboardingActivity"
             android:exported="false"
             android:label="@string/app_name" />
 
@@ -71,7 +71,7 @@
             android:resource="@xml/automotive_app_desc" />
 
         <service
-            android:name=".interface.auto.AutogramCarAppService"
+            android:name=".ui.auto.AutogramCarAppService"
             android:exported="true">
             <intent-filter>
                 <action android:name="androidx.car.app.CarAppService" />

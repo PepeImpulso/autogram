@@ -1,4 +1,4 @@
-package com.autogram.app.interface.phone
+package com.autogram.app.ui.phone
 
 import android.content.Intent
 import android.os.Bundle
@@ -13,7 +13,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.domain.repository.ConversationRepository
-import com.autogram.app.interface.theme.AutogramTheme
+import com.autogram.app.ui.theme.AutogramTheme
 import com.autogram.app.service.AutogramPollingService
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch

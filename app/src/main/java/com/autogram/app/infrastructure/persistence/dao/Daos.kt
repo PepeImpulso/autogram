@@ -1,7 +1,12 @@
 package com.autogram.app.infrastructure.persistence.dao
 
 import androidx.room.*
+import com.autogram.app.infrastructure.persistence.entity.ConversationEntity
+import com.autogram.app.infrastructure.persistence.entity.DeliveryAttemptEntity
 import com.autogram.app.infrastructure.persistence.entity.MessageEntity
+import com.autogram.app.infrastructure.persistence.entity.PendingPlaybackEntity
+import com.autogram.app.infrastructure.persistence.entity.QuickReplyEntity
+import com.autogram.app.infrastructure.persistence.entity.SettingsEntity
 import com.autogram.app.domain.model.MessageState
 import kotlinx.coroutines.flow.Flow
 

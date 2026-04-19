@@ -1,4 +1,4 @@
-package com.autogram.app.interface.phone
+package com.autogram.app.ui.phone
 
 import android.content.Context
 import android.os.Bundle
@@ -18,7 +18,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import com.autogram.app.interface.theme.AutogramTheme
+import com.autogram.app.ui.theme.AutogramTheme
 import dagger.hilt.android.AndroidEntryPoint
 
 /**

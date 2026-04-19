@@ -9,6 +9,7 @@ import android.telephony.TelephonyCallback
 import android.telephony.TelephonyManager
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import timber.log.Timber
@@ -22,7 +23,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class CallStateMonitor @Inject constructor(
-    private val context: Context
+    @ApplicationContext private val context: Context
 ) {
     private val _isInCall = MutableStateFlow(false)
     val isInCall: StateFlow<Boolean> = _isInCall
@@ -60,7 +61,7 @@ class CallStateMonitor @Inject constructor(
             @Suppress("DEPRECATION")
             val listener = object : PhoneStateListener() {
                 @Deprecated("Deprecated in API 31+")
-                override fun onCallStateChanged(state: Int) {
+                override fun onCallStateChanged(state: Int, phoneNumber: String?) {
                     _isInCall.value = when (state) {
                         TelephonyManager.CALL_STATE_OFFHOOK -> true
                         TelephonyManager.CALL_STATE_RINGING -> true

@@ -1,4 +1,4 @@
-package com.autogram.app.interface.theme
+package com.autogram.app.ui.theme
 
 import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme

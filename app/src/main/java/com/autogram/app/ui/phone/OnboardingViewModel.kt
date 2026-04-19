@@ -1,4 +1,4 @@
-package com.autogram.app.interface.phone
+package com.autogram.app.ui.phone
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope

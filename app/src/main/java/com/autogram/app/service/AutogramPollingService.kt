@@ -9,7 +9,6 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
-import androidx.preference.PreferenceManager
 import com.autogram.app.R
 import com.autogram.app.domain.model.*
 import com.autogram.app.domain.repository.ConversationRepository
@@ -19,7 +18,7 @@ import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.infrastructure.audio.AudioPlayer
 import com.autogram.app.infrastructure.platform.CallStateMonitor
 import com.autogram.app.infrastructure.telegram.TelegramApiClient
-import com.autogram.app.interface.phone.MainActivity
+import com.autogram.app.ui.phone.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
 import timber.log.Timber
@@ -40,8 +39,8 @@ class AutogramPollingService : Service() {
         const val ACTION_START = "com.autogram.app.START_POLLING"
         const val ACTION_STOP = "com.autogram.app.STOP_POLLING"
 
-        var isRunning = false
-            @Volatile private set
+        @Volatile var isRunning = false
+            private set
     }
 
     @Inject lateinit var telegramApiClient: TelegramApiClient
@@ -66,7 +65,7 @@ class AutogramPollingService : Service() {
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification("Conectando..."))
         // BUG-25: Restore lastUpdateId from SharedPreferences
-        prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        prefs = getSharedPreferences("autogram_polling", MODE_PRIVATE)
         lastUpdateId = prefs.getLong("last_update_id", 0)
         isRunning = true
         callStateMonitor.start()

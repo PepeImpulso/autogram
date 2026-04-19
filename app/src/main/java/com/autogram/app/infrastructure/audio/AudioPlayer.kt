@@ -6,6 +6,7 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.os.Build
+import dagger.hilt.android.qualifiers.ApplicationContext
 import timber.log.Timber
 import java.io.File
 import javax.inject.Inject
@@ -15,7 +16,7 @@ import javax.inject.Inject
  * Usa MediaPlayer con atributos de CONTENT_TYPE_SPEECH.
  */
 class AudioPlayer @Inject constructor(
-    private val context: Context
+    @ApplicationContext private val context: Context
 ) {
     private var mediaPlayer: MediaPlayer? = null
     private var isPlaying = false
@@ -49,13 +50,13 @@ class AudioPlayer @Inject constructor(
                         .build()
                 )
                 setOnCompletionListener {
-                    isPlaying = false
+                    this@AudioPlayer.isPlaying = false
                     abandonAudioFocus()
                     completionHandler?.invoke(Result.success(Unit))
                 }
                 setOnErrorListener { _, what, extra ->
                     Timber.e("MediaPlayer error: what=$what extra=$extra")
-                    isPlaying = false
+                    this@AudioPlayer.isPlaying = false
                     abandonAudioFocus()
                     completionHandler?.invoke(Result.failure(Exception("MediaPlayer error: what=$what extra=$extra")))
                     true

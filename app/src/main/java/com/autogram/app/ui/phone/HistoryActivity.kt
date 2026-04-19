@@ -1,4 +1,4 @@
-package com.autogram.app.interface.phone
+package com.autogram.app.ui.phone
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -18,7 +18,7 @@ import androidx.compose.ui.unit.dp
 import com.autogram.app.domain.model.Message
 import com.autogram.app.domain.model.MessageDirection
 import com.autogram.app.domain.model.MessageState
-import com.autogram.app.interface.theme.AutogramTheme
+import com.autogram.app.ui.theme.AutogramTheme
 import dagger.hilt.android.AndroidEntryPoint
 import java.text.SimpleDateFormat
 import java.util.*

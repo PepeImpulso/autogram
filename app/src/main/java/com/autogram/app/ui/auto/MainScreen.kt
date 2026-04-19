@@ -1,4 +1,4 @@
-package com.autogram.app.interface.auto
+package com.autogram.app.ui.auto
 
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
@@ -43,12 +43,13 @@ class MainScreen(
     private val silentMode = MutableStateFlow(false)
     private val cachedQuickReplies = MutableStateFlow<List<Pair<String, String>>>(defaultQuickReplies())
 
-    override fun onDestroy() {
-        screenJob.cancel()
-        super.onDestroy()
-    }
-
     init {
+        // Cancel coroutines when the screen is destroyed by the host.
+        lifecycle.addObserver(object : androidx.lifecycle.DefaultLifecycleObserver {
+            override fun onDestroy(owner: androidx.lifecycle.LifecycleOwner) {
+                screenJob.cancel()
+            }
+        })
         screenScope.launch {
             sendMessageUseCase.currentStatus.collect { invalidate() }
         }
@@ -99,7 +100,7 @@ class MainScreen(
         val items = ItemList.Builder()
 
         val constraintManager = carContext.getCarService(ConstraintManager::class.java)
-        val maxItems = constraintManager.getContentLimit(ConstraintManager.CONTENT_LIMIT_GRID_ITEMS)
+        val maxItems = constraintManager.getContentLimit(ConstraintManager.CONTENT_LIMIT_TYPE_GRID)
         var itemCount = 0
 
         // Record button (primary action) — colored mic
@@ -107,7 +108,7 @@ class MainScreen(
             GridItem.Builder()
                 .setTitle(carContext.getString(R.string.aa_record))
                 .setImage(carIcon(R.drawable.ic_mic, CarColor.PRIMARY))
-                .setOnClick { startRecording() }
+                .setOnClickListener { startRecording() }
                 .build()
         )
         itemCount++
@@ -119,7 +120,7 @@ class MainScreen(
                 GridItem.Builder()
                     .setTitle(label)
                     .setImage(carIcon(R.drawable.ic_quick_reply, CarColor.SECONDARY))
-                    .setOnClick { sendQuickReply(text) }
+                    .setOnClickListener { sendQuickReply(text) }
                     .build()
             )
             itemCount++
@@ -132,7 +133,7 @@ class MainScreen(
                 GridItem.Builder()
                     .setTitle(carContext.getString(R.string.aa_pending_count, pendingCount))
                     .setImage(carIcon(R.drawable.ic_inbox, CarColor.YELLOW))
-                    .setOnClick {
+                    .setOnClickListener {
                         screenScope.launch { playReplyUseCase.playAllPending() }
                         invalidate()
                     }
@@ -155,14 +156,14 @@ class MainScreen(
                 Action.Builder()
                     .setIcon(carIcon(silentIcon, if (isSilent) CarColor.YELLOW else CarColor.DEFAULT))
                     .setTitle(silentLabel)
-                    .setOnClick { toggleSilent() }
+                    .setOnClickListener { toggleSilent() }
                     .build()
             )
             .addAction(
                 Action.Builder()
                     .setIcon(carIcon(R.drawable.ic_voice_command, CarColor.BLUE))
                     .setTitle(carContext.getString(R.string.aa_voice_command))
-                    .setOnClick { triggerVoiceCommand() }
+                    .setOnClickListener { triggerVoiceCommand() }
                     .build()
             )
             .build()
@@ -202,7 +203,7 @@ class MainScreen(
                     .setTitle(carContext.getString(R.string.aa_stop_send))
                     .setIcon(carIcon(R.drawable.ic_send, CarColor.DEFAULT))
                     .setBackgroundColor(CarColor.PRIMARY)
-                    .setOnClick { stopAndSend() }
+                    .setOnClickListener { stopAndSend() }
                     .build()
             )
             .addAction(
@@ -210,7 +211,7 @@ class MainScreen(
                     .setTitle(carContext.getString(R.string.aa_cancel))
                     .setIcon(carIcon(R.drawable.ic_cancel, CarColor.DEFAULT))
                     .setBackgroundColor(CarColor.SECONDARY)
-                    .setOnClick {
+                    .setOnClickListener {
                         screenScope.launch { sendMessageUseCase.cancelRecording() }
                         invalidate()
                     }
@@ -234,7 +235,7 @@ class MainScreen(
             .addAction(
                 Action.Builder()
                     .setTitle("Volver")
-                    .setOnClick {
+                    .setOnClickListener {
                         sendMessageUseCase.reset()
                         invalidate()
                     }

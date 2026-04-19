@@ -1,4 +1,4 @@
-package com.autogram.app.interface.auto
+package com.autogram.app.ui.auto
 
 import androidx.car.app.CarContext
 import androidx.car.app.Screen

@@ -31,7 +31,7 @@ class PendingReplyNotifier @Inject constructor(
         ensureChannel(context)
 
         val openHistoryIntent = Intent().apply {
-            setClassName(context, "com.autogram.app.interface.phone.HistoryActivity")
+            setClassName(context, "com.autogram.app.ui.phone.HistoryActivity")
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val pi = PendingIntent.getActivity(

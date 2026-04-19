@@ -1,4 +1,4 @@
-package com.autogram.app.interface.phone
+package com.autogram.app.ui.phone
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -87,7 +87,7 @@ fun MessageCard(message: Message) {
             Text(
                 text = when {
                     message.textContent != null -> message.textContent
-                    message.audioFilePath != null -> "🎤 Nota de voz (${message.audioDurationMs?.let { "${it / 1000}s" } ?: "?")"
+                    message.audioFilePath != null -> "🎤 Nota de voz (${message.audioDurationMs?.let { "${it / 1000}s" } ?: "?"})"
                     else -> "Sin contenido"
                 },
                 style = MaterialTheme.typography.bodyMedium,
@@ -123,6 +123,7 @@ private fun stateLabel(state: MessageState): String = when (state) {
     MessageState.ARCHIVED -> "Archivado"
 }
 
+@androidx.compose.runtime.Composable
 private fun stateColor(state: MessageState) = when (state) {
     MessageState.SENT, MessageState.PLAYED -> MaterialTheme.colorScheme.primary
     MessageState.FAILED, MessageState.PERMANENTLY_FAILED -> MaterialTheme.colorScheme.error

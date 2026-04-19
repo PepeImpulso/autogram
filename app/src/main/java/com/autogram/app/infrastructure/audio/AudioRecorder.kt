@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.media.MediaRecorder
 import android.os.Build
+import dagger.hilt.android.qualifiers.ApplicationContext
 import timber.log.Timber
 import java.io.File
 import java.io.IOException
@@ -14,7 +15,7 @@ import javax.inject.Inject
  * Incluye gestión de errores, límite de duración y limpieza de recursos.
  */
 class AudioRecorder @Inject constructor(
-    private val context: Context
+    @ApplicationContext private val context: Context
 ) {
     private var recorder: MediaRecorder? = null
     private var outputFile: File? = null

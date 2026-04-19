@@ -1,4 +1,4 @@
-package com.autogram.app.interface.di
+package com.autogram.app.ui.di
 
 import com.autogram.app.domain.repository.*
 import com.autogram.app.infrastructure.persistence.repository.*
@@ -9,6 +9,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
+import timber.log.Timber
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 

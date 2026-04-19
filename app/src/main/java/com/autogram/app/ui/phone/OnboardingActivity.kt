@@ -1,18 +1,18 @@
-package com.autogram.app.interface.phone
+package com.autogram.app.ui.phone
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import com.autogram.app.interface.theme.AutogramTheme
+import com.autogram.app.ui.theme.AutogramTheme
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
-class StatsActivity : ComponentActivity() {
+class OnboardingActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             AutogramTheme {
-                StatsScreen(onBack = { finish() })
+                OnboardingScreen(onFinished = { finish() })
             }
         }
     }
