@@ -123,11 +123,11 @@ class SendMessageUseCase @Inject constructor(
         val settings = settingsRepository.get()
         val filterResult = emptyMessageFilter.validate(audioFile, settings.minRecordingDurationMs)
         if (!filterResult.accepted) {
-            transition(msg, MessageState.DISCARDED)
+            msg = transition(msg, MessageState.DISCARDED)
             _currentStatus.value = SendStatus.Discarded(filterResult.reason ?: "Mensaje vacío")
             // Limpiar archivo
             audioFile.delete()
-            transition(msg, MessageState.IDLE)
+            msg = transition(msg, MessageState.IDLE)
             currentMessage = null
             return Result.failure(Exception("Mensaje descartado: ${filterResult.reason}"))
         }
