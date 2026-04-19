@@ -3,6 +3,7 @@ package com.autogram.app
 import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
+import com.autogram.app.infrastructure.platform.PendingReplyNotifier
 import com.autogram.app.infrastructure.retry.RetentionCleanupWorker
 import dagger.hilt.android.HiltAndroidApp
 import timber.log.Timber
@@ -29,6 +30,7 @@ class AutogramApplication : Application(), Configuration.Provider {
         }
         Timber.d("Autogram initialized")
 
+        PendingReplyNotifier.ensureChannel(this)
         RetentionCleanupWorker.schedule(this)
     }
 

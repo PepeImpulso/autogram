@@ -3,15 +3,71 @@
     <string name="app_name">Autogram</string>
     <string name="settings_title">Configuración</string>
     <string name="history_title">Historial</string>
+    <string name="stats_title">Estadísticas</string>
+
+    <!-- Notifications -->
     <string name="notification_channel_polling">Autogram Polling</string>
     <string name="notification_polling_text">Escuchando mensajes…</string>
+    <string name="notification_channel_pending_replies">Respuestas pendientes</string>
+    <string name="notification_channel_pending_replies_desc">Avisa cuando llega una respuesta y no se puede reproducir (modo silencio, llamada, etc.).</string>
+    <string name="notification_pending_replies_title">Tienes mensajes sin reproducir</string>
+    <plurals name="notification_pending_replies_body">
+        <item quantity="one">%d mensaje pendiente. Toca para abrir el historial.</item>
+        <item quantity="other">%d mensajes pendientes. Toca para abrir el historial.</item>
+    </plurals>
+
+    <!-- Status -->
     <string name="status_idle">Listo</string>
     <string name="status_recording">Grabando…</string>
     <string name="status_sending">Enviando…</string>
     <string name="status_sent">Enviado ✓</string>
     <string name="status_error">Error ✗</string>
     <string name="status_playing">Reproduciendo respuesta…</string>
+
+    <!-- Quick replies (defaults) -->
     <string name="quick_reply_driving">Conduciendo</string>
     <string name="quick_reply_later">Después</string>
     <string name="quick_reply_ok">OK</string>
+
+    <!-- Android Auto labels -->
+    <string name="aa_record">Grabar</string>
+    <string name="aa_stop_send">Parar y enviar</string>
+    <string name="aa_cancel">Cancelar</string>
+    <string name="aa_silent_on">Silenciar</string>
+    <string name="aa_silent_off">Activar audio</string>
+    <string name="aa_voice_command">Comando por voz</string>
+    <string name="aa_pending_count">%d pendientes</string>
+    <string name="aa_voice_help_title">Comandos de voz</string>
+    <string name="aa_voice_help_body">Di alguno de estos comandos: \n· repetir — vuelve a reproducir el último mensaje\n· cancelar — cancela la grabación actual\n· pausar — pausa la reproducción\n· reanudar — reanuda la reproducción\n· enviar — envía la grabación actual\n· silencio — activa/desactiva el modo silencio</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_welcome_title">Bienvenido a Autogram</string>
+    <string name="onboarding_welcome_body">Envía y recibe notas de voz por Telegram desde Android Auto. Para empezar necesitas un bot de Telegram (gratis, lo creas con @BotFather).</string>
+    <string name="onboarding_token_title">Token del bot</string>
+    <string name="onboarding_token_body">Pega aquí el token que te dio @BotFather (formato: 123456789:ABC…).</string>
+    <string name="onboarding_test_connection">Probar conexión</string>
+    <string name="onboarding_chat_title">Chat de destino</string>
+    <string name="onboarding_chat_body">Abre Telegram y envía cualquier mensaje a tu bot. Después pulsa “Detectar chat” aquí.</string>
+    <string name="onboarding_detect_chat">Detectar chat</string>
+    <string name="onboarding_finish">Finalizar</string>
+    <string name="onboarding_skip">Saltar</string>
+    <string name="onboarding_continue">Continuar</string>
+    <string name="onboarding_back">Atrás</string>
+    <string name="onboarding_invalid_token">Token inválido. Pega exactamente lo que te dio @BotFather.</string>
+    <string name="onboarding_connection_ok">Conexión OK: %s</string>
+    <string name="onboarding_connection_error">No se pudo conectar: %s</string>
+    <string name="onboarding_no_message">Aún no hay mensajes. Envía uno a tu bot y vuelve a intentar.</string>
+
+    <!-- Settings -->
+    <string name="settings_battery_section">Batería</string>
+    <string name="settings_battery_button_request">Permitir ejecución en segundo plano</string>
+    <string name="settings_battery_button_already">Excepción de batería ya concedida</string>
+
+    <!-- Stats -->
+    <string name="stats_total_sent">Enviados</string>
+    <string name="stats_total_received">Recibidos</string>
+    <string name="stats_success_rate">Tasa de éxito</string>
+    <string name="stats_avg_duration">Duración media</string>
+    <string name="stats_last_7_days">Últimos 7 días</string>
+    <string name="stats_no_data">Aún no hay datos para mostrar.</string>
 </resources>

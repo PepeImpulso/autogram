@@ -7,9 +7,11 @@ import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.infrastructure.audio.AudioPlayer
 import com.autogram.app.infrastructure.persistence.dao.PendingPlaybackDao
 import com.autogram.app.infrastructure.persistence.entity.PendingPlaybackEntity
+import com.autogram.app.infrastructure.platform.PendingReplyNotifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,7 +29,8 @@ class PlayReplyUseCase @Inject constructor(
     private val audioPlayer: AudioPlayer,
     private val messageRepository: MessageRepository,
     private val settingsRepository: SettingsRepository,
-    private val pendingPlaybackDao: PendingPlaybackDao  // BUG-05: Persist pending queue
+    private val pendingPlaybackDao: PendingPlaybackDao,  // BUG-05: Persist pending queue
+    private val pendingReplyNotifier: PendingReplyNotifier
 ) {
     private val _playbackStatus = MutableStateFlow<PlaybackStatus>(PlaybackStatus.Idle)
     val playbackStatus: StateFlow<PlaybackStatus> = _playbackStatus
@@ -147,6 +150,7 @@ class PlayReplyUseCase @Inject constructor(
         synchronized(pendingQueue) { pendingQueue.clear() }
         currentPlayingId = null
         _playbackStatus.value = PlaybackStatus.Idle
+        pendingReplyNotifier.cancel()
         // BUG-44 FIX: Cancel and recreate playback scope
         playbackScope.cancel()
         playbackScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -172,6 +176,7 @@ class PlayReplyUseCase @Inject constructor(
             playedAt = null
         ))
         _playbackStatus.value = PlaybackStatus.PendingCount(pendingCount())
+        pendingReplyNotifier.notifyPending(pendingCount())
         Timber.d("Mensaje ${message.id} encolado. Razón: $reason. Pendientes: ${pendingCount()}")
     }
 
@@ -199,10 +204,12 @@ class PlayReplyUseCase @Inject constructor(
         val next = synchronized(pendingQueue) {
             if (pendingQueue.isEmpty()) {
                 _playbackStatus.value = PlaybackStatus.Idle
+                pendingReplyNotifier.cancel()
                 return
             }
             pendingQueue.removeAt(0)
         }
+        pendingReplyNotifier.notifyPending(pendingCount())
         // BUG-42 FIX: Delete only the specific playback for this message, not all
         playbackScope.launch {
             try { pendingPlaybackDao.delete(next.id) } catch (_: Exception) {}
