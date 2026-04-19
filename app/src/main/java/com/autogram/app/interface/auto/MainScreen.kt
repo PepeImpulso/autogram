@@ -6,10 +6,12 @@ import androidx.car.app.constraints.ConstraintManager
 import androidx.car.app.model.*
 import androidx.core.graphics.drawable.IconCompat
 import com.autogram.app.R
+import com.autogram.app.domain.model.VoiceCommand
 import com.autogram.app.domain.repository.QuickReplyRepository
 import com.autogram.app.domain.usecase.ManageSettingsUseCase
 import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.domain.usecase.SendMessageUseCase
+import com.autogram.app.infrastructure.platform.VoiceCommandRecognizer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -28,7 +30,8 @@ class MainScreen(
     private val sendMessageUseCase: SendMessageUseCase,
     private val playReplyUseCase: PlayReplyUseCase,
     private val manageSettingsUseCase: ManageSettingsUseCase,
-    private val quickReplyRepository: QuickReplyRepository
+    private val quickReplyRepository: QuickReplyRepository,
+    private val voiceCommandRecognizer: VoiceCommandRecognizer
 ) : Screen(carContext) {
 
     // BUG-44 FIX: Track job for cleanup when screen is destroyed
@@ -159,12 +162,34 @@ class MainScreen(
                 Action.Builder()
                     .setIcon(carIcon(R.drawable.ic_voice_command, CarColor.BLUE))
                     .setTitle(carContext.getString(R.string.aa_voice_command))
-                    .setOnClick {
-                        screenManager.push(VoiceCommandsHelpScreen(carContext))
-                    }
+                    .setOnClick { triggerVoiceCommand() }
                     .build()
             )
             .build()
+    }
+
+    private fun triggerVoiceCommand() {
+        if (!voiceCommandRecognizer.isAvailable()) {
+            screenManager.push(VoiceCommandsHelpScreen(carContext))
+            return
+        }
+        screenScope.launch {
+            val command = voiceCommandRecognizer.listenOnce()
+            dispatchVoiceCommand(command)
+        }
+    }
+
+    private fun dispatchVoiceCommand(command: VoiceCommand) {
+        Timber.d("VoiceCommand recibido: $command")
+        when (command) {
+            VoiceCommand.REPETIR -> screenScope.launch { playReplyUseCase.playAllPending() }
+            VoiceCommand.CANCELAR -> screenScope.launch { sendMessageUseCase.cancelRecording(); invalidate() }
+            VoiceCommand.PAUSAR -> { playReplyUseCase.pause(); invalidate() }
+            VoiceCommand.REANUDAR -> { playReplyUseCase.resume(); invalidate() }
+            VoiceCommand.ENVIAR -> stopAndSend()
+            VoiceCommand.SILENCIO -> toggleSilent()
+            VoiceCommand.UNKNOWN -> screenManager.push(VoiceCommandsHelpScreen(carContext))
+        }
     }
 
     private fun buildRecordingTemplate(): MessageTemplate {

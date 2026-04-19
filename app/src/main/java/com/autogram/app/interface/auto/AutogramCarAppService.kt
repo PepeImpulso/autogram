@@ -8,6 +8,7 @@ import com.autogram.app.domain.repository.QuickReplyRepository
 import com.autogram.app.domain.usecase.ManageSettingsUseCase
 import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.domain.usecase.SendMessageUseCase
+import com.autogram.app.infrastructure.platform.VoiceCommandRecognizer
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -43,6 +44,7 @@ class AutogramCarSession : Session() {
     @Inject lateinit var playReplyUseCase: PlayReplyUseCase
     @Inject lateinit var manageSettingsUseCase: ManageSettingsUseCase
     @Inject lateinit var quickReplyRepository: QuickReplyRepository
+    @Inject lateinit var voiceCommandRecognizer: VoiceCommandRecognizer
 
     // BUG-14: Handle deep links from notifications
     override fun onCreateScreen(intent: android.content.Intent): Screen {
@@ -52,7 +54,8 @@ class AutogramCarSession : Session() {
             sendMessageUseCase,
             playReplyUseCase,
             manageSettingsUseCase,
-            quickReplyRepository
+            quickReplyRepository,
+            voiceCommandRecognizer
         )
     }
 }

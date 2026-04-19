@@ -18,6 +18,13 @@
         android:name="android.hardware.microphone"
         android:required="true" />
 
+    <!-- Required on API 30+ so SpeechRecognizer can find a recognition service -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
+
     <application
         android:name=".AutogramApplication"
         android:allowBackup="false"
