@@ -272,7 +272,7 @@ class SendMessageUseCase @Inject constructor(
         }
     }
 
-    // BUG-04: transition() now returns the updated message so callers can chain correctly
+    // BUG-46 FIX: Throw instead of silently returning unchanged message
     private suspend fun transition(message: Message, target: MessageState): Message {
         val result = stateMachine.transition(message.state, target)
         return if (result.isSuccess) {
@@ -280,8 +280,9 @@ class SendMessageUseCase @Inject constructor(
             messageRepository.update(updated)
             updated
         } else {
-            Timber.e("Transición inválida: ${message.state} → $target")
-            message // Return unchanged message
+            val error = "Invalid state transition: ${message.state} → $target"
+            Timber.e(error)
+            throw IllegalStateException(error)
         }
     }
 

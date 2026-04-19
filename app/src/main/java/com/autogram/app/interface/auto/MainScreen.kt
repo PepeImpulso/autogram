@@ -9,6 +9,7 @@ import com.autogram.app.domain.usecase.SendMessageUseCase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
@@ -23,8 +24,15 @@ class MainScreen(
     private val playReplyUseCase: PlayReplyUseCase
 ) : Screen(carContext) {
 
-    // Coroutine scope for async operations
-    private val screenScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    // BUG-44 FIX: Track job for cleanup when screen is destroyed
+    private val screenJob = SupervisorJob()
+    private val screenScope = CoroutineScope(Dispatchers.Main + screenJob)
+
+    // BUG-44 FIX: Cancel coroutines when screen is destroyed
+    override fun onDestroy() {
+        screenJob.cancel()
+        super.onDestroy()
+    }
 
     init {
         // BUG-23: Observe status changes to auto-invalidate the screen
@@ -39,7 +47,15 @@ class MainScreen(
         return when (val status = sendMessageUseCase.currentStatus.value) {
             is SendMessageUseCase.SendStatus.Recording -> buildRecordingTemplate()
             is SendMessageUseCase.SendStatus.Sending -> buildStatusTemplate("Enviando...")
-            is SendMessageUseCase.SendStatus.Sent -> buildStatusTemplate("Enviado ✓")
+            is SendMessageUseCase.SendStatus.Sent -> {
+                // BUG-47 FIX: Auto-reset after 3 seconds
+                screenScope.launch {
+                    delay(3000)
+                    sendMessageUseCase.reset()
+                    invalidate()
+                }
+                buildStatusTemplate("Enviado ✓")
+            }
             is SendMessageUseCase.SendStatus.Discarded -> buildStatusTemplate("Mensaje descartado")
             is SendMessageUseCase.SendStatus.Error -> buildStatusTemplate("Error: ${status.message}")
             else -> buildMainGrid()

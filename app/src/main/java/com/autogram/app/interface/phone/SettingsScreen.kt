@@ -16,6 +16,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import android.widget.Toast
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * Pantalla de configuración con Compose.
@@ -176,11 +180,19 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
             var retentionText by remember(state.retentionDays) {
                 mutableStateOf(state.retentionDays.toString())
             }
+            // BUG-48 FIX: Debounce retention days updates
+            var retentionJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+            val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+            val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
             OutlinedTextField(
                 value = retentionText,
                 onValueChange = {
                     retentionText = it
-                    it.toIntOrNull()?.let { days -> viewModel.updateRetentionDays(days) }
+                    retentionJob?.cancel()
+                    retentionJob = coroutineScope.launch {
+                        kotlinx.coroutines.delay(800)
+                        it.toIntOrNull()?.let { days -> viewModel.updateRetentionDays(days) }
+                    }
                 },
                 label = { Text("Retención de historial (días)") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),

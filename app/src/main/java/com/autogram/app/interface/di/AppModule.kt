@@ -37,13 +37,18 @@ abstract class AppModule {
                 .readTimeout(45, TimeUnit.SECONDS)  // BUG-26: Increased for long-polling (30s + margin)
                 .writeTimeout(30, TimeUnit.SECONDS)
                 .apply {
-                    // BUG-03: Only add logging in debug, and redact bot tokens from URLs
+                    // BUG-45 FIX: Properly redact bot tokens from logs
                     if (BuildConfig.DEBUG) {
                         addInterceptor(HttpLoggingInterceptor().apply {
                             level = HttpLoggingInterceptor.Level.BASIC
-                        }.also { interceptor ->
-                            // Redact token from URL logs
                         })
+                        addInterceptor { chain ->
+                            val request = chain.request()
+                            val redactedUrl = request.url.toString()
+                                .replace(Regex("/bot\\d+:[A-Za-z0-9_-]+/"), "/botREDACTED/")
+                            Timber.d("HTTP: ${request.method} $redactedUrl")
+                            chain.proceed(request)
+                        }
                     }
                 }
                 .build()

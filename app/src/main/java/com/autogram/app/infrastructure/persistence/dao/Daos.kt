@@ -25,8 +25,8 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE state = 'FAILED' AND retryCount < :maxRetries LIMIT :limit")
     suspend fun getPendingRetries(limit: Int, maxRetries: Int = 3): List<MessageEntity>
 
-    @Query("SELECT * FROM messages WHERE state = 'PENDING_PLAYBACK' ORDER BY enqueuedAt ASC")
-    suspend fun getPendingPlayback(): List<MessageEntity>
+    // BUG-41 FIX: Removed broken query (MessageEntity has no enqueuedAt column).
+    // Pending playbacks are tracked in PendingPlaybackDao instead.
 
     @Query("SELECT COUNT(*) FROM messages WHERE state = 'PENDING_PLAYBACK'")
     fun pendingPlaybackCount(): Flow<Int>

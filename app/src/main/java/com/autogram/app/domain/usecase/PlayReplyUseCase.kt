@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import timber.log.Timber
 import java.io.File
 import java.util.UUID
+import java.util.Collections
 import javax.inject.Inject
 
 /**
@@ -31,7 +32,8 @@ class PlayReplyUseCase @Inject constructor(
     private val _playbackStatus = MutableStateFlow<PlaybackStatus>(PlaybackStatus.Idle)
     val playbackStatus: StateFlow<PlaybackStatus> = _playbackStatus
 
-    private val pendingQueue = mutableListOf<Message>()
+    // BUG-43 FIX: Thread-safe list for concurrent access from multiple coroutines
+    private val pendingQueue = Collections.synchronizedList(mutableListOf<Message>())
     private var currentPlayingId: String? = null
     // BUG-12: Dedicated scope for MediaPlayer callbacks instead of runBlocking
     private val playbackScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -132,9 +134,11 @@ class PlayReplyUseCase @Inject constructor(
      */
     fun stopAll() {
         audioPlayer.stop()
-        pendingQueue.clear()
+        synchronized(pendingQueue) { pendingQueue.clear() }
         currentPlayingId = null
         _playbackStatus.value = PlaybackStatus.Idle
+        // BUG-44 FIX: Cancel playback scope to prevent leaks
+        playbackScope.cancel()
     }
 
     /**
@@ -147,7 +151,7 @@ class PlayReplyUseCase @Inject constructor(
             reason = reason
         )
         messageRepository.update(message.copy(state = MessageState.PENDING_PLAYBACK))
-        pendingQueue.add(message)
+        synchronized(pendingQueue) { pendingQueue.add(message) }
         // BUG-05: Persist to database
         pendingPlaybackDao.insert(PendingPlaybackEntity(
             id = playback.id,
@@ -156,8 +160,8 @@ class PlayReplyUseCase @Inject constructor(
             reason = playback.reason,
             playedAt = null
         ))
-        _playbackStatus.value = PlaybackStatus.PendingCount(pendingQueue.size)
-        Timber.d("Mensaje ${message.id} encolado. Razón: $reason. Pendientes: ${pendingQueue.size}")
+        _playbackStatus.value = PlaybackStatus.PendingCount(pendingCount())
+        Timber.d("Mensaje ${message.id} encolado. Razón: $reason. Pendientes: ${pendingCount()}")
     }
 
     /**
@@ -168,11 +172,11 @@ class PlayReplyUseCase @Inject constructor(
         for (entity in entities) {
             val message = messageRepository.getById(entity.messageId) ?: continue
             if (message.state == MessageState.PENDING_PLAYBACK && !pendingQueue.any { it.id == message.id }) {
-                pendingQueue.add(message)
+                synchronized(pendingQueue) { pendingQueue.add(message) }
             }
         }
         if (pendingQueue.isNotEmpty()) {
-            _playbackStatus.value = PlaybackStatus.PendingCount(pendingQueue.size)
+            _playbackStatus.value = PlaybackStatus.PendingCount(pendingCount())
             Timber.d("Restaurados ${pendingQueue.size} mensajes pendientes de reproducción")
         }
     }
@@ -181,14 +185,16 @@ class PlayReplyUseCase @Inject constructor(
      * Reproduce el siguiente mensaje en cola.
      */
     private suspend fun playNext() {
-        if (pendingQueue.isEmpty()) {
-            _playbackStatus.value = PlaybackStatus.Idle
-            return
+        val next = synchronized(pendingQueue) {
+            if (pendingQueue.isEmpty()) {
+                _playbackStatus.value = PlaybackStatus.Idle
+                return
+            }
+            pendingQueue.removeAt(0)
         }
-        val next = pendingQueue.removeAt(0)
-        // BUG-05: Remove from DB when dequeued
+        // BUG-42 FIX: Delete only the specific playback for this message, not all
         playbackScope.launch {
-            try { pendingPlaybackDao.deleteAll() } catch (_: Exception) {}
+            try { pendingPlaybackDao.delete(next.id) } catch (_: Exception) {}
         }
         playVoiceMessage(next)
     }
@@ -197,8 +203,8 @@ class PlayReplyUseCase @Inject constructor(
      * Reproduce todos los mensajes pendientes (cuando se desactiva el modo silencio o termina la llamada).
      */
     suspend fun playAllPending() {
-        val messages = pendingQueue.toList()
-        pendingQueue.clear()
+        val messages = synchronized(pendingQueue) { pendingQueue.toList() }
+        synchronized(pendingQueue) { pendingQueue.clear() }
         for (msg in messages) {
             playVoiceMessage(msg)
         }
@@ -207,5 +213,5 @@ class PlayReplyUseCase @Inject constructor(
     /**
      * Devuelve el número de mensajes pendientes de reproducción.
      */
-    fun pendingCount(): Int = pendingQueue.size
+    fun pendingCount(): Int = synchronized(pendingQueue) { pendingQueue.size }
 }
