@@ -20,6 +20,12 @@ class MessageRepositoryImpl @Inject constructor(
         }
     }
 
+    override fun observeAllAcrossConversations(): Flow<List<Message>> {
+        return messageDao.observeAllAcrossConversations().map { entities ->
+            entities.map { it.toDomain() }
+        }
+    }
+
     override suspend fun getById(id: String): Message? {
         return messageDao.getById(id)?.toDomain()
     }

@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.Flow
 
 interface MessageRepository {
     fun observeAll(conversationId: String): Flow<List<Message>>
+    fun observeAllAcrossConversations(): Flow<List<Message>>
     suspend fun getById(id: String): Message?
     suspend fun insert(message: Message)
     suspend fun update(message: Message)

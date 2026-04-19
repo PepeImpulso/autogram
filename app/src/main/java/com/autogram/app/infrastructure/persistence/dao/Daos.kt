@@ -10,6 +10,9 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY createdAt DESC")
     fun observeAll(conversationId: String): Flow<List<MessageEntity>>
 
+    @Query("SELECT * FROM messages ORDER BY createdAt DESC")
+    fun observeAllAcrossConversations(): Flow<List<MessageEntity>>
+
     @Query("SELECT * FROM messages WHERE id = :id LIMIT 1")
     suspend fun getById(id: String): MessageEntity?
 
