@@ -1,0 +1,42 @@
+package com.autogram.app.infrastructure.persistence.repository
+
+import com.autogram.app.domain.model.AppSettings
+import com.autogram.app.domain.repository.SettingsRepository
+import com.autogram.app.infrastructure.persistence.dao.SettingsDao
+import com.autogram.app.infrastructure.persistence.entity.SettingsEntity
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import javax.inject.Inject
+import javax.inject.Singleton
+
+@Singleton
+class SettingsRepositoryImpl @Inject constructor(
+    private val settingsDao: SettingsDao
+) : SettingsRepository {
+
+    override fun observe(): Flow<AppSettings> {
+        return settingsDao.observe().map { it.toDomain() }
+    }
+
+    override suspend fun get(): AppSettings {
+        return settingsDao.get()?.toDomain() ?: AppSettings()
+    }
+
+    override suspend fun update(settings: AppSettings) {
+        settingsDao.upsert(settings.toEntity())
+    }
+
+    private fun SettingsEntity.toDomain() = AppSettings(
+        id = id, activeConversationId = activeConversationId, retentionDays = retentionDays,
+        silentMode = silentMode, minRecordingDurationMs = minRecordingDurationMs,
+        maxRecordingDurationMs = maxRecordingDurationMs, pollingIntervalMs = pollingIntervalMs,
+        maxRetryAttempts = maxRetryAttempts, autoPlayReplies = autoPlayReplies
+    )
+
+    private fun AppSettings.toEntity() = SettingsEntity(
+        id = id, activeConversationId = activeConversationId, retentionDays = retentionDays,
+        silentMode = silentMode, minRecordingDurationMs = minRecordingDurationMs,
+        maxRecordingDurationMs = maxRecordingDurationMs, pollingIntervalMs = pollingIntervalMs,
+        maxRetryAttempts = maxRetryAttempts, autoPlayReplies = autoPlayReplies
+    )
+}

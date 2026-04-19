@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Autogram</string>
-    <string name="settings_title">Settings</string>
-    <string name="history_title">History</string>
+    <string name="settings_title">Configuración</string>
+    <string name="history_title">Historial</string>
     <string name="notification_channel_polling">Autogram Polling</string>
-    <string name="notification_polling_text">Listening for messages…</string>
-    <string name="status_idle">Ready</string>
-    <string name="status_recording">Recording…</string>
-    <string name="status_sending">Sending…</string>
-    <string name="status_sent">Sent ✓</string>
+    <string name="notification_polling_text">Escuchando mensajes…</string>
+    <string name="status_idle">Listo</string>
+    <string name="status_recording">Grabando…</string>
+    <string name="status_sending">Enviando…</string>
+    <string name="status_sent">Enviado ✓</string>
     <string name="status_error">Error ✗</string>
-    <string name="status_playing">Playing reply…</string>
-    <string name="quick_reply_driving">Driving</string>
-    <string name="quick_reply_later">Later</string>
+    <string name="status_playing">Reproduciendo respuesta…</string>
+    <string name="quick_reply_driving">Conduciendo</string>
+    <string name="quick_reply_later">Después</string>
     <string name="quick_reply_ok">OK</string>
 </resources>

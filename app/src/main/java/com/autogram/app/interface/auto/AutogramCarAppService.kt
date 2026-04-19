@@ -4,8 +4,16 @@ import androidx.car.app.CarAppService
 import androidx.car.app.Screen
 import androidx.car.app.Session
 import androidx.car.app.validation.HostValidator
+import com.autogram.app.domain.usecase.PlayReplyUseCase
+import com.autogram.app.domain.usecase.SendMessageUseCase
+import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
+/**
+ * Servicio de Android Auto para Autogram.
+ * Gestiona el ciclo de vida de la sesión y proporciona la pantalla principal.
+ */
+@AndroidEntryPoint
 class AutogramCarAppService : CarAppService() {
 
     override fun createHostValidator(): HostValidator {
@@ -23,8 +31,16 @@ class AutogramCarAppService : CarAppService() {
     }
 }
 
+/**
+ * Sesión de Android Auto. Crea la pantalla principal.
+ */
+@AndroidEntryPoint
 class AutogramCarSession : Session() {
+
+    @Inject lateinit var sendMessageUseCase: SendMessageUseCase
+    @Inject lateinit var playReplyUseCase: PlayReplyUseCase
+
     override fun onCreateScreen(intent: android.content.Intent): Screen {
-        return MainScreen(carContext)
+        return MainScreen(carContext, sendMessageUseCase, playReplyUseCase)
     }
 }

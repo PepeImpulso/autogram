@@ -48,6 +48,7 @@ android {
 dependencies {
     // AndroidX Core
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.core)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.service)
@@ -86,6 +87,8 @@ dependencies {
 
     // WorkManager
     implementation(libs.work.runtime.ktx)
+    implementation(libs.hilt.work)
+    ksp(libs.hilt.work.compiler)
 
     // Security
     implementation(libs.security.crypto)

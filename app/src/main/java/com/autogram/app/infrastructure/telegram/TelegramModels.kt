@@ -5,6 +5,8 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import retrofit2.http.*
 
+// --- Modelos de datos de la Telegram Bot API ---
+
 data class TelegramUpdate(
     val update_id: Long,
     val message: TelegramMessage? = null
@@ -14,32 +16,62 @@ data class TelegramMessage(
     val message_id: Long,
     val chat: TelegramChat,
     val text: String? = null,
-    val voice: TelegramVoice? = null
+    val voice: TelegramVoice? = null,
+    val from: TelegramUser? = null,
+    val date: Long = 0
 )
 
 data class TelegramChat(
     val id: Long,
     val type: String,
-    val title: String? = null
+    val title: String? = null,
+    val first_name: String? = null,
+    val username: String? = null
+)
+
+data class TelegramUser(
+    val id: Long,
+    val is_bot: Boolean = false,
+    val first_name: String = "",
+    val username: String? = null
 )
 
 data class TelegramVoice(
     val file_id: String,
+    val file_unique_id: String = "",
     val duration: Int,
-    val mime_type: String? = null
+    val mime_type: String? = null,
+    val file_size: Long? = null
 )
 
 data class TelegramFile(
     val file_id: String,
-    val file_path: String? = null
+    val file_unique_id: String = "",
+    val file_path: String? = null,
+    val file_size: Long? = null
 )
 
 data class TelegramResponse<T>(
     val ok: Boolean,
     val result: T? = null,
     val description: String? = null,
-    val error_code: Int? = null
+    val error_code: Int? = null,
+    val parameters: TelegramResponseParameters? = null
 )
+
+data class TelegramResponseParameters(
+    val retry_after: Int? = null,
+    val migrate_to_chat_id: Long? = null
+)
+
+data class TelegramBotInfo(
+    val id: Long,
+    val is_bot: Boolean = true,
+    val first_name: String,
+    val username: String? = null
+)
+
+// --- Interfaz Retrofit para la Telegram Bot API ---
 
 interface TelegramApi {
     @Multipart
@@ -47,6 +79,13 @@ interface TelegramApi {
     suspend fun sendVoice(
         @Part("chat_id") chatId: RequestBody,
         @Part voice: MultipartBody.Part
+    ): TelegramResponse<TelegramMessage>
+
+    @Multipart
+    @POST("sendMessage")
+    suspend fun sendMessage(
+        @Part("chat_id") chatId: RequestBody,
+        @Part("text") text: RequestBody
     ): TelegramResponse<TelegramMessage>
 
     @GET("getUpdates")
@@ -60,4 +99,7 @@ interface TelegramApi {
     suspend fun getFile(
         @Query("file_id") fileId: String
     ): TelegramResponse<TelegramFile>
+
+    @GET("getMe")
+    suspend fun getMe(): TelegramResponse<TelegramBotInfo>
 }
