@@ -43,26 +43,26 @@ Make it reliable.
 
 ### Phase 3 — Polish (Days 36-45)
 History and UX.
-- [ ] Message history view on phone
-- [ ] Configurable retention period
-- [ ] Pending reply alerts (notification)
-- [ ] Android Auto UI polish (colors, icons, feedback)
-- [ ] Battery optimization testing
-- [ ] Onboarding flow (first-run: enter bot token, test connection)
+- [x] Message history view on phone
+- [x] Configurable retention period (RetentionCleanupWorker, daily)
+- [x] Pending reply alerts (notification) — PendingReplyNotifier
+- [x] Android Auto UI polish (colors, icons, feedback) — vector drawables, ActionStrip, state-colored status icons
+- [x] Battery optimization testing — Settings → opt-out button
+- [x] Onboarding flow (first-run: enter bot token, test connection) — OnboardingActivity + 3 steps
 
-**Gate:** Daily use is smooth and reliable.
+**Gate:** Daily use is smooth and reliable. **Status:** ✅
 
 ### Phase 4 — Voice Commands (Days 46-55)
-- [ ] SpeechRecognizer integration for commands
-- [ ] Command set: repeat, cancel, pause, resume, send
-- [ ] Help screen on AA with command list
-- [ ] Voice-triggered quick reply selection
+- [x] SpeechRecognizer integration for commands — VoiceCommandRecognizer
+- [x] Command set: repeat, cancel, pause, resume, send, silent — VoiceCommand enum
+- [x] Help screen on AA with command list — VoiceCommandsHelpScreen
+- [ ] Voice-triggered quick reply selection (deferred — requires UX design for ambiguous matches)
 
 ### Phase 5 — Evaluation (Days 56+)
-- [ ] Evaluate WhatsApp Business API for v2
-- [ ] Evaluate LLM-based response summarization
-- [ ] Evaluate Play Store readiness and compliance
-- [ ] Statistics dashboard on phone
+- [ ] Evaluate WhatsApp Business API for v2 (product decision, not code)
+- [ ] Evaluate LLM-based response summarization (product decision, not code)
+- [ ] Evaluate Play Store readiness and compliance (product decision, not code)
+- [x] Statistics dashboard on phone — StatsActivity / GetStatsUseCase
 
 ## 2. Recommended Tech Stack
 

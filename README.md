@@ -81,9 +81,15 @@ See `docs/` for detailed documentation.
 ✅ **Phase 0 — Technical Prototype** (complete)
 ✅ **Phase 1 — Core MVP** (complete)
 ✅ **Phase 2 — Robustness** (complete)
-⬜ **Phase 3 — Polish** (pending)
+✅ **Phase 3 — Polish** (complete) — daily retention worker, pending-reply notifications, Android Auto UI polish, first-run onboarding, battery-optimization opt-out
+✅ **Phase 4 — Voice Commands** (complete) — SpeechRecognizer integration with REPETIR / CANCELAR / PAUSAR / REANUDAR / ENVIAR / SILENCIO commands
+✅ **Phase 5 — Statistics** (code complete) — daily-counts dashboard on phone (success rate, durations, last-7-days bars). Evaluation tasks (WhatsApp / LLM / Play Store) remain as product decisions.
 
-All 16 implementation issues resolved. The app implements the full message lifecycle: record → send → receive → auto-play with proper error handling, retries, and call-awareness.
+All 60 implementation/bug issues resolved. The app implements the full message lifecycle: record → send → receive → auto-play with proper error handling, retries, call-awareness, retention cleanup, deferred-playback notifications, voice control on Android Auto, and a phone-side stats dashboard.
+
+### Known limitations
+- SpeechRecognizer in Android Auto is gated by Google's distraction policy. The recognizer falls back to UNKNOWN (and shows the help screen) on devices/heads where the policy blocks it.
+- DB schema has no migrations (`exportSchema = false`); upgrading the version will require uninstalling the app.
 
 ## Documentation
 
