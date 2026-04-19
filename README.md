@@ -14,6 +14,8 @@ Tap a button, speak, and your voice note is delivered to Telegram. When a reply 
 - 📞 **Call-aware** — suppresses playback during calls
 - 🔇 **Silent mode** — pause auto-play when needed
 - 📋 **Message history** on phone
+- 🔄 **Retry queue** — automatic retries with exponential backoff
+- 🔐 **Secure** — bot token stored with encryption
 
 ## Setup
 
@@ -41,9 +43,9 @@ Install the APK on your device and connect to Android Auto.
 
 ### First Run
 1. Open Autogram on your phone
-2. Go to Settings
+2. Go to Settings (Configuración)
 3. Enter your **Bot Token** and **Chat ID**
-4. Tap **Test Connection** to verify
+4. Tap **Probar conexión** to verify
 
 ## Architecture
 
@@ -66,13 +68,22 @@ See `docs/` for detailed documentation.
 | Language | Kotlin |
 | Min SDK | 29 (Android 10) |
 | UI (Phone) | Jetpack Compose |
-| UI (Auto) | Car App Library |
+| UI (Auto) | Car App Library 1.4 |
 | DI | Hilt |
 | Network | Retrofit + OkHttp |
 | Database | Room |
 | Background | ForegroundService + WorkManager |
 | Audio | MediaRecorder (OGG/OPUS) + MediaPlayer |
 | Security | EncryptedSharedPreferences |
+
+## Project Status
+
+✅ **Phase 0 — Technical Prototype** (complete)
+✅ **Phase 1 — Core MVP** (complete)
+✅ **Phase 2 — Robustness** (complete)
+⬜ **Phase 3 — Polish** (pending)
+
+All 16 implementation issues resolved. The app implements the full message lifecycle: record → send → receive → auto-play with proper error handling, retries, and call-awareness.
 
 ## Documentation
 
@@ -82,10 +93,7 @@ See `docs/` for detailed documentation.
 - [04 — Data Model](docs/04-data-model.md)
 - [05 — Risks](docs/05-risks.md)
 - [06 — Development Plan](docs/06-development-plan.md)
-
-## Status
-
-🚧 **Phase 0 — Technical Prototype** (in progress)
+- [07 — Code Review](docs/07-code-review.md)
 
 ## License
 
