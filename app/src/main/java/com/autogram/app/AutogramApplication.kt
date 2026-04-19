@@ -1,11 +1,24 @@
 package com.autogram.app
 
 import android.app.Application
+import androidx.hilt.work.HiltWorkerFactory
+import androidx.work.Configuration
+import com.autogram.app.infrastructure.retry.RetentionCleanupWorker
 import dagger.hilt.android.HiltAndroidApp
 import timber.log.Timber
+import javax.inject.Inject
 
 @HiltAndroidApp
-class AutogramApplication : Application() {
+class AutogramApplication : Application(), Configuration.Provider {
+
+    @Inject lateinit var workerFactory: HiltWorkerFactory
+
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder()
+            .setWorkerFactory(workerFactory)
+            .setMinimumLoggingLevel(if (BuildConfig.DEBUG) android.util.Log.DEBUG else android.util.Log.INFO)
+            .build()
+
     override fun onCreate() {
         super.onCreate()
         if (BuildConfig.DEBUG) {
@@ -15,6 +28,8 @@ class AutogramApplication : Application() {
             Timber.plant(ReleaseTree())
         }
         Timber.d("Autogram initialized")
+
+        RetentionCleanupWorker.schedule(this)
     }
 
     /** BUG-34: Minimal release tree that logs errors to Log.e */

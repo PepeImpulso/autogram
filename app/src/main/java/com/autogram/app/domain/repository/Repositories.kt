@@ -15,6 +15,7 @@ interface MessageRepository {
 interface ConversationRepository {
     suspend fun getActive(): Conversation?
     suspend fun getById(id: String): Conversation?
+    suspend fun getAll(): List<Conversation>
     suspend fun upsert(conversation: Conversation)
     suspend fun setActive(id: String)
 }

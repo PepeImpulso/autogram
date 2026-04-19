@@ -20,6 +20,10 @@ class ConversationRepositoryImpl @Inject constructor(
         return conversationDao.getById(id)?.toDomain()
     }
 
+    override suspend fun getAll(): List<Conversation> {
+        return conversationDao.getAll().map { it.toDomain() }
+    }
+
     override suspend fun upsert(conversation: Conversation) {
         conversationDao.upsert(conversation.toEntity())
     }

@@ -1,25 +1,26 @@
 package com.autogram.app.infrastructure.retry
 
 import android.content.Context
+import androidx.hilt.work.HiltWorker
 import androidx.work.*
 import com.autogram.app.domain.model.MessageState
 import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.infrastructure.telegram.TelegramApiClient
-import dagger.hilt.android.HiltWorker
+import dagger.assisted.Assisted
+import dagger.assisted.AssistedInject
 import timber.log.Timber
 import java.io.File
-import javax.inject.Inject
 
 /**
  * Worker de WorkManager para reintentar el envío de mensajes fallidos.
  * Implementa backoff exponencial: 30s, 60s, 120s.
  */
 @HiltWorker
-class RetryWorker @Inject constructor(
-    context: Context,
-    workerParams: WorkerParameters,
+class RetryWorker @AssistedInject constructor(
+    @Assisted context: Context,
+    @Assisted workerParams: WorkerParameters,
     private val messageRepository: MessageRepository,
     private val conversationRepository: ConversationRepository,
     private val settingsRepository: SettingsRepository,
