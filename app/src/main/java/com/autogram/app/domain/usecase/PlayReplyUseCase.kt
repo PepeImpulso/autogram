@@ -36,7 +36,8 @@ class PlayReplyUseCase @Inject constructor(
     private val pendingQueue = Collections.synchronizedList(mutableListOf<Message>())
     private var currentPlayingId: String? = null
     // BUG-12: Dedicated scope for MediaPlayer callbacks instead of runBlocking
-    private val playbackScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    // BUG-50 FIX: Mutable scope so it can be recreated after stopAll()
+    private var playbackScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     sealed class PlaybackStatus {
         object Idle : PlaybackStatus()
@@ -78,13 +79,22 @@ class PlayReplyUseCase @Inject constructor(
         messageRepository.update(message.copy(state = MessageState.PLAYING))
         _playbackStatus.value = PlaybackStatus.Playing(message.id)
 
-        val result = audioPlayer.play(audioFile) {
+        val result = audioPlayer.play(audioFile) { playResult ->
             // BUG-12: Use CoroutineScope instead of runBlocking in MediaPlayer callback
+            // BUG-51 FIX: Check result to mark PLAYED or FAILED correctly
             playbackScope.launch {
-                messageRepository.update(message.copy(
-                    state = MessageState.PLAYED,
-                    playedAt = System.currentTimeMillis()
-                ))
+                if (playResult.isSuccess) {
+                    messageRepository.update(message.copy(
+                        state = MessageState.PLAYED,
+                        playedAt = System.currentTimeMillis()
+                    ))
+                } else {
+                    Timber.e(playResult.exceptionOrNull(), "Error reproduciendo mensaje ${message.id}")
+                    messageRepository.update(message.copy(
+                        state = MessageState.FAILED,
+                        errorMessage = playResult.exceptionOrNull()?.message
+                    ))
+                }
                 currentPlayingId = null
                 playNext()
             }
@@ -137,8 +147,9 @@ class PlayReplyUseCase @Inject constructor(
         synchronized(pendingQueue) { pendingQueue.clear() }
         currentPlayingId = null
         _playbackStatus.value = PlaybackStatus.Idle
-        // BUG-44 FIX: Cancel playback scope to prevent leaks
+        // BUG-44 FIX: Cancel and recreate playback scope
         playbackScope.cancel()
+        playbackScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     }
 
     /**

@@ -20,7 +20,7 @@ class AudioPlayer @Inject constructor(
     private var mediaPlayer: MediaPlayer? = null
     private var isPlaying = false
     private var audioFocusRequest: AudioFocusRequest? = null
-    private var completionHandler: (() -> Unit)? = null
+    private var completionHandler: ((Result<Unit>) -> Unit)? = null
 
     /**
      * Reproduce un archivo de audio.
@@ -28,7 +28,8 @@ class AudioPlayer @Inject constructor(
      * @param file Archivo de audio OGG
      * @param onComplete Callback invocado al finalizar la reproducción
      */
-    fun play(file: File, onComplete: () -> Unit = {}): Result<Unit> {
+    // BUG-51 FIX: Callback now receives Result so caller can distinguish success from error
+    fun play(file: File, onComplete: (Result<Unit>) -> Unit = {}): Result<Unit> {
         return try {
             stop()
             completionHandler = onComplete
@@ -50,13 +51,13 @@ class AudioPlayer @Inject constructor(
                 setOnCompletionListener {
                     isPlaying = false
                     abandonAudioFocus()
-                    completionHandler?.invoke()
+                    completionHandler?.invoke(Result.success(Unit))
                 }
                 setOnErrorListener { _, what, extra ->
                     Timber.e("MediaPlayer error: what=$what extra=$extra")
                     isPlaying = false
                     abandonAudioFocus()
-                    completionHandler?.invoke()
+                    completionHandler?.invoke(Result.failure(Exception("MediaPlayer error: what=$what extra=$extra")))
                     true
                 }
                 prepare()

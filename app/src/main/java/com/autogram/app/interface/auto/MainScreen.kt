@@ -27,6 +27,8 @@ class MainScreen(
     // BUG-44 FIX: Track job for cleanup when screen is destroyed
     private val screenJob = SupervisorJob()
     private val screenScope = CoroutineScope(Dispatchers.Main + screenJob)
+    // BUG-54 FIX: Track reset job to cancel on new interactions
+    private var resetJob: kotlinx.coroutines.Job? = null
 
     // BUG-44 FIX: Cancel coroutines when screen is destroyed
     override fun onDestroy() {
@@ -49,7 +51,9 @@ class MainScreen(
             is SendMessageUseCase.SendStatus.Sending -> buildStatusTemplate("Enviando...")
             is SendMessageUseCase.SendStatus.Sent -> {
                 // BUG-47 FIX: Auto-reset after 3 seconds
-                screenScope.launch {
+                // BUG-54 FIX: Cancel any previous reset job before launching new one
+                resetJob?.cancel()
+                resetJob = screenScope.launch {
                     delay(3000)
                     sendMessageUseCase.reset()
                     invalidate()
@@ -189,6 +193,7 @@ class MainScreen(
 
     // BUG-01: Replaced all runBlocking with coroutine-based async calls
     private fun startRecording() {
+        resetJob?.cancel()  // BUG-54 FIX
         screenScope.launch {
             val result = sendMessageUseCase.startRecording(carContext)
             if (result.isFailure) {
@@ -199,6 +204,7 @@ class MainScreen(
     }
 
     private fun stopAndSend() {
+        resetJob?.cancel()  // BUG-54 FIX
         screenScope.launch {
             val result = sendMessageUseCase.stopAndSend()
             if (result.isFailure) {

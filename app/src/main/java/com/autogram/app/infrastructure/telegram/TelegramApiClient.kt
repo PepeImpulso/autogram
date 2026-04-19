@@ -20,8 +20,8 @@ import javax.inject.Singleton
 class TelegramApiClient @Inject constructor(
     private val okHttpClient: OkHttpClient
 ) {
-    private var api: TelegramApi? = null
-    private var currentBotToken: String? = null
+    @Volatile private var api: TelegramApi? = null
+    @Volatile private var currentBotToken: String? = null
 
     /**
      * Configura el cliente con el token del bot.
@@ -44,6 +44,7 @@ class TelegramApiClient @Inject constructor(
 
     private fun converterFactory() = retrofit2.converter.gson.GsonConverterFactory.create()
 
+    @Synchronized
     private fun requireApi(): TelegramApi {
         return api ?: throw IllegalStateException("TelegramApiClient no configurado. Llama a configure(botToken) primero.")
     }
