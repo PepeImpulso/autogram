@@ -41,17 +41,29 @@ jobs:
           git checkout ${{ inputs.td_ref }}
           git rev-parse HEAD
 
+      - name: Patch build scripts to only target arm64-v8a + x86_64
+        working-directory: td/example/android
+        run: |
+          # The vanilla scripts iterate 4 ABIs. We only ship 2 (arm64-v8a for
+          # phones, x86_64 for Intel emulators). Cuts build time ~50%.
+          sed -i 's|for ABI in arm64-v8a armeabi-v7a x86_64 x86|for ABI in arm64-v8a x86_64|g' \
+            build-openssl.sh build-tdlib.sh
+          echo "--- build-openssl.sh ABI line ---"
+          grep "^for ABI" build-openssl.sh
+          echo "--- build-tdlib.sh ABI line ---"
+          grep "^for ABI" build-tdlib.sh
+
       - name: Fetch Android SDK
         working-directory: td/example/android
         run: ./fetch-sdk.sh
 
-      - name: Build OpenSSL (all ABIs)
+      - name: Build OpenSSL (arm64-v8a + x86_64)
         working-directory: td/example/android
-        run: ./build-openssl.sh
+        run: bash -x ./build-openssl.sh
 
-      - name: Build TDLib (all ABIs)
+      - name: Build TDLib (arm64-v8a + x86_64)
         working-directory: td/example/android
-        run: ./build-tdlib.sh
+        run: bash -x ./build-tdlib.sh
 
       - name: Inspect output
         working-directory: td/example/android
