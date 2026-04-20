@@ -1,12 +1,11 @@
 package com.autogram.app.ui.phone
 
-import android.app.Activity
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.*
@@ -78,14 +77,16 @@ private fun ManagePinnedScreen(
 
     // Target we are about to set a photo for (lifted out of the list item so
     // the photo picker's callback can still reach it after the item recomposes).
+    // Uses the system Photo Picker (PickVisualMedia) — handles back-press
+    // cleanly and doesn't require storage permissions.
     var photoTargetId by remember { mutableStateOf<String?>(null) }
     val photoPicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
         val id = photoTargetId
         photoTargetId = null
-        if (result.resultCode == Activity.RESULT_OK && id != null) {
-            result.data?.data?.let { uri -> viewModel.setPhoto(id, uri) }
+        if (uri != null && id != null) {
+            viewModel.setPhoto(id, uri)
         }
     }
 
@@ -129,11 +130,9 @@ private fun ManagePinnedScreen(
                     onSetPrimary = { viewModel.setPrimary(conv.id) },
                     onPickPhoto = {
                         photoTargetId = conv.id
-                        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                            addCategory(Intent.CATEGORY_OPENABLE)
-                            type = "image/*"
-                        }
-                        photoPicker.launch(intent)
+                        photoPicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
                     },
                     onClearPhoto = { viewModel.clearPhoto(conv.id) },
                     onRemove = { viewModel.remove(conv.id) }

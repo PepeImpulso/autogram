@@ -2,6 +2,7 @@ package com.autogram.app.ui.phone
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.clickable
@@ -77,6 +78,8 @@ private fun TargetPickerScreen(
     }
 
     val onTopicStep = state.step is TargetPickerViewModel.Step.Topics
+
+    BackHandler(enabled = onTopicStep) { viewModel.onBackToChats() }
 
     Scaffold(
         topBar = {

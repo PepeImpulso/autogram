@@ -1,5 +1,6 @@
 package com.autogram.app.ui.phone
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -18,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -27,6 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.math.abs
+import kotlin.math.max
 
 /**
  * Circular avatar used on the main screen and in the manage-pinned list.
@@ -41,11 +44,15 @@ fun CircleAvatar(
     size: Dp,
     modifier: Modifier = Modifier
 ) {
-    val bitmap by produceState<ImageBitmap?>(initialValue = null, conv.photoLocalPath) {
+    // Target pixel size for the decoded bitmap — ~2x the on-screen size so
+    // cropping to the circle still looks sharp on high-density displays, but
+    // far below the raw gallery resolution that could OOM if loaded verbatim.
+    val targetPx = with(LocalDensity.current) { (size * 2).toPx().toInt().coerceAtLeast(64) }
+    val bitmap by produceState<ImageBitmap?>(initialValue = null, conv.photoLocalPath, targetPx) {
         val path = conv.photoLocalPath
         value = if (path != null && File(path).exists()) {
             withContext(Dispatchers.IO) {
-                runCatching { BitmapFactory.decodeFile(path)?.asImageBitmap() }.getOrNull()
+                runCatching { decodeSampled(path, targetPx)?.asImageBitmap() }.getOrNull()
             }
         } else null
     }
@@ -76,6 +83,23 @@ fun CircleAvatar(
             )
         }
     }
+}
+
+// Two-pass decode: first read bounds only, pick inSampleSize so the longer side
+// is at or just above [targetPx], then decode. Keeps memory bounded for large
+// gallery photos without us having to hard-code a max resolution.
+private fun decodeSampled(path: String, targetPx: Int): Bitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(path, bounds)
+    val srcLong = max(bounds.outWidth, bounds.outHeight)
+    if (srcLong <= 0) return null
+    var sample = 1
+    while (srcLong / sample > targetPx * 2) sample *= 2
+    val opts = BitmapFactory.Options().apply {
+        inSampleSize = sample
+        inPreferredConfig = Bitmap.Config.ARGB_8888
+    }
+    return BitmapFactory.decodeFile(path, opts)
 }
 
 // Stable pastel colour derived from the conversation id so each circle keeps

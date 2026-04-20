@@ -23,7 +23,21 @@ class CheckForUpdatesUseCase @Inject constructor(
 ) {
     suspend fun check(): Result<UpdateInfo> = withContext(Dispatchers.IO) {
         try {
-            val release = gitHubApi.getLatestRelease(OWNER, REPO)
+            val releases = gitHubApi.listReleases(OWNER, REPO)
+            // Sort releases by our semver comparator so "1.1.0-alpha.10" beats
+            // "1.1.0-alpha.2" (plain string compare would get this wrong).
+            val release = releases
+                .filter { !it.draft }
+                .maxWithOrNull(Comparator { a, b ->
+                    val av = stripLeadingV(a.tag_name)
+                    val bv = stripLeadingV(b.tag_name)
+                    when {
+                        av == bv -> 0
+                        isNewerVersion(av, bv) -> 1
+                        else -> -1
+                    }
+                })
+                ?: return@withContext Result.failure(Exception("No hay releases publicadas"))
             val latest = stripLeadingV(release.tag_name)
             val current = BuildConfig.VERSION_NAME
             val isNewer = isNewerVersion(latest, current)
@@ -54,8 +68,9 @@ class CheckForUpdatesUseCase @Inject constructor(
     }
 
     companion object {
+        // Public binary-only repo. Source lives at PepeImpulso/autogram (private).
         private const val OWNER = "PepeImpulso"
-        private const val REPO = "autogram"
+        private const val REPO = "autogram-releases"
 
         internal fun stripLeadingV(tag: String): String = tag.removePrefix("v").removePrefix("V")
 
