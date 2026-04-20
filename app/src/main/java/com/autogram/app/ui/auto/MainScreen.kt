@@ -10,7 +10,7 @@ import com.autogram.app.domain.model.VoiceCommand
 import com.autogram.app.domain.repository.QuickReplyRepository
 import com.autogram.app.domain.usecase.ManageSettingsUseCase
 import com.autogram.app.domain.usecase.PlayReplyUseCase
-import com.autogram.app.domain.usecase.SendMessageUseCase
+import com.autogram.app.domain.usecase.SendVoiceMtprotoUseCase
 import com.autogram.app.infrastructure.platform.VoiceCommandRecognizer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,7 +27,7 @@ import timber.log.Timber
  */
 class MainScreen(
     carContext: CarContext,
-    private val sendMessageUseCase: SendMessageUseCase,
+    private val sendMessageUseCase: SendVoiceMtprotoUseCase,
     private val playReplyUseCase: PlayReplyUseCase,
     private val manageSettingsUseCase: ManageSettingsUseCase,
     private val quickReplyRepository: QuickReplyRepository,
@@ -51,7 +51,7 @@ class MainScreen(
             }
         })
         screenScope.launch {
-            sendMessageUseCase.currentStatus.collect { invalidate() }
+            sendMessageUseCase.status.collect { invalidate() }
         }
         screenScope.launch {
             manageSettingsUseCase.observe().collect {
@@ -71,10 +71,10 @@ class MainScreen(
     }
 
     override fun onGetTemplate(): Template {
-        return when (val status = sendMessageUseCase.currentStatus.value) {
-            is SendMessageUseCase.SendStatus.Recording -> buildRecordingTemplate()
-            is SendMessageUseCase.SendStatus.Sending -> buildStatusTemplate(carContext.getString(R.string.status_sending))
-            is SendMessageUseCase.SendStatus.Sent -> {
+        return when (val status = sendMessageUseCase.status.value) {
+            is SendVoiceMtprotoUseCase.SendStatus.Recording -> buildRecordingTemplate()
+            is SendVoiceMtprotoUseCase.SendStatus.Sending -> buildStatusTemplate(carContext.getString(R.string.status_sending))
+            is SendVoiceMtprotoUseCase.SendStatus.Sent -> {
                 resetJob?.cancel()
                 resetJob = screenScope.launch {
                     delay(3000)
@@ -83,8 +83,8 @@ class MainScreen(
                 }
                 buildStatusTemplate(carContext.getString(R.string.status_sent))
             }
-            is SendMessageUseCase.SendStatus.Discarded -> buildStatusTemplate("Mensaje descartado")
-            is SendMessageUseCase.SendStatus.Error -> buildStatusTemplate(
+            is SendVoiceMtprotoUseCase.SendStatus.Discarded -> buildStatusTemplate("Mensaje descartado")
+            is SendVoiceMtprotoUseCase.SendStatus.Error -> buildStatusTemplate(
                 carContext.getString(R.string.status_error) + ": ${status.message}"
             )
             else -> buildMainGrid()
@@ -221,11 +221,11 @@ class MainScreen(
     }
 
     private fun buildStatusTemplate(message: String): MessageTemplate {
-        val (icon, color) = when (sendMessageUseCase.currentStatus.value) {
-            is SendMessageUseCase.SendStatus.Sent -> R.drawable.ic_send to CarColor.GREEN
-            is SendMessageUseCase.SendStatus.Sending -> R.drawable.ic_send to CarColor.BLUE
-            is SendMessageUseCase.SendStatus.Error -> R.drawable.ic_cancel to CarColor.RED
-            is SendMessageUseCase.SendStatus.Discarded -> R.drawable.ic_cancel to CarColor.YELLOW
+        val (icon, color) = when (sendMessageUseCase.status.value) {
+            is SendVoiceMtprotoUseCase.SendStatus.Sent -> R.drawable.ic_send to CarColor.GREEN
+            is SendVoiceMtprotoUseCase.SendStatus.Sending -> R.drawable.ic_send to CarColor.BLUE
+            is SendVoiceMtprotoUseCase.SendStatus.Error -> R.drawable.ic_cancel to CarColor.RED
+            is SendVoiceMtprotoUseCase.SendStatus.Discarded -> R.drawable.ic_cancel to CarColor.YELLOW
             else -> R.drawable.ic_mic to CarColor.DEFAULT
         }
         return MessageTemplate.Builder(message)
@@ -247,7 +247,7 @@ class MainScreen(
     private fun startRecording() {
         resetJob?.cancel()
         screenScope.launch {
-            val result = sendMessageUseCase.startRecording(carContext)
+            val result = sendMessageUseCase.startRecording()
             if (result.isFailure) {
                 Timber.e(result.exceptionOrNull(), "Error al iniciar grabación")
             }

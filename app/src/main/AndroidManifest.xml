@@ -10,6 +10,7 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <uses-feature
         android:name="android.hardware.type.automotive"
@@ -51,6 +52,11 @@
             android:label="@string/settings_title" />
 
         <activity
+            android:name=".ui.phone.TargetPickerActivity"
+            android:exported="false"
+            android:label="@string/target_picker_title" />
+
+        <activity
             android:name=".ui.phone.HistoryActivity"
             android:exported="false"
             android:label="@string/history_title" />
@@ -61,7 +67,7 @@
             android:label="@string/stats_title" />
 
         <activity
-            android:name=".ui.phone.OnboardingActivity"
+            android:name=".ui.phone.TelegramLoginActivity"
             android:exported="false"
             android:label="@string/app_name" />
 
@@ -79,11 +85,22 @@
             </intent-filter>
         </service>
 
-        <!-- Foreground Service for Telegram polling -->
+        <!-- Foreground Service for MTProto receive loop -->
         <service
-            android:name=".service.AutogramPollingService"
+            android:name=".service.MtprotoReceiverService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- FileProvider para el APK descargado por el auto-actualizador -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_provider_paths" />
+        </provider>
 
         <!-- Disable default WorkManager init: we provide Configuration.Provider in AutogramApplication for Hilt -->
         <provider

@@ -48,7 +48,9 @@ data class Conversation(
     val botToken: String,
     val isActive: Boolean = true,
     val createdAt: Long = System.currentTimeMillis(),
-    val lastMessageAt: Long? = null
+    val lastMessageAt: Long? = null,
+    val topicId: Long? = null,
+    val topicName: String? = null
 )
 
 data class QuickReply(

@@ -19,6 +19,17 @@ val keystoreProperties = Properties().apply {
     }
 }
 
+// Telegram MTProto credentials from local.properties (gitignored).
+// Obtained once at my.telegram.org per user account.
+val localPropertiesFile = rootProject.file("local.properties")
+val localProperties = Properties().apply {
+    if (localPropertiesFile.exists()) {
+        load(FileInputStream(localPropertiesFile))
+    }
+}
+val telegramApiId: String = localProperties.getProperty("telegram.apiId", "0")
+val telegramApiHash: String = localProperties.getProperty("telegram.apiHash", "")
+
 android {
     namespace = "com.autogram.app"
     compileSdk = 35
@@ -27,10 +38,19 @@ android {
         applicationId = "com.autogram.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.0.0-beta.1"
+        versionCode = 8
+        versionName = "1.1.0-alpha.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("int", "TELEGRAM_API_ID", telegramApiId)
+        buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")
+
+        // Restrict native libs to architectures we actually ship.
+        // arm64-v8a: all modern phones. x86_64: Android emulators on Intel.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
     }
 
     signingConfigs {
@@ -88,6 +108,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons.extended)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     // Android Auto

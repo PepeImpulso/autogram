@@ -2,6 +2,7 @@
 <resources>
     <string name="app_name">Autogram</string>
     <string name="settings_title">Configuración</string>
+    <string name="target_picker_title">Destino de mensajes</string>
     <string name="history_title">Historial</string>
     <string name="stats_title">Estadísticas</string>
 
@@ -40,34 +41,24 @@
     <string name="aa_voice_help_title">Comandos de voz</string>
     <string name="aa_voice_help_body">Di alguno de estos comandos: \n· repetir — vuelve a reproducir el último mensaje\n· cancelar — cancela la grabación actual\n· pausar — pausa la reproducción\n· reanudar — reanuda la reproducción\n· enviar — envía la grabación actual\n· silencio — activa/desactiva el modo silencio</string>
 
-    <!-- Onboarding -->
-    <string name="onboarding_welcome_title">Bienvenido a Autogram</string>
-    <string name="onboarding_welcome_body">Envía y recibe notas de voz por Telegram desde Android Auto. Para empezar necesitas un bot de Telegram (gratis, lo creas con @BotFather).</string>
-    <string name="onboarding_token_title">Token del bot</string>
-    <string name="onboarding_token_body">Pega aquí el token que te dio @BotFather (formato: 123456789:ABC…).</string>
-    <string name="onboarding_test_connection">Probar conexión</string>
-    <string name="onboarding_chat_title">Chat de destino</string>
-    <string name="onboarding_chat_body">Abre Telegram y envía cualquier mensaje a tu bot. Después pulsa “Detectar chat” aquí.</string>
-    <string name="onboarding_detect_chat">Detectar chat</string>
-    <string name="onboarding_finish">Finalizar</string>
-    <string name="onboarding_skip">Saltar</string>
-    <string name="onboarding_continue">Continuar</string>
-    <string name="onboarding_back">Atrás</string>
-    <string name="onboarding_invalid_token">Token inválido. Pega exactamente lo que te dio @BotFather.</string>
-    <string name="onboarding_connection_ok">Conexión OK: %s</string>
-    <string name="onboarding_connection_error">No se pudo conectar: %s</string>
-    <string name="onboarding_no_message">Aún no hay mensajes. Envía uno a tu bot y vuelve a intentar.</string>
-    <string name="onboarding_chat_conflict">Otro proceso ya está consumiendo el bot (HTTP 409). Forzar cierre de Autogram desde Ajustes Android, esperar 30 s y reintentar. Si persiste, abrir esta URL en el navegador:\nhttps://api.telegram.org/bot&lt;TOKEN&gt;/deleteWebhook?drop_pending_updates=true</string>
-    <string name="onboarding_chat_invalid_id">El chat_id debe ser un número (positivo para chats privados, negativo para grupos).</string>
-    <string name="onboarding_manual_chat_title">¿Lo conoces ya?</string>
-    <string name="onboarding_manual_chat_body">Si ya sabes tu chat_id (por ejemplo, lo viste en https://api.telegram.org/bot&lt;TOKEN&gt;/getUpdates) puedes introducirlo directamente:</string>
-    <string name="onboarding_manual_chat_label">Chat ID</string>
-    <string name="onboarding_manual_chat_use">Usar este chat_id</string>
-
     <!-- Settings -->
     <string name="settings_battery_section">Batería</string>
     <string name="settings_battery_button_request">Permitir ejecución en segundo plano</string>
     <string name="settings_battery_button_already">Excepción de batería ya concedida</string>
+
+    <!-- Updates -->
+    <string name="settings_updates_section">Actualizaciones</string>
+    <string name="settings_updates_current_version">Versión instalada: %s</string>
+    <string name="settings_updates_check">Buscar actualizaciones</string>
+    <string name="settings_updates_checking">Comprobando…</string>
+    <string name="settings_updates_up_to_date">Estás al día (v%s es la última)</string>
+    <string name="settings_updates_error">No se pudo comprobar: %s</string>
+    <string name="update_dialog_title">Nueva versión disponible</string>
+    <string name="update_dialog_body">Hay una versión nueva (v%1$s). La actual es v%2$s.\n\nDescarga ~%3$d KB. Al finalizar, Android te pedirá confirmación para instalarla.</string>
+    <string name="update_dialog_install">Actualizar</string>
+    <string name="update_dialog_later">Luego</string>
+    <string name="update_dialog_release_notes">Notas de la versión</string>
+    <string name="update_downloading">Descargando actualización…</string>
 
     <!-- Stats -->
     <string name="stats_total_sent">Enviados</string>
@@ -76,4 +67,32 @@
     <string name="stats_avg_duration">Duración media</string>
     <string name="stats_last_7_days">Últimos 7 días</string>
     <string name="stats_no_data">Aún no hay datos para mostrar.</string>
+
+    <!-- Telegram MTProto login -->
+    <string name="tg_login_title">Conectar con Telegram</string>
+    <string name="tg_login_initializing">Inicializando cliente Telegram…</string>
+    <string name="tg_login_phone_title">Introduce tu número de teléfono</string>
+    <string name="tg_login_phone_body">Usa formato internacional (+34 600 123 456). Telegram te enviará un código.</string>
+    <string name="tg_login_phone_label">Teléfono</string>
+    <string name="tg_login_phone_placeholder">+34…</string>
+    <string name="tg_login_phone_invalid">Número inválido. Formato internacional: +34…</string>
+    <string name="tg_login_phone_send">Enviar código</string>
+    <string name="tg_login_code_title">Introduce el código</string>
+    <string name="tg_login_code_body">Telegram te ha enviado un código (%s). Introdúcelo abajo.</string>
+    <string name="tg_login_code_digits">%d dígitos</string>
+    <string name="tg_login_code_generic">recibido por SMS o Telegram</string>
+    <string name="tg_login_code_label">Código</string>
+    <string name="tg_login_code_empty">Introduce el código que recibiste</string>
+    <string name="tg_login_code_verify">Verificar código</string>
+    <string name="tg_login_2fa_title">Contraseña de dos pasos</string>
+    <string name="tg_login_2fa_body">Tu cuenta tiene verificación en dos pasos activada. Introduce la contraseña.</string>
+    <string name="tg_login_2fa_hint">Pista: %s</string>
+    <string name="tg_login_2fa_label">Contraseña 2FA</string>
+    <string name="tg_login_2fa_empty">Introduce tu contraseña 2FA</string>
+    <string name="tg_login_2fa_submit">Entrar</string>
+    <string name="tg_login_ready">Conectado ✓</string>
+    <string name="tg_login_logging_out">Cerrando sesión…</string>
+    <string name="tg_login_closed">Sesión cerrada. Reabre la app para volver a conectar.</string>
+    <string name="tg_login_error_title">Algo ha salido mal</string>
+    <string name="tg_login_error_retry">Cierra la app y vuelve a abrirla para reintentar, o desinstálala si el error persiste.</string>
 </resources>

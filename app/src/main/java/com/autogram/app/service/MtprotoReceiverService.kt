@@ -1,0 +1,251 @@
+package com.autogram.app.service
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Intent
+import android.os.IBinder
+import androidx.core.app.NotificationCompat
+import com.autogram.app.R
+import com.autogram.app.domain.model.Conversation
+import com.autogram.app.domain.model.Message
+import com.autogram.app.domain.model.MessageDirection
+import com.autogram.app.domain.model.MessageState
+import com.autogram.app.domain.repository.ConversationRepository
+import com.autogram.app.domain.repository.MessageRepository
+import com.autogram.app.domain.usecase.PlayReplyUseCase
+import com.autogram.app.infrastructure.platform.CallStateMonitor
+import com.autogram.app.infrastructure.telegram.mtproto.AuthState
+import com.autogram.app.infrastructure.telegram.mtproto.TdLibClient
+import com.autogram.app.ui.phone.MainActivity
+import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import org.drinkless.tdlib.TdApi
+import timber.log.Timber
+import java.util.UUID
+import javax.inject.Inject
+
+/**
+ * Foreground service that keeps TDLib alive and pipes incoming voice notes
+ * from the user's active target (chat + optional forum topic) into
+ * [PlayReplyUseCase] for automatic playback.
+ *
+ * The active target is set from [TargetPickerActivity] and is read reactively
+ * here — when the user picks a different chat/topic the receive collector is
+ * restarted transparently.
+ */
+@AndroidEntryPoint
+class MtprotoReceiverService : Service() {
+
+    companion object {
+        const val CHANNEL_ID = "autogram_mtproto_receiver"
+        const val NOTIFICATION_ID = 2
+        const val ACTION_START = "com.autogram.app.MTPROTO_START"
+        const val ACTION_STOP = "com.autogram.app.MTPROTO_STOP"
+
+        @Volatile var isRunning = false
+            private set
+    }
+
+    @Inject lateinit var tdLibClient: TdLibClient
+    @Inject lateinit var messageRepository: MessageRepository
+    @Inject lateinit var conversationRepository: ConversationRepository
+    @Inject lateinit var playReplyUseCase: PlayReplyUseCase
+    @Inject lateinit var callStateMonitor: CallStateMonitor
+
+    private var scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var supervisorJob: Job? = null
+    private var activeCollectorJob: Job? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        scope.cancel(); scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        createNotificationChannel()
+        startForeground(NOTIFICATION_ID, buildNotification("Conectando…"))
+        callStateMonitor.start()
+        isRunning = true
+        Timber.i("MtprotoReceiverService created")
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_STOP -> {
+                stopSupervisor()
+                stopSelf()
+                return START_NOT_STICKY
+            }
+            else -> startSupervisor()
+        }
+        return START_STICKY
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onDestroy() {
+        stopSupervisor()
+        callStateMonitor.stop()
+        scope.cancel()
+        isRunning = false
+        Timber.i("MtprotoReceiverService destroyed")
+        super.onDestroy()
+    }
+
+    /**
+     * Waits for TDLib auth, then observes the active conversation and (re)starts
+     * the update collector whenever it changes — including the first time it
+     * becomes non-null.
+     */
+    private fun startSupervisor() {
+        if (supervisorJob?.isActive == true) return
+        supervisorJob = scope.launch {
+            tdLibClient.ensureStarted()
+            tdLibClient.authState.first { it is AuthState.Ready }
+
+            conversationRepository.observeActive()
+                .distinctUntilChanged { old, new ->
+                    old?.targetChatId == new?.targetChatId && old?.topicId == new?.topicId
+                }
+                .collect { target ->
+                    activeCollectorJob?.cancel()
+                    if (target == null) {
+                        updateNotification("Configura un destino en Ajustes")
+                        Timber.i("No active conversation — receiver idle")
+                        return@collect
+                    }
+                    activeCollectorJob = scope.launch { collectFor(target) }
+                }
+        }
+    }
+
+    private fun stopSupervisor() {
+        activeCollectorJob?.cancel(); activeCollectorJob = null
+        supervisorJob?.cancel(); supervisorJob = null
+    }
+
+    private suspend fun collectFor(target: Conversation) {
+        val chatId = target.targetChatId.toLong()
+        val topicId = target.topicId
+        val label = buildString {
+            append(target.targetTitle ?: "chat $chatId")
+            target.topicName?.let { append(" › ").append(it) }
+        }
+        updateNotification("Escuchando: $label")
+        Timber.i("Receiver subscribed to chatId=$chatId topicId=$topicId")
+
+        tdLibClient.updates
+            .filterIsInstance<TdApi.UpdateNewMessage>()
+            .collect { update ->
+                val msg = update.message
+                if (msg.chatId != chatId || msg.isOutgoing) return@collect
+                if (!matchesTopic(msg, topicId)) return@collect
+                when (val content = msg.content) {
+                    is TdApi.MessageVoiceNote -> handleVoiceNote(target, msg, content)
+                    else -> Timber.d("Ignored non-voice incoming: ${content.javaClass.simpleName}")
+                }
+            }
+    }
+
+    // When the user pinned a topic, only messages on that thread pass.
+    // When no topic is set, accept messages that also have no topic (regular
+    // chats / private DMs). This prevents cross-topic leakage in forums.
+    private fun matchesTopic(msg: TdApi.Message, expectedTopicId: Long?): Boolean {
+        val actual = (msg.topicId as? TdApi.MessageTopicForum)?.forumTopicId?.toLong()
+        return actual == expectedTopicId
+    }
+
+    private suspend fun handleVoiceNote(
+        target: Conversation,
+        tdMsg: TdApi.Message,
+        content: TdApi.MessageVoiceNote
+    ) {
+        val voiceFile = content.voiceNote.voice
+        val localPath = ensureDownloaded(voiceFile) ?: run {
+            Timber.w("Skipping voice note ${tdMsg.id} — download failed")
+            return
+        }
+
+        val message = Message(
+            id = UUID.randomUUID().toString(),
+            conversationId = target.id,
+            direction = MessageDirection.INCOMING,
+            state = MessageState.RECEIVED,
+            telegramMessageId = tdMsg.id,
+            audioFilePath = localPath,
+            audioDurationMs = content.voiceNote.duration * 1000L,
+            createdAt = tdMsg.date.toLong() * 1000L
+        )
+        messageRepository.insert(message)
+        playReplyUseCase.playVoiceMessage(
+            message = message,
+            isCallActive = callStateMonitor.isInCall.value
+        )
+    }
+
+    /** Blocks until TDLib has the file on disk, or returns null on failure. */
+    private suspend fun ensureDownloaded(file: TdApi.File): String? {
+        if (file.local.isDownloadingCompleted && !file.local.path.isNullOrEmpty()) {
+            return file.local.path
+        }
+        val result = tdLibClient.send(
+            TdApi.DownloadFile().apply {
+                fileId = file.id
+                priority = 32
+                offset = 0
+                limit = 0
+                synchronous = true
+            }
+        )
+        return when (result) {
+            is TdApi.File -> if (result.local.isDownloadingCompleted) result.local.path else null
+            is TdApi.Error -> {
+                Timber.w("DownloadFile failed: ${result.code} ${result.message}")
+                null
+            }
+            else -> null
+        }
+    }
+
+    // --- Notification ---
+
+    private fun createNotificationChannel() {
+        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        if (nm.getNotificationChannel(CHANNEL_ID) != null) return
+        nm.createNotificationChannel(
+            NotificationChannel(
+                CHANNEL_ID,
+                getString(R.string.notification_channel_polling),
+                NotificationManager.IMPORTANCE_LOW
+            ).apply { setShowBadge(false) }
+        )
+    }
+
+    private fun buildNotification(text: String): Notification {
+        val tapIntent = Intent(this, MainActivity::class.java)
+        val pi = PendingIntent.getActivity(
+            this, 0, tapIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(getString(R.string.app_name))
+            .setContentText(text)
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setOngoing(true)
+            .setContentIntent(pi)
+            .build()
+    }
+
+    private fun updateNotification(text: String) {
+        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(NOTIFICATION_ID, buildNotification(text))
+    }
+}
