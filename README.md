@@ -78,12 +78,15 @@ See `docs/` for detailed documentation.
 
 ## Project Status
 
+**Current release: `v1.0.0-beta.1`** — first usable build. End-to-end verified on a Pixel 5 emulator (Android 35) + against a live Telegram bot.
+
 ✅ **Phase 0 — Technical Prototype** (complete)
 ✅ **Phase 1 — Core MVP** (complete)
 ✅ **Phase 2 — Robustness** (complete)
 ✅ **Phase 3 — Polish** (complete) — daily retention worker, pending-reply notifications, Android Auto UI polish, first-run onboarding, battery-optimization opt-out
 ✅ **Phase 4 — Voice Commands** (complete) — SpeechRecognizer integration with REPETIR / CANCELAR / PAUSAR / REANUDAR / ENVIAR / SILENCIO commands
 ✅ **Phase 5 — Statistics** (code complete) — daily-counts dashboard on phone (success rate, durations, last-7-days bars). Evaluation tasks (WhatsApp / LLM / Play Store) remain as product decisions.
+✅ **Phone push-to-talk** — app is usable as a Telegram voice client without Android Auto (hold mic FAB to record, release to send, slide to cancel).
 
 All 60 implementation/bug issues resolved. The app implements the full message lifecycle: record → send → receive → auto-play with proper error handling, retries, call-awareness, retention cleanup, deferred-playback notifications, voice control on Android Auto, and a phone-side stats dashboard.
 
