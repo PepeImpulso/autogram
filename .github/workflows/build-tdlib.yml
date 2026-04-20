@@ -1,0 +1,78 @@
+name: Build TDLib for Android
+
+# One-shot build of TDLib for Android. Produces tdlib.zip containing
+# per-ABI .so files and Java sources. Download the artifact and vendor
+# it under app/src/main/jniLibs and app/src/main/java/org/drinkless/tdlib.
+#
+# Only needs to be re-run when upgrading TDLib.
+
+on:
+  workflow_dispatch:
+    inputs:
+      td_ref:
+        description: "TDLib git ref (commit SHA or branch). Default pins to a known-good master."
+        default: "8921c22f0f85"
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake git zlib1g-dev gperf php-cli perl
+
+      - name: Check JDK / CMake
+        run: |
+          java -version
+          cmake --version
+          php --version
+          perl --version
+          gperf --version
+
+      - name: Clone TDLib
+        run: |
+          git clone https://github.com/tdlib/td.git
+          cd td
+          git checkout ${{ inputs.td_ref }}
+          git rev-parse HEAD
+
+      - name: Fetch Android SDK
+        working-directory: td/example/android
+        run: ./fetch-sdk.sh
+
+      - name: Build OpenSSL (all ABIs)
+        working-directory: td/example/android
+        run: ./build-openssl.sh
+
+      - name: Build TDLib (all ABIs)
+        working-directory: td/example/android
+        run: ./build-tdlib.sh
+
+      - name: Inspect output
+        working-directory: td/example/android
+        run: |
+          ls -lah tdlib/ || true
+          ls -lah tdlib/libs/ || true
+          ls -lah tdlib/java/ || true
+
+      - name: Upload tdlib.zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: tdlib-android
+          path: td/example/android/tdlib/tdlib.zip
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Upload raw tdlib directory (fallback)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tdlib-raw
+          path: td/example/android/tdlib/
+          retention-days: 30
+          if-no-files-found: warn
