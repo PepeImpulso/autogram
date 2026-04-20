@@ -62,11 +62,6 @@
             android:label="@string/stats_title" />
 
         <activity
-            android:name=".ui.phone.OnboardingActivity"
-            android:exported="false"
-            android:label="@string/app_name" />
-
-        <activity
             android:name=".ui.phone.TelegramLoginActivity"
             android:exported="false"
             android:label="@string/app_name" />
@@ -84,12 +79,6 @@
                 <category android:name="androidx.car.app.category.MESSAGING" />
             </intent-filter>
         </service>
-
-        <!-- Foreground Service for Telegram polling -->
-        <service
-            android:name=".service.AutogramPollingService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
 
         <!-- Foreground Service for MTProto receive loop -->
         <service

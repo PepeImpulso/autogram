@@ -51,100 +51,6 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // --- Telegram Configuration ---
-            Text("Telegram Bot", style = MaterialTheme.typography.titleMedium)
-
-            OutlinedTextField(
-                value = state.botToken,
-                onValueChange = viewModel::updateBotToken,
-                label = { Text("Bot Token") },
-                placeholder = { Text("123456789:ABCdef...") },
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                // BUG-39: Validate token format
-                isError = state.botToken.isNotBlank() && !state.botToken.matches(Regex("\\d+:[A-Za-z0-9_-]{30,}")),
-                supportingText = {
-                    if (state.botToken.isNotBlank() && !state.botToken.matches(Regex("\\d+:[A-Za-z0-9_-]{30,}"))) {
-                        Text("Formato inválido. Esperado: número:hash")
-                    }
-                }
-            )
-
-            OutlinedTextField(
-                value = state.chatId,
-                onValueChange = viewModel::updateChatId,
-                label = { Text("Chat ID") },
-                placeholder = { Text("-1001234567890") },
-                // BUG-28: Validate chatId is numeric
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                isError = state.chatId.isNotBlank() && state.chatId.toLongOrNull() == null,
-                supportingText = {
-                    if (state.chatId.isNotBlank() && state.chatId.toLongOrNull() == null) {
-                        Text("El Chat ID debe ser numérico")
-                    }
-                }
-            )
-
-            OutlinedTextField(
-                value = state.chatTitle,
-                onValueChange = viewModel::updateChatTitle,
-                label = { Text("Nombre del chat (opcional)") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Button(
-                    onClick = viewModel::testConnection,
-                    enabled = state.botToken.isNotBlank() && !state.isTesting,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    if (state.isTesting) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                    } else {
-                        Text("Probar conexión")
-                    }
-                }
-
-                Button(
-                    onClick = viewModel::saveSettings,
-                    enabled = state.botToken.isNotBlank() && state.chatId.isNotBlank(),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Guardar")
-                }
-            }
-
-            // Resultado de prueba/guardado
-            state.testResult?.let { result ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (result.contains("Error"))
-                            MaterialTheme.colorScheme.errorContainer
-                        else
-                            MaterialTheme.colorScheme.primaryContainer
-                    )
-                ) {
-                    Text(
-                        text = result,
-                        modifier = Modifier.padding(12.dp),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-            }
-
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
             // --- Playback Settings ---
             Text("Reproducción", style = MaterialTheme.typography.titleMedium)
 
@@ -219,7 +125,75 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 style = MaterialTheme.typography.titleMedium
             )
             BatteryOptimizationRow(context)
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            // --- Updates ---
+            Text(
+                context.getString(com.autogram.app.R.string.settings_updates_section),
+                style = MaterialTheme.typography.titleMedium
+            )
+            UpdatesRow()
         }
+    }
+}
+
+@Composable
+private fun UpdatesRow(viewModel: UpdateViewModel = androidx.hilt.navigation.compose.hiltViewModel()) {
+    val ctx = LocalContext.current
+    val state by viewModel.state.collectAsState()
+    Text(
+        ctx.getString(com.autogram.app.R.string.settings_updates_current_version, viewModel.currentVersion),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    Spacer(Modifier.height(8.dp))
+    val isBusy = state is UpdateViewModel.State.Checking || state is UpdateViewModel.State.Downloading
+    FilledTonalButton(
+        onClick = { viewModel.check(userInitiated = true) },
+        enabled = !isBusy,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        when (state) {
+            is UpdateViewModel.State.Checking -> {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(8.dp))
+                Text(ctx.getString(com.autogram.app.R.string.settings_updates_checking))
+            }
+            is UpdateViewModel.State.Downloading -> {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(8.dp))
+                Text(ctx.getString(com.autogram.app.R.string.update_downloading))
+            }
+            else -> Text(ctx.getString(com.autogram.app.R.string.settings_updates_check))
+        }
+    }
+    when (val s = state) {
+        is UpdateViewModel.State.UpToDate -> {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                ctx.getString(com.autogram.app.R.string.settings_updates_up_to_date, s.latest),
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+        is UpdateViewModel.State.Error -> {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                ctx.getString(com.autogram.app.R.string.settings_updates_error, s.message),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+        is UpdateViewModel.State.Available -> {
+            UpdateDialog(
+                state = s,
+                currentVersion = viewModel.currentVersion,
+                onInstall = { viewModel.installNow() },
+                onDismiss = { viewModel.dismiss() }
+            )
+        }
+        else -> Unit
     }
 }
 

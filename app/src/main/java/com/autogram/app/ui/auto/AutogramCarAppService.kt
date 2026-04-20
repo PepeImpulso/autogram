@@ -7,7 +7,7 @@ import androidx.car.app.validation.HostValidator
 import com.autogram.app.domain.repository.QuickReplyRepository
 import com.autogram.app.domain.usecase.ManageSettingsUseCase
 import com.autogram.app.domain.usecase.PlayReplyUseCase
-import com.autogram.app.domain.usecase.SendMessageUseCase
+import com.autogram.app.domain.usecase.SendVoiceMtprotoUseCase
 import com.autogram.app.infrastructure.platform.VoiceCommandRecognizer
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
@@ -44,7 +44,7 @@ class AutogramCarAppService : CarAppService() {
 @EntryPoint
 @InstallIn(SingletonComponent::class)
 interface AutogramCarSessionDeps {
-    fun sendMessageUseCase(): SendMessageUseCase
+    fun sendMessageUseCase(): SendVoiceMtprotoUseCase
     fun playReplyUseCase(): PlayReplyUseCase
     fun manageSettingsUseCase(): ManageSettingsUseCase
     fun quickReplyRepository(): QuickReplyRepository
