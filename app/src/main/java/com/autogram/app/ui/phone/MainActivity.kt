@@ -51,6 +51,7 @@ import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.domain.usecase.SendVoiceMtprotoUseCase
 import com.autogram.app.infrastructure.telegram.mtproto.AuthState
 import com.autogram.app.infrastructure.telegram.mtproto.TdLibClient
+import com.autogram.app.service.MtprotoReceiverService
 import com.autogram.app.ui.theme.AutogramTheme
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
@@ -73,7 +74,20 @@ class MainActivity : ComponentActivity() {
                 i.flags = Intent.FLAG_ACTIVITY_NO_HISTORY
                 startActivity(i)
                 finish()
+                return@launch
             }
+            startMtprotoReceiverService()
+        }
+    }
+
+    private fun startMtprotoReceiverService() {
+        val serviceIntent = Intent(this, MtprotoReceiverService::class.java).apply {
+            action = MtprotoReceiverService.ACTION_START
+        }
+        try {
+            ContextCompat.startForegroundService(this, serviceIntent)
+        } catch (e: Exception) {
+            timber.log.Timber.e(e, "Error starting MtprotoReceiverService")
         }
     }
 

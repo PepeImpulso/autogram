@@ -8,8 +8,12 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.drinkless.tdlib.Client
@@ -59,6 +63,19 @@ class TdLibClient @Inject constructor(
     val lastAuthError: StateFlow<String?> = _lastAuthError.asStateFlow()
 
     fun clearLastAuthError() { _lastAuthError.value = null }
+
+    /**
+     * All non-auth updates from TDLib. Consumers (e.g. MtprotoReceiverService)
+     * filter for the events they care about — typically UpdateNewMessage and
+     * UpdateFile for download progress. Buffer is bounded with DROP_OLDEST so
+     * a slow consumer cannot stall TDLib's update pump.
+     */
+    private val _updates = MutableSharedFlow<TdApi.Object>(
+        replay = 0,
+        extraBufferCapacity = 128,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val updates: SharedFlow<TdApi.Object> = _updates.asSharedFlow()
 
     /** Lazy init — creates the native client and starts pumping updates. */
     @Synchronized
@@ -144,7 +161,11 @@ class TdLibClient @Inject constructor(
     private fun handleUpdate(obj: TdApi.Object) {
         when (obj) {
             is TdApi.UpdateAuthorizationState -> handleAuthState(obj.authorizationState)
-            else -> { /* swallow — other updates handled by higher-level consumers later */ }
+            else -> {
+                // Forward everything else to subscribers. tryEmit never suspends;
+                // if buffer is full DROP_OLDEST trims the oldest event silently.
+                _updates.tryEmit(obj)
+            }
         }
     }
 

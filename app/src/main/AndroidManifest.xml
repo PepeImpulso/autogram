@@ -91,6 +91,12 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- Foreground Service for MTProto receive loop -->
+        <service
+            android:name=".service.MtprotoReceiverService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
         <!-- FileProvider para el APK descargado por el auto-actualizador -->
         <provider
             android:name="androidx.core.content.FileProvider"
