@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The PNG already bundles background + logo, so use it at full bleed as
+         the foreground and let the launcher apply its own mask. A solid navy
+         fills any stray area the mask uncovers. -->
+    <background android:drawable="@drawable/ic_launcher_bg" />
+    <foreground>
+        <inset
+            android:drawable="@mipmap/ic_launcher_foreground"
+            android:inset="-15%" />
+    </foreground>
+</adaptive-icon>
