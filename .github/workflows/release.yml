@@ -97,11 +97,20 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      - name: Create GitHub release
+      # Releases are published to the PUBLIC PepeImpulso/autogram-releases repo
+      # (this source repo is private, so its /releases endpoint would 404 for
+      # the unauthenticated updater baked into the APK). Requires a PAT with
+      # `contents: write` on autogram-releases, stored as secret
+      # RELEASES_REPO_PAT.
+      - name: Create GitHub release (cross-repo to autogram-releases)
         if: startsWith(github.ref, 'refs/tags/v')
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASES_REPO_PAT }}
         run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::RELEASES_REPO_PAT secret is not set — cannot publish to public releases repo."
+            exit 1
+          fi
           TAG="${GITHUB_REF_NAME}"
           PRERELEASE_FLAG=""
           case "$TAG" in
@@ -109,6 +118,7 @@ jobs:
           esac
           gh release create "$TAG" \
             "${{ steps.apk.outputs.apk_path }}" \
+            --repo PepeImpulso/autogram-releases \
             --title "$TAG" \
             --generate-notes \
             $PRERELEASE_FLAG

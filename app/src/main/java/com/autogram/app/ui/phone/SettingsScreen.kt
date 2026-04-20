@@ -181,6 +181,36 @@ private fun UpdatesRow(viewModel: UpdateViewModel = androidx.hilt.navigation.com
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
     Spacer(Modifier.height(8.dp))
+    // Status message comes BEFORE the button so the user sees the result of
+    // the last check above their next action — feels like a log of what
+    // just happened rather than footer text for the button.
+    when (val s = state) {
+        is UpdateViewModel.State.UpToDate -> {
+            Text(
+                ctx.getString(com.autogram.app.R.string.settings_updates_up_to_date, s.latest),
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.bodySmall
+            )
+            Spacer(Modifier.height(8.dp))
+        }
+        is UpdateViewModel.State.Error -> {
+            Text(
+                ctx.getString(com.autogram.app.R.string.settings_updates_error, s.message),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall
+            )
+            Spacer(Modifier.height(8.dp))
+        }
+        is UpdateViewModel.State.Available -> {
+            UpdateDialog(
+                state = s,
+                currentVersion = viewModel.currentVersion,
+                onInstall = { viewModel.installNow() },
+                onDismiss = { viewModel.dismiss() }
+            )
+        }
+        else -> Unit
+    }
     val isBusy = state is UpdateViewModel.State.Checking || state is UpdateViewModel.State.Downloading
     FilledTonalButton(
         onClick = { viewModel.check(userInitiated = true) },
@@ -200,33 +230,6 @@ private fun UpdatesRow(viewModel: UpdateViewModel = androidx.hilt.navigation.com
             }
             else -> Text(ctx.getString(com.autogram.app.R.string.settings_updates_check))
         }
-    }
-    when (val s = state) {
-        is UpdateViewModel.State.UpToDate -> {
-            Spacer(Modifier.height(8.dp))
-            Text(
-                ctx.getString(com.autogram.app.R.string.settings_updates_up_to_date, s.latest),
-                color = MaterialTheme.colorScheme.primary,
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
-        is UpdateViewModel.State.Error -> {
-            Spacer(Modifier.height(8.dp))
-            Text(
-                ctx.getString(com.autogram.app.R.string.settings_updates_error, s.message),
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
-        is UpdateViewModel.State.Available -> {
-            UpdateDialog(
-                state = s,
-                currentVersion = viewModel.currentVersion,
-                onInstall = { viewModel.installNow() },
-                onDismiss = { viewModel.dismiss() }
-            )
-        }
-        else -> Unit
     }
 }
 

@@ -2,6 +2,7 @@ package com.autogram.app.ui.phone
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.clickable
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -82,6 +84,10 @@ private fun PinnedPickerScreen(
 
     val onTopicStep = state.step is PinnedPickerViewModel.Step.Topics
 
+    // System back should stay inside the activity when we're on the Topics step:
+    // go back to the Chats list instead of closing the picker outright.
+    BackHandler(enabled = onTopicStep) { viewModel.onBackToChats() }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -103,13 +109,22 @@ private fun PinnedPickerScreen(
             )
         },
         bottomBar = {
-            if (onTopicStep && state.selectedTopicIds.isNotEmpty()) {
-                Box(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+            if (onTopicStep && state.hasChanges) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(16.dp)
+                ) {
                     Button(
                         onClick = { viewModel.confirmSelectedTopics() },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Añadir ${state.selectedTopicIds.size} topic(s)")
+                        val parts = buildList {
+                            if (state.addedCount > 0) add("+${state.addedCount}")
+                            if (state.removedCount > 0) add("-${state.removedCount}")
+                        }
+                        Text("Guardar cambios (${parts.joinToString(" ")})")
                     }
                 }
             }
@@ -130,6 +145,7 @@ private fun PinnedPickerScreen(
                 state.step is PinnedPickerViewModel.Step.Topics -> MultiTopicList(
                     topics = state.topics,
                     selected = state.selectedTopicIds,
+                    lockedPrimary = state.primaryTopicIds,
                     onToggle = viewModel::toggleTopic
                 )
             }
@@ -191,6 +207,7 @@ private fun ChatList(chats: List<ChatSummary>, onClick: (ChatSummary) -> Unit) {
 private fun MultiTopicList(
     topics: List<TopicSummary>,
     selected: Set<Int>,
+    lockedPrimary: Set<Int>,
     onToggle: (TopicSummary) -> Unit
 ) {
     if (topics.isEmpty()) {
@@ -200,13 +217,19 @@ private fun MultiTopicList(
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         items(topics, key = { it.forumTopicId }) { topic ->
             val isChecked = topic.forumTopicId in selected
+            val isPrimary = topic.forumTopicId in lockedPrimary
             val tags = listOfNotNull(
                 if (topic.isGeneral) "General" else null,
-                if (topic.isClosed) "cerrado" else null
+                if (topic.isClosed) "cerrado" else null,
+                if (isPrimary) "principal (Merlin)" else null
             ).joinToString(" · ")
             ListItem(
                 leadingContent = {
-                    Checkbox(checked = isChecked, onCheckedChange = { onToggle(topic) })
+                    Checkbox(
+                        checked = isChecked,
+                        onCheckedChange = { onToggle(topic) },
+                        enabled = !isPrimary
+                    )
                 },
                 headlineContent = { Text(topic.name) },
                 supportingContent = {
@@ -214,8 +237,8 @@ private fun MultiTopicList(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onToggle(topic) }
-                    .let { if (topic.isClosed) it.alpha(0.6f) else it }
+                    .let { if (isPrimary) it else it.clickable { onToggle(topic) } }
+                    .let { if (topic.isClosed || isPrimary) it.alpha(0.6f) else it }
             )
         }
     }

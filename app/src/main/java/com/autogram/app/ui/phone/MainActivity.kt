@@ -15,11 +15,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -197,7 +195,7 @@ private fun MainScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             HeroHeader(sendStatus = sendStatus, playback = playback)
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.height(24.dp))
 
             if (primary != null) {
                 RecordCircle(
@@ -439,24 +437,53 @@ private fun RecordCircle(
         ) {
             CircleAvatar(conv = conversation, size = size)
             if (isRecordingThis) {
+                // Recording: full red scrim + centred close icon take over so the
+                // user clearly sees which circle is live.
                 Box(
                     modifier = Modifier
                         .matchParentSize()
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.error.copy(alpha = 0.55f))
                 )
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "Cancelar",
+                    tint = Color.White,
+                    modifier = Modifier.size(size * 0.4f)
+                )
+            } else {
+                // Idle: mic lives in a small bottom-right badge so the user's
+                // custom background photo stays fully visible.
+                MicBadge(
+                    circleSize = size,
+                    modifier = Modifier.align(Alignment.BottomEnd)
+                )
             }
-            Icon(
-                imageVector = if (isRecordingThis) Icons.Filled.Close else Icons.Filled.Mic,
-                contentDescription = if (isRecordingThis) "Cancelar" else "Grabar",
-                tint = Color.White,
-                modifier = Modifier.size(size * 0.4f)
-            )
         }
         if (pendingCount > 0) {
             PendingBadge(
                 count = pendingCount,
                 modifier = Modifier.align(Alignment.TopEnd)
+            )
+        }
+    }
+}
+
+@Composable
+private fun MicBadge(circleSize: Dp, modifier: Modifier = Modifier) {
+    val badgeSize = (circleSize * 0.32f).coerceAtLeast(28.dp)
+    Surface(
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.primary,
+        contentColor = Color.White,
+        shadowElevation = 4.dp,
+        modifier = modifier.size(badgeSize)
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            Icon(
+                imageVector = Icons.Filled.Mic,
+                contentDescription = "Grabar",
+                modifier = Modifier.size(badgeSize * 0.6f)
             )
         }
     }
@@ -481,6 +508,7 @@ private fun PendingBadge(count: Int, modifier: Modifier = Modifier) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SecondaryCirclesRow(
     circles: List<Conversation>,
@@ -494,12 +522,14 @@ private fun SecondaryCirclesRow(
     onCancel: () -> Unit,
     onManage: () -> Unit
 ) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    // Wrapping grid — circles flow onto a new row once the current row fills
+    // up. Keeps the layout clean up to ~8 circles on a phone-width screen
+    // without horizontal scrolling.
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
             .padding(horizontal = 16.dp)
     ) {
         circles.forEach { conv ->

@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
@@ -11,6 +12,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -67,8 +70,23 @@ private fun TelegramLoginScreen(
                 .padding(padding)
                 .padding(24.dp)
                 .fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // Onboarding branding — logo + app name so the setup flow matches
+            // the rest of the app visually.
+            Image(
+                painter = painterResource(R.drawable.autogram_logo),
+                contentDescription = null,
+                modifier = Modifier.size(96.dp)
+            )
+            Text(
+                "Autogram",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(8.dp))
+
             when (val s = ui.authState) {
                 AuthState.Uninitialized, AuthState.Initializing -> InitializingStep()
                 AuthState.WaitPhoneNumber -> PhoneStep(ui, viewModel)

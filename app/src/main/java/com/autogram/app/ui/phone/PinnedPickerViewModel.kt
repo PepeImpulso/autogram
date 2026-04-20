@@ -32,10 +32,21 @@ class PinnedPickerViewModel @Inject constructor(
         val loading: Boolean = false,
         val chats: List<ChatSummary> = emptyList(),
         val topics: List<TopicSummary> = emptyList(),
+        // Currently ticked checkboxes.
         val selectedTopicIds: Set<Int> = emptySet(),
+        // Set of topic ids that were already pinned when the Topics step opened;
+        // used to compute the diff (add vs. remove) on confirm.
+        val initiallySelectedTopicIds: Set<Int> = emptySet(),
+        // Topic ids that are currently the primary (isActive) — protected from
+        // removal so the user can't accidentally unpin their Merlin circle.
+        val primaryTopicIds: Set<Int> = emptySet(),
         val error: String? = null,
         val saved: Boolean = false
-    )
+    ) {
+        val hasChanges: Boolean get() = selectedTopicIds != initiallySelectedTopicIds
+        val addedCount: Int get() = (selectedTopicIds - initiallySelectedTopicIds).size
+        val removedCount: Int get() = (initiallySelectedTopicIds - selectedTopicIds).size
+    }
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -72,12 +83,25 @@ class PinnedPickerViewModel @Inject constructor(
             loading = true,
             topics = emptyList(),
             selectedTopicIds = emptySet(),
+            initiallySelectedTopicIds = emptySet(),
+            primaryTopicIds = emptySet(),
             error = null
         )
         viewModelScope.launch {
             try {
                 val topics = chatDirectory.listForumTopics(chat.chatId)
-                _state.value = _state.value.copy(loading = false, topics = topics)
+                val alreadyPinned = conversationRepository.getPinned()
+                    .filter { it.targetChatId == chat.chatId.toString() && it.topicId != null }
+                val alreadyPinnedIds = alreadyPinned.mapNotNull { it.topicId?.toInt() }.toSet()
+                val primaryIds = alreadyPinned.filter { it.isActive }
+                    .mapNotNull { it.topicId?.toInt() }.toSet()
+                _state.value = _state.value.copy(
+                    loading = false,
+                    topics = topics,
+                    selectedTopicIds = alreadyPinnedIds,
+                    initiallySelectedTopicIds = alreadyPinnedIds,
+                    primaryTopicIds = primaryIds
+                )
             } catch (e: Exception) {
                 Timber.e(e, "listForumTopics failed")
                 _state.value = _state.value.copy(loading = false, error = e.message ?: "Error cargando topics")
@@ -86,6 +110,9 @@ class PinnedPickerViewModel @Inject constructor(
     }
 
     fun toggleTopic(topic: TopicSummary) {
+        // Can't unpin the primary from here — guide the user to set a different
+        // primary first in "Accesos rápidos".
+        if (topic.forumTopicId in _state.value.primaryTopicIds) return
         val current = _state.value.selectedTopicIds
         val next = if (topic.forumTopicId in current) current - topic.forumTopicId
                    else current + topic.forumTopicId
@@ -94,21 +121,18 @@ class PinnedPickerViewModel @Inject constructor(
 
     fun confirmSelectedTopics() {
         val chat = (_state.value.step as? Step.Topics)?.chat ?: return
-        val selectedIds = _state.value.selectedTopicIds
-        val chosen = _state.value.topics.filter { it.forumTopicId in selectedIds }
-        if (chosen.isEmpty()) return
+        val initial = _state.value.initiallySelectedTopicIds
+        val selected = _state.value.selectedTopicIds
+        val toAddIds = selected - initial
+        val toRemoveIds = (initial - selected) - _state.value.primaryTopicIds
+        val toAdd = _state.value.topics.filter { it.forumTopicId in toAddIds }
+
         viewModelScope.launch {
             try {
                 val now = System.currentTimeMillis()
                 val existing = conversationRepository.getPinned()
                 val maxOrder = existing.maxOfOrNull { it.sortOrder } ?: 0
-                chosen.forEachIndexed { idx, topic ->
-                    // Avoid duplicates: same chat + topic already pinned → skip.
-                    val duplicate = existing.any {
-                        it.targetChatId == chat.chatId.toString() &&
-                            it.topicId == topic.forumTopicId.toLong()
-                    }
-                    if (duplicate) return@forEachIndexed
+                toAdd.forEachIndexed { idx, topic ->
                     conversationRepository.upsert(
                         Conversation(
                             id = UUID.randomUUID().toString(),
@@ -124,9 +148,19 @@ class PinnedPickerViewModel @Inject constructor(
                         )
                     )
                 }
+                // Remove: find the row by (chatId, topicId) and delete it if
+                // it's just a pinned row; if it's the primary, skip.
+                for (topicId in toRemoveIds) {
+                    val row = existing.firstOrNull {
+                        it.targetChatId == chat.chatId.toString() &&
+                            it.topicId == topicId.toLong()
+                    } ?: continue
+                    if (row.isActive) continue
+                    conversationRepository.delete(row.id)
+                }
                 _state.value = _state.value.copy(saved = true)
             } catch (e: Exception) {
-                Timber.e(e, "pin topics failed")
+                Timber.e(e, "sync pinned topics failed")
                 _state.value = _state.value.copy(error = e.message ?: "Error guardando topics")
             }
         }
@@ -169,6 +203,8 @@ class PinnedPickerViewModel @Inject constructor(
             step = Step.Chats,
             topics = emptyList(),
             selectedTopicIds = emptySet(),
+            initiallySelectedTopicIds = emptySet(),
+            primaryTopicIds = emptySet(),
             error = null
         )
     }
