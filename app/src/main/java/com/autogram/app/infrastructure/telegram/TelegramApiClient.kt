@@ -198,6 +198,40 @@ class TelegramApiClient @Inject constructor(
         }
 
     /**
+     * Borra el webhook (si lo hubiera) para liberar el bot para getUpdates.
+     * Idempotente — devuelve OK incluso si no había webhook.
+     */
+    suspend fun deleteWebhook(dropPendingUpdates: Boolean = false): Result<Boolean> =
+        withContext(Dispatchers.IO) {
+            try {
+                val response = requireApi().deleteWebhook(dropPendingUpdates)
+                if (response.ok) Result.success(response.result ?: true)
+                else Result.failure(Exception("deleteWebhook failed: ${response.description}"))
+            } catch (e: Exception) {
+                Timber.e(e, "deleteWebhook error")
+                Result.failure(e)
+            }
+        }
+
+    /**
+     * Hace getUpdates con timeout corto (no long-poll) — útil para wizards
+     * o diagnóstico sin entrar en conflicto con un consumidor activo.
+     */
+    suspend fun getUpdatesShort(): Result<List<TelegramUpdate>> =
+        withContext(Dispatchers.IO) {
+            try {
+                val response = requireApi().getUpdates(offset = null, timeout = 0)
+                if (response.ok) Result.success(response.result ?: emptyList())
+                else if (response.error_code == 409)
+                    Result.failure(Exception("CONFLICT: ${response.description}"))
+                else Result.failure(Exception("Telegram API error: ${response.description}"))
+            } catch (e: Exception) {
+                Timber.e(e, "getUpdatesShort error")
+                Result.failure(e)
+            }
+        }
+
+    /**
      * Verifica que el token del bot es válido haciendo una petición getMe.
      */
     suspend fun testConnection(): Result<TelegramBotInfo> =

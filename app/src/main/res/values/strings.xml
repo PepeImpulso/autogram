@@ -57,6 +57,12 @@
     <string name="onboarding_connection_ok">Conexión OK: %s</string>
     <string name="onboarding_connection_error">No se pudo conectar: %s</string>
     <string name="onboarding_no_message">Aún no hay mensajes. Envía uno a tu bot y vuelve a intentar.</string>
+    <string name="onboarding_chat_conflict">Otro proceso ya está consumiendo el bot (HTTP 409). Forzar cierre de Autogram desde Ajustes Android, esperar 30 s y reintentar. Si persiste, abrir esta URL en el navegador:\nhttps://api.telegram.org/bot&lt;TOKEN&gt;/deleteWebhook?drop_pending_updates=true</string>
+    <string name="onboarding_chat_invalid_id">El chat_id debe ser un número (positivo para chats privados, negativo para grupos).</string>
+    <string name="onboarding_manual_chat_title">¿Lo conoces ya?</string>
+    <string name="onboarding_manual_chat_body">Si ya sabes tu chat_id (por ejemplo, lo viste en https://api.telegram.org/bot&lt;TOKEN&gt;/getUpdates) puedes introducirlo directamente:</string>
+    <string name="onboarding_manual_chat_label">Chat ID</string>
+    <string name="onboarding_manual_chat_use">Usar este chat_id</string>
 
     <!-- Settings -->
     <string name="settings_battery_section">Batería</string>

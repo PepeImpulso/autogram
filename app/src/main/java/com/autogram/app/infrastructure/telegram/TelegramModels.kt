@@ -104,4 +104,20 @@ interface TelegramApi {
 
     @GET("getMe")
     suspend fun getMe(): TelegramResponse<TelegramBotInfo>
+
+    @GET("deleteWebhook")
+    suspend fun deleteWebhook(
+        @Query("drop_pending_updates") dropPendingUpdates: Boolean = false
+    ): TelegramResponse<Boolean>
+
+    @GET("getWebhookInfo")
+    suspend fun getWebhookInfo(): TelegramResponse<TelegramWebhookInfo>
 }
+
+data class TelegramWebhookInfo(
+    val url: String = "",
+    val has_custom_certificate: Boolean = false,
+    val pending_update_count: Int = 0,
+    val last_error_date: Long? = null,
+    val last_error_message: String? = null
+)

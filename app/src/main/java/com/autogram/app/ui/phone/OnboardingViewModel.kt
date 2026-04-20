@@ -113,24 +113,34 @@ class OnboardingViewModel @Inject constructor(
             _state.value = _state.value.copy(detecting = true, chatError = null)
             try {
                 telegramApiClient.configure(_state.value.token)
-                val result = telegramApiClient.getUpdates()
+
+                // Defensive: drop any leftover webhook (would block getUpdates with 409 forever).
+                runCatching { telegramApiClient.deleteWebhook(dropPendingUpdates = false) }
+
+                // Short-poll (timeout=0) so we don't hold a long-poll that conflicts
+                // with the AutogramPollingService if it's running. Retry once after
+                // 5s on 409 to let any stale long-poll on Telegram's side expire.
+                var result = telegramApiClient.getUpdatesShort()
+                if (result.isFailure && result.exceptionOrNull()?.message?.contains("CONFLICT") == true) {
+                    Timber.w("Onboarding: 409 detected, waiting 5s and retrying")
+                    kotlinx.coroutines.delay(5000)
+                    result = telegramApiClient.getUpdatesShort()
+                }
+
                 if (result.isFailure) {
-                    _state.value = _state.value.copy(
-                        detecting = false,
-                        chatError = result.exceptionOrNull()?.message ?: "unknown"
-                    )
+                    val msg = result.exceptionOrNull()?.message ?: "unknown"
+                    val errorCode = if (msg.contains("CONFLICT")) "conflict" else msg
+                    _state.value = _state.value.copy(detecting = false, chatError = errorCode)
                     return@launch
                 }
+
                 val updates = result.getOrThrow()
                 val firstChat = updates.asSequence()
                     .mapNotNull { it.message ?: it.edited_message }
                     .map { it.chat }
                     .firstOrNull()
                 if (firstChat == null) {
-                    _state.value = _state.value.copy(
-                        detecting = false,
-                        chatError = "no_message"
-                    )
+                    _state.value = _state.value.copy(detecting = false, chatError = "no_message")
                 } else {
                     _state.value = _state.value.copy(
                         detecting = false,
@@ -149,6 +159,24 @@ class OnboardingViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    /**
+     * Manual chat_id entry as a fallback when detect-chat keeps failing.
+     * Validates the value is a numeric Long; positive = private, negative = group/channel.
+     */
+    fun setManualChatId(value: String) {
+        val trimmed = value.trim()
+        val parsed = trimmed.toLongOrNull()
+        if (parsed == null) {
+            _state.value = _state.value.copy(chatError = "invalid_chat_id")
+            return
+        }
+        _state.value = _state.value.copy(
+            chatId = trimmed,
+            chatTitle = "Chat $trimmed",
+            chatError = null
+        )
     }
 
     fun finish() {

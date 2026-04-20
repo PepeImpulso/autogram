@@ -146,15 +146,16 @@ private fun ChatStep(state: OnboardingViewModel.UiState, viewModel: OnboardingVi
         }
         Text(ctx.getString(R.string.onboarding_detect_chat))
     }
-    if (state.chatError == "no_message") {
+    val errorMsg = when (state.chatError) {
+        null -> null
+        "no_message" -> ctx.getString(R.string.onboarding_no_message)
+        "conflict" -> ctx.getString(R.string.onboarding_chat_conflict)
+        "invalid_chat_id" -> ctx.getString(R.string.onboarding_chat_invalid_id)
+        else -> ctx.getString(R.string.onboarding_connection_error, state.chatError)
+    }
+    if (errorMsg != null) {
         Spacer(Modifier.height(8.dp))
-        Text(ctx.getString(R.string.onboarding_no_message), color = MaterialTheme.colorScheme.error)
-    } else if (state.chatError != null) {
-        Spacer(Modifier.height(8.dp))
-        Text(
-            ctx.getString(R.string.onboarding_connection_error, state.chatError),
-            color = MaterialTheme.colorScheme.error
-        )
+        Text(errorMsg, color = MaterialTheme.colorScheme.error)
     }
     if (!state.chatId.isNullOrBlank()) {
         Spacer(Modifier.height(16.dp))
@@ -167,6 +168,37 @@ private fun ChatStep(state: OnboardingViewModel.UiState, viewModel: OnboardingVi
         Spacer(Modifier.height(16.dp))
         Button(onClick = { viewModel.finish() }, modifier = Modifier.fillMaxWidth()) {
             Text(ctx.getString(R.string.onboarding_finish))
+        }
+    }
+
+    Spacer(Modifier.height(24.dp))
+    HorizontalDivider()
+    Spacer(Modifier.height(16.dp))
+    Text(
+        ctx.getString(R.string.onboarding_manual_chat_title),
+        style = MaterialTheme.typography.titleSmall
+    )
+    Spacer(Modifier.height(4.dp))
+    Text(
+        ctx.getString(R.string.onboarding_manual_chat_body),
+        style = MaterialTheme.typography.bodySmall
+    )
+    Spacer(Modifier.height(8.dp))
+    var manualValue by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        OutlinedTextField(
+            value = manualValue,
+            onValueChange = { manualValue = it },
+            label = { Text(ctx.getString(R.string.onboarding_manual_chat_label)) },
+            singleLine = true,
+            modifier = Modifier.weight(1f)
+        )
+        Spacer(Modifier.width(8.dp))
+        Button(
+            onClick = { viewModel.setManualChatId(manualValue) },
+            enabled = manualValue.isNotBlank()
+        ) {
+            Text(ctx.getString(R.string.onboarding_manual_chat_use))
         }
     }
 }
