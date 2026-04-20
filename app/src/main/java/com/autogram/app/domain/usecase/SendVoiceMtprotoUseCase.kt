@@ -1,6 +1,8 @@
 package com.autogram.app.domain.usecase
 
 import android.content.Context
+import com.autogram.app.domain.model.Conversation
+import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.infrastructure.audio.AudioRecorder
 import com.autogram.app.infrastructure.audio.EmptyMessageFilter
 import com.autogram.app.infrastructure.telegram.mtproto.AuthState
@@ -17,22 +19,17 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Phase 2a: voice messages sent via MTProto so they appear as from the user
- * (not the bot) in @pepemaldo_bot's chat.
- *
- * Destination is hardcoded to the DM with @pepemaldo_bot. The topic/chat picker
- * is Phase 2b.
+ * Phase 2b: voice (and text) messages sent via MTProto to whichever chat +
+ * optional forum topic the user selected in the target picker.
  */
 @Singleton
 class SendVoiceMtprotoUseCase @Inject constructor(
     @ApplicationContext private val context: Context,
     private val tdLibClient: TdLibClient,
     private val audioRecorder: AudioRecorder,
-    private val emptyMessageFilter: EmptyMessageFilter
+    private val emptyMessageFilter: EmptyMessageFilter,
+    private val conversationRepository: ConversationRepository
 ) {
-    private companion object {
-        const val TARGET_USERNAME = "pepemaldo_bot"
-    }
 
     sealed class SendStatus {
         object Idle : SendStatus()
@@ -48,7 +45,6 @@ class SendVoiceMtprotoUseCase @Inject constructor(
     val status: StateFlow<SendStatus> = _status.asStateFlow()
 
     @Volatile private var currentAudioFile: File? = null
-    @Volatile private var cachedChatId: Long? = null
 
     suspend fun startRecording(): Result<Unit> {
         if (audioRecorder.isRecording()) {
@@ -87,8 +83,6 @@ class SendVoiceMtprotoUseCase @Inject constructor(
         }
 
         _status.value = SendStatus.Validating
-        // Minimal duration comes from settings repo in the legacy path; for Phase 2a
-        // we pass 500ms — matches the existing default and keeps scope small.
         val filter = emptyMessageFilter.validate(audioFile, minDurationMs = 500)
         if (!filter.accepted) {
             audioFile.delete()
@@ -101,33 +95,26 @@ class SendVoiceMtprotoUseCase @Inject constructor(
             return Result.failure(IllegalStateException("MTProto no autenticado"))
         }
 
+        val target = conversationRepository.getActive()
+        if (target == null) {
+            _status.value = SendStatus.Error("Configura un destino en Ajustes")
+            return Result.failure(IllegalStateException("No active conversation"))
+        }
+
         _status.value = SendStatus.Sending
         return try {
-            val chatId = resolveTargetChatId()
+            val chatId = target.targetChatId.toLong()
             val sendResult = tdLibClient.send(
                 TdApi.SendMessage().apply {
                     this.chatId = chatId
+                    this.topicId = target.topicId?.let { TdApi.MessageTopicForum(it.toInt()) }
                     this.inputMessageContent = TdApi.InputMessageVoiceNote().apply {
                         voiceNote = TdApi.InputFileLocal(audioFile.absolutePath)
                         duration = ((emptyMessageFilter.getDurationMs(audioFile) ?: 0L) / 1000).toInt()
                     }
                 }
             )
-            when (sendResult) {
-                is TdApi.Message -> {
-                    _status.value = SendStatus.Sent(sendResult.id)
-                    Result.success(sendResult.id)
-                }
-                is TdApi.Error -> {
-                    val msg = "Telegram ${sendResult.code}: ${sendResult.message}"
-                    _status.value = SendStatus.Error(msg)
-                    Result.failure(Exception(msg))
-                }
-                else -> {
-                    _status.value = SendStatus.Error("Respuesta inesperada de TDLib")
-                    Result.failure(Exception("Unexpected TDLib response: ${sendResult.javaClass.simpleName}"))
-                }
-            }
+            handleSendResult(sendResult)
         } catch (e: Exception) {
             Timber.e(e, "MTProto send failed")
             _status.value = SendStatus.Error(e.message ?: "Error enviando")
@@ -140,32 +127,23 @@ class SendVoiceMtprotoUseCase @Inject constructor(
             _status.value = SendStatus.Error("No autenticado con Telegram")
             return Result.failure(IllegalStateException("MTProto no autenticado"))
         }
+        val target = conversationRepository.getActive()
+        if (target == null) {
+            _status.value = SendStatus.Error("Configura un destino en Ajustes")
+            return Result.failure(IllegalStateException("No active conversation"))
+        }
         _status.value = SendStatus.Sending
         return try {
-            val chatId = resolveTargetChatId()
             val sendResult = tdLibClient.send(
                 TdApi.SendMessage().apply {
-                    this.chatId = chatId
+                    this.chatId = target.targetChatId.toLong()
+                    this.topicId = target.topicId?.let { TdApi.MessageTopicForum(it.toInt()) }
                     this.inputMessageContent = TdApi.InputMessageText().apply {
                         this.text = TdApi.FormattedText(text, emptyArray())
                     }
                 }
             )
-            when (sendResult) {
-                is TdApi.Message -> {
-                    _status.value = SendStatus.Sent(sendResult.id)
-                    Result.success(sendResult.id)
-                }
-                is TdApi.Error -> {
-                    val msg = "Telegram ${sendResult.code}: ${sendResult.message}"
-                    _status.value = SendStatus.Error(msg)
-                    Result.failure(Exception(msg))
-                }
-                else -> {
-                    _status.value = SendStatus.Error("Respuesta inesperada de TDLib")
-                    Result.failure(Exception("Unexpected TDLib response"))
-                }
-            }
+            handleSendResult(sendResult)
         } catch (e: Exception) {
             Timber.e(e, "MTProto text send failed")
             _status.value = SendStatus.Error(e.message ?: "Error enviando")
@@ -177,15 +155,19 @@ class SendVoiceMtprotoUseCase @Inject constructor(
         _status.value = SendStatus.Idle
     }
 
-    private suspend fun resolveTargetChatId(): Long {
-        cachedChatId?.let { return it }
-        val res = tdLibClient.send(TdApi.SearchPublicChat(TARGET_USERNAME))
-        if (res is TdApi.Error) {
-            throw IllegalStateException("No se pudo resolver @$TARGET_USERNAME: ${res.code} ${res.message}")
+    private fun handleSendResult(result: TdApi.Object): Result<Long> = when (result) {
+        is TdApi.Message -> {
+            _status.value = SendStatus.Sent(result.id)
+            Result.success(result.id)
         }
-        val chat = res as TdApi.Chat
-        cachedChatId = chat.id
-        Timber.d("Resolved @$TARGET_USERNAME → chatId=${chat.id}")
-        return chat.id
+        is TdApi.Error -> {
+            val msg = "Telegram ${result.code}: ${result.message}"
+            _status.value = SendStatus.Error(msg)
+            Result.failure(Exception(msg))
+        }
+        else -> {
+            _status.value = SendStatus.Error("Respuesta inesperada de TDLib")
+            Result.failure(Exception("Unexpected TDLib response: ${result.javaClass.simpleName}"))
+        }
     }
 }

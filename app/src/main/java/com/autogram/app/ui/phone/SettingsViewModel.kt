@@ -3,6 +3,7 @@ package com.autogram.app.ui.phone
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
@@ -12,7 +13,8 @@ import javax.inject.Inject
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     application: Application,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val conversationRepository: ConversationRepository
 ) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -21,13 +23,22 @@ class SettingsViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             val settings = settingsRepository.get()
-            _uiState.value = SettingsUiState(
+            _uiState.value = _uiState.value.copy(
                 retentionDays = settings.retentionDays,
                 silentMode = settings.silentMode,
                 autoPlay = settings.autoPlayReplies,
                 minDuration = settings.minRecordingDurationMs,
                 maxRetries = settings.maxRetryAttempts
             )
+        }
+        viewModelScope.launch {
+            conversationRepository.observeActive().collect { target ->
+                _uiState.value = _uiState.value.copy(
+                    targetTitle = target?.targetTitle,
+                    targetTopicName = target?.topicName,
+                    hasTarget = target != null
+                )
+            }
         }
     }
 
@@ -71,5 +82,8 @@ data class SettingsUiState(
     val autoPlay: Boolean = true,
     val minDuration: Long = 1500,
     val maxRetries: Int = 3,
-    val lastSaveMessage: String? = null
+    val lastSaveMessage: String? = null,
+    val hasTarget: Boolean = false,
+    val targetTitle: String? = null,
+    val targetTopicName: String? = null
 )

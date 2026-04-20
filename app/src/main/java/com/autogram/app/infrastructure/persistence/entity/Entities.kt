@@ -52,7 +52,10 @@ data class ConversationEntity(
     val botToken: String,
     val isActive: Boolean = true,
     val createdAt: Long,
-    val lastMessageAt: Long? = null
+    val lastMessageAt: Long? = null,
+    // Phase 2b: forum topics. null = no topic (private chat / regular group / forum default).
+    val topicId: Long? = null,
+    val topicName: String? = null
 )
 
 @Entity(

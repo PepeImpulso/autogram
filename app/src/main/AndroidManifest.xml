@@ -52,6 +52,11 @@
             android:label="@string/settings_title" />
 
         <activity
+            android:name=".ui.phone.TargetPickerActivity"
+            android:exported="false"
+            android:label="@string/target_picker_title" />
+
+        <activity
             android:name=".ui.phone.HistoryActivity"
             android:exported="false"
             android:label="@string/history_title" />

@@ -2,6 +2,7 @@
 <resources>
     <string name="app_name">Autogram</string>
     <string name="settings_title">Configuración</string>
+    <string name="target_picker_title">Destino de mensajes</string>
     <string name="history_title">Historial</string>
     <string name="stats_title">Estadísticas</string>
 

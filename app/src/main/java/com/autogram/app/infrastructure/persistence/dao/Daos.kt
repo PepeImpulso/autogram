@@ -45,6 +45,9 @@ interface ConversationDao {
     @Query("SELECT * FROM conversations WHERE isActive = 1 LIMIT 1")
     suspend fun getActive(): ConversationEntity?
 
+    @Query("SELECT * FROM conversations WHERE isActive = 1 LIMIT 1")
+    fun observeActive(): Flow<ConversationEntity?>
+
     @Query("SELECT * FROM conversations WHERE id = :id LIMIT 1")
     suspend fun getById(id: String): ConversationEntity?
 

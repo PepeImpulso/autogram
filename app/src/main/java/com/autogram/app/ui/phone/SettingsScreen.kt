@@ -51,6 +51,20 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // --- Target (chat + optional topic) ---
+            Text("Destino de mensajes", style = MaterialTheme.typography.titleMedium)
+            TargetRow(
+                hasTarget = state.hasTarget,
+                title = state.targetTitle,
+                topicName = state.targetTopicName,
+                onChange = {
+                    val intent = android.content.Intent(context, TargetPickerActivity::class.java)
+                    context.startActivity(intent)
+                }
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
             // --- Playback Settings ---
             Text("Reproducción", style = MaterialTheme.typography.titleMedium)
 
@@ -194,6 +208,35 @@ private fun UpdatesRow(viewModel: UpdateViewModel = androidx.hilt.navigation.com
             )
         }
         else -> Unit
+    }
+}
+
+@Composable
+private fun TargetRow(
+    hasTarget: Boolean,
+    title: String?,
+    topicName: String?,
+    onChange: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (hasTarget) {
+            Text(
+                buildString {
+                    append(title ?: "(sin título)")
+                    if (!topicName.isNullOrBlank()) append(" › ").append(topicName)
+                },
+                style = MaterialTheme.typography.bodyMedium
+            )
+        } else {
+            Text(
+                "No hay destino configurado. Elige uno para poder enviar y recibir mensajes.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Button(onClick = onChange, modifier = Modifier.fillMaxWidth()) {
+            Text(if (hasTarget) "Cambiar destino" else "Elegir destino")
+        }
     }
 }
 

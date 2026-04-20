@@ -26,6 +26,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -36,11 +37,12 @@ import javax.inject.Inject
 
 /**
  * Foreground service that keeps TDLib alive and pipes incoming voice notes
- * from Merlin into [PlayReplyUseCase] for automatic playback.
+ * from the user's active target (chat + optional forum topic) into
+ * [PlayReplyUseCase] for automatic playback.
  *
- * Replaces the bot-API [AutogramPollingService]. We filter on chatId matching
- * the resolved @pepemaldo_bot DM and ignore outgoing messages (so we don't
- * try to play our own sent voice notes back).
+ * The active target is set from [TargetPickerActivity] and is read reactively
+ * here — when the user picks a different chat/topic the receive collector is
+ * restarted transparently.
  */
 @AndroidEntryPoint
 class MtprotoReceiverService : Service() {
@@ -50,10 +52,6 @@ class MtprotoReceiverService : Service() {
         const val NOTIFICATION_ID = 2
         const val ACTION_START = "com.autogram.app.MTPROTO_START"
         const val ACTION_STOP = "com.autogram.app.MTPROTO_STOP"
-
-        // Shared with SendVoiceMtprotoUseCase — same bot, same conversation.
-        const val TARGET_USERNAME = "pepemaldo_bot"
-        const val CONVERSATION_ID = "mtproto-default"
 
         @Volatile var isRunning = false
             private set
@@ -66,7 +64,8 @@ class MtprotoReceiverService : Service() {
     @Inject lateinit var callStateMonitor: CallStateMonitor
 
     private var scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private var receiveJob: Job? = null
+    private var supervisorJob: Job? = null
+    private var activeCollectorJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -81,11 +80,11 @@ class MtprotoReceiverService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
-                stopReceiving()
+                stopSupervisor()
                 stopSelf()
                 return START_NOT_STICKY
             }
-            else -> startReceiving()
+            else -> startSupervisor()
         }
         return START_STICKY
     }
@@ -93,7 +92,7 @@ class MtprotoReceiverService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        stopReceiving()
+        stopSupervisor()
         callStateMonitor.stop()
         scope.cancel()
         isRunning = false
@@ -101,61 +100,74 @@ class MtprotoReceiverService : Service() {
         super.onDestroy()
     }
 
-    private fun startReceiving() {
-        if (receiveJob?.isActive == true) return
-        receiveJob = scope.launch {
+    /**
+     * Waits for TDLib auth, then observes the active conversation and (re)starts
+     * the update collector whenever it changes — including the first time it
+     * becomes non-null.
+     */
+    private fun startSupervisor() {
+        if (supervisorJob?.isActive == true) return
+        supervisorJob = scope.launch {
             tdLibClient.ensureStarted()
             tdLibClient.authState.first { it is AuthState.Ready }
-            val chatId = resolveMerlinChatId()
-            upsertConversation(chatId)
-            updateNotification("Escuchando respuestas de Merlin")
-            Timber.i("Receiver subscribed to chatId=$chatId")
 
-            tdLibClient.updates
-                .filterIsInstance<TdApi.UpdateNewMessage>()
-                .collect { update ->
-                    val msg = update.message
-                    if (msg.chatId != chatId || msg.isOutgoing) return@collect
-                    when (val content = msg.content) {
-                        is TdApi.MessageVoiceNote -> handleVoiceNote(msg, content)
-                        // Text replies are ignored for now — they'll come
-                        // back as part of a later TTS pass.
-                        else -> Timber.d("Ignored non-voice incoming: ${content.javaClass.simpleName}")
+            conversationRepository.observeActive()
+                .distinctUntilChanged { old, new ->
+                    old?.targetChatId == new?.targetChatId && old?.topicId == new?.topicId
+                }
+                .collect { target ->
+                    activeCollectorJob?.cancel()
+                    if (target == null) {
+                        updateNotification("Configura un destino en Ajustes")
+                        Timber.i("No active conversation — receiver idle")
+                        return@collect
                     }
+                    activeCollectorJob = scope.launch { collectFor(target) }
                 }
         }
     }
 
-    private fun stopReceiving() {
-        receiveJob?.cancel()
-        receiveJob = null
+    private fun stopSupervisor() {
+        activeCollectorJob?.cancel(); activeCollectorJob = null
+        supervisorJob?.cancel(); supervisorJob = null
     }
 
-    private suspend fun resolveMerlinChatId(): Long {
-        val res = tdLibClient.send(TdApi.SearchPublicChat(TARGET_USERNAME))
-        if (res is TdApi.Error) {
-            error("No se pudo resolver @$TARGET_USERNAME: ${res.code} ${res.message}")
+    private suspend fun collectFor(target: Conversation) {
+        val chatId = target.targetChatId.toLong()
+        val topicId = target.topicId
+        val label = buildString {
+            append(target.targetTitle ?: "chat $chatId")
+            target.topicName?.let { append(" › ").append(it) }
         }
-        return (res as TdApi.Chat).id
+        updateNotification("Escuchando: $label")
+        Timber.i("Receiver subscribed to chatId=$chatId topicId=$topicId")
+
+        tdLibClient.updates
+            .filterIsInstance<TdApi.UpdateNewMessage>()
+            .collect { update ->
+                val msg = update.message
+                if (msg.chatId != chatId || msg.isOutgoing) return@collect
+                if (!matchesTopic(msg, topicId)) return@collect
+                when (val content = msg.content) {
+                    is TdApi.MessageVoiceNote -> handleVoiceNote(target, msg, content)
+                    else -> Timber.d("Ignored non-voice incoming: ${content.javaClass.simpleName}")
+                }
+            }
     }
 
-    private suspend fun upsertConversation(chatId: Long) {
-        val existing = conversationRepository.getById(CONVERSATION_ID)
-        if (existing == null) {
-            conversationRepository.upsert(
-                Conversation(
-                    id = CONVERSATION_ID,
-                    targetChatId = chatId.toString(),
-                    targetTitle = "Merlin",
-                    botToken = "",
-                    isActive = true
-                )
-            )
-            conversationRepository.setActive(CONVERSATION_ID)
-        }
+    // When the user pinned a topic, only messages on that thread pass.
+    // When no topic is set, accept messages that also have no topic (regular
+    // chats / private DMs). This prevents cross-topic leakage in forums.
+    private fun matchesTopic(msg: TdApi.Message, expectedTopicId: Long?): Boolean {
+        val actual = (msg.topicId as? TdApi.MessageTopicForum)?.forumTopicId?.toLong()
+        return actual == expectedTopicId
     }
 
-    private suspend fun handleVoiceNote(tdMsg: TdApi.Message, content: TdApi.MessageVoiceNote) {
+    private suspend fun handleVoiceNote(
+        target: Conversation,
+        tdMsg: TdApi.Message,
+        content: TdApi.MessageVoiceNote
+    ) {
         val voiceFile = content.voiceNote.voice
         val localPath = ensureDownloaded(voiceFile) ?: run {
             Timber.w("Skipping voice note ${tdMsg.id} — download failed")
@@ -164,7 +176,7 @@ class MtprotoReceiverService : Service() {
 
         val message = Message(
             id = UUID.randomUUID().toString(),
-            conversationId = CONVERSATION_ID,
+            conversationId = target.id,
             direction = MessageDirection.INCOMING,
             state = MessageState.RECEIVED,
             telegramMessageId = tdMsg.id,
