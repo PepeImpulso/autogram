@@ -106,6 +106,7 @@ class AutogramPollingService : Service() {
         pollingJob = serviceScope.launch {
             Timber.i("Iniciando polling de Telegram")
 
+            var webhookDropped = false
             while (isActive) {
                 try {
                     val conversation = conversationRepository.getActive()
@@ -116,6 +117,13 @@ class AutogramPollingService : Service() {
                     }
 
                     telegramApiClient.configure(conversation.botToken)
+                    // Defensive: if a webhook is set on this bot, getUpdates
+                    // returns HTTP 409 forever. Drop it once per service start —
+                    // idempotent, no-op when no webhook exists.
+                    if (!webhookDropped) {
+                        runCatching { telegramApiClient.deleteWebhook(dropPendingUpdates = false) }
+                        webhookDropped = true
+                    }
                     updateNotification("Escuchando mensajes...")
 
                     // Long-polling con timeout de 30 segundos
