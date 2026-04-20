@@ -12,6 +12,7 @@
 -keep class com.autogram.app.infrastructure.telegram.TelegramVoice { *; }
 -keep class com.autogram.app.infrastructure.telegram.TelegramFile { *; }
 -keep class com.autogram.app.infrastructure.telegram.TelegramResponseParameters { *; }
+-keep class com.autogram.app.infrastructure.telegram.TelegramWebhookInfo { *; }
 -keepclassmembers,allowobfuscation interface * {
     @retrofit2.http.* <methods>;
 }

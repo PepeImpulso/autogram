@@ -27,7 +27,17 @@ class OnboardingActivity : ComponentActivity() {
 
         setContent {
             AutogramTheme {
-                OnboardingScreen(onFinished = { finish() })
+                OnboardingScreen(onFinished = {
+                    // Re-launch MainActivity so the user lands on the app's
+                    // home screen instead of the Android launcher. MainActivity
+                    // was finished (FLAG_ACTIVITY_NO_HISTORY) when it routed
+                    // here, so there's nothing in the back stack to return to.
+                    startActivity(
+                        Intent(this, MainActivity::class.java)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                    )
+                    finish()
+                })
             }
         }
     }
