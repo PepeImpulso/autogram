@@ -226,19 +226,19 @@ private fun MainScreen(
 
 @Composable
 private fun HeroHeader() {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(vertical = 8.dp)
     ) {
         Image(
             painter = painterResource(R.drawable.autogram_logo),
             contentDescription = null,
-            modifier = Modifier.size(64.dp)
+            modifier = Modifier.size(32.dp)
         )
-        Spacer(Modifier.height(8.dp))
         Text(
             "Autogram",
-            style = MaterialTheme.typography.headlineMedium,
+            style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.onBackground
         )
         Text(
