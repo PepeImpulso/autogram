@@ -13,6 +13,10 @@
 -keep class com.autogram.app.infrastructure.telegram.TelegramFile { *; }
 -keep class com.autogram.app.infrastructure.telegram.TelegramResponseParameters { *; }
 -keep class com.autogram.app.infrastructure.telegram.TelegramWebhookInfo { *; }
+
+# GitHub API data classes (Gson-deserialized)
+-keep class com.autogram.app.infrastructure.github.GitHubRelease { *; }
+-keep class com.autogram.app.infrastructure.github.GitHubAsset { *; }
 -keepclassmembers,allowobfuscation interface * {
     @retrofit2.http.* <methods>;
 }
@@ -43,3 +47,9 @@
 
 # Timber
 -dontwarn timber.log.Timber
+
+# TDLib — JNI uses reflection on TdApi classes, so keep everything in the
+# org.drinkless.tdlib package intact (no renaming, no removal of fields).
+-keep class org.drinkless.tdlib.** { *; }
+-keepnames class org.drinkless.tdlib.**
+-dontwarn org.drinkless.tdlib.**

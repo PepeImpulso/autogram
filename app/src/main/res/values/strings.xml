@@ -69,6 +69,20 @@
     <string name="settings_battery_button_request">Permitir ejecución en segundo plano</string>
     <string name="settings_battery_button_already">Excepción de batería ya concedida</string>
 
+    <!-- Updates -->
+    <string name="settings_updates_section">Actualizaciones</string>
+    <string name="settings_updates_current_version">Versión instalada: %s</string>
+    <string name="settings_updates_check">Buscar actualizaciones</string>
+    <string name="settings_updates_checking">Comprobando…</string>
+    <string name="settings_updates_up_to_date">Estás al día (v%s es la última)</string>
+    <string name="settings_updates_error">No se pudo comprobar: %s</string>
+    <string name="update_dialog_title">Nueva versión disponible</string>
+    <string name="update_dialog_body">Hay una versión nueva (v%1$s). La actual es v%2$s.\n\nDescarga ~%3$d KB. Al finalizar, Android te pedirá confirmación para instalarla.</string>
+    <string name="update_dialog_install">Actualizar</string>
+    <string name="update_dialog_later">Luego</string>
+    <string name="update_dialog_release_notes">Notas de la versión</string>
+    <string name="update_downloading">Descargando actualización…</string>
+
     <!-- Stats -->
     <string name="stats_total_sent">Enviados</string>
     <string name="stats_total_received">Recibidos</string>
@@ -76,4 +90,32 @@
     <string name="stats_avg_duration">Duración media</string>
     <string name="stats_last_7_days">Últimos 7 días</string>
     <string name="stats_no_data">Aún no hay datos para mostrar.</string>
+
+    <!-- Telegram MTProto login -->
+    <string name="tg_login_title">Conectar con Telegram</string>
+    <string name="tg_login_initializing">Inicializando cliente Telegram…</string>
+    <string name="tg_login_phone_title">Introduce tu número de teléfono</string>
+    <string name="tg_login_phone_body">Usa formato internacional (+34 600 123 456). Telegram te enviará un código.</string>
+    <string name="tg_login_phone_label">Teléfono</string>
+    <string name="tg_login_phone_placeholder">+34…</string>
+    <string name="tg_login_phone_invalid">Número inválido. Formato internacional: +34…</string>
+    <string name="tg_login_phone_send">Enviar código</string>
+    <string name="tg_login_code_title">Introduce el código</string>
+    <string name="tg_login_code_body">Telegram te ha enviado un código (%s). Introdúcelo abajo.</string>
+    <string name="tg_login_code_digits">%d dígitos</string>
+    <string name="tg_login_code_generic">recibido por SMS o Telegram</string>
+    <string name="tg_login_code_label">Código</string>
+    <string name="tg_login_code_empty">Introduce el código que recibiste</string>
+    <string name="tg_login_code_verify">Verificar código</string>
+    <string name="tg_login_2fa_title">Contraseña de dos pasos</string>
+    <string name="tg_login_2fa_body">Tu cuenta tiene verificación en dos pasos activada. Introduce la contraseña.</string>
+    <string name="tg_login_2fa_hint">Pista: %s</string>
+    <string name="tg_login_2fa_label">Contraseña 2FA</string>
+    <string name="tg_login_2fa_empty">Introduce tu contraseña 2FA</string>
+    <string name="tg_login_2fa_submit">Entrar</string>
+    <string name="tg_login_ready">Conectado ✓</string>
+    <string name="tg_login_logging_out">Cerrando sesión…</string>
+    <string name="tg_login_closed">Sesión cerrada. Reabre la app para volver a conectar.</string>
+    <string name="tg_login_error_title">Algo ha salido mal</string>
+    <string name="tg_login_error_retry">Cierra la app y vuelve a abrirla para reintentar, o desinstálala si el error persiste.</string>
 </resources>

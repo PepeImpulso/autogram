@@ -10,6 +10,7 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <uses-feature
         android:name="android.hardware.type.automotive"
@@ -65,6 +66,11 @@
             android:exported="false"
             android:label="@string/app_name" />
 
+        <activity
+            android:name=".ui.phone.TelegramLoginActivity"
+            android:exported="false"
+            android:label="@string/app_name" />
+
         <!-- Android Auto -->
         <meta-data
             android:name="com.google.android.gms.car.application"
@@ -84,6 +90,17 @@
             android:name=".service.AutogramPollingService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- FileProvider para el APK descargado por el auto-actualizador -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_provider_paths" />
+        </provider>
 
         <!-- Disable default WorkManager init: we provide Configuration.Provider in AutogramApplication for Hilt -->
         <provider

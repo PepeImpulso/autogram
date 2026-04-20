@@ -1,14 +1,25 @@
 package com.autogram.app.ui.phone
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -29,12 +40,12 @@ fun OnboardingScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(ctx.getString(R.string.app_name)) },
+            CenterAlignedTopAppBar(
+                title = { Text("Configurar Autogram", style = MaterialTheme.typography.titleMedium) },
                 navigationIcon = {
                     if (state.step != OnboardingViewModel.Step.WELCOME) {
-                        TextButton(onClick = { viewModel.goBack() }) {
-                            Text(ctx.getString(R.string.onboarding_back))
+                        IconButton(onClick = { viewModel.goBack() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
                         }
                     }
                 }
@@ -44,17 +55,50 @@ fun OnboardingScreen(
         Column(
             modifier = Modifier
                 .padding(padding)
-                .padding(24.dp)
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.Start
+                .verticalScroll(rememberScrollState())
         ) {
-            when (state.step) {
-                OnboardingViewModel.Step.WELCOME -> WelcomeStep(viewModel)
-                OnboardingViewModel.Step.TOKEN -> TokenStep(state, viewModel)
-                OnboardingViewModel.Step.CHAT -> ChatStep(state, viewModel)
-                OnboardingViewModel.Step.DONE -> Text(ctx.getString(R.string.onboarding_finish))
+            StepIndicator(currentStep = state.step)
+            Column(
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
+            ) {
+                when (state.step) {
+                    OnboardingViewModel.Step.WELCOME -> WelcomeStep(viewModel)
+                    OnboardingViewModel.Step.TOKEN -> TokenStep(state, viewModel)
+                    OnboardingViewModel.Step.CHAT -> ChatStep(state, viewModel)
+                    OnboardingViewModel.Step.DONE -> Text(ctx.getString(R.string.onboarding_finish))
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun StepIndicator(currentStep: OnboardingViewModel.Step) {
+    val steps = listOf(
+        OnboardingViewModel.Step.WELCOME,
+        OnboardingViewModel.Step.TOKEN,
+        OnboardingViewModel.Step.CHAT
+    )
+    val currentIdx = steps.indexOf(currentStep).coerceAtLeast(0)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        steps.forEachIndexed { i, _ ->
+            val active = i <= currentIdx
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(
+                        if (active) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.surfaceVariant
+                    )
+            )
         }
     }
 }
@@ -62,15 +106,38 @@ fun OnboardingScreen(
 @Composable
 private fun WelcomeStep(viewModel: OnboardingViewModel) {
     val ctx = LocalContext.current
-    Text(
-        text = ctx.getString(R.string.onboarding_welcome_title),
-        style = MaterialTheme.typography.headlineSmall
-    )
-    Spacer(Modifier.height(16.dp))
-    Text(ctx.getString(R.string.onboarding_welcome_body))
-    Spacer(Modifier.height(32.dp))
-    Button(onClick = { viewModel.goNext() }, modifier = Modifier.fillMaxWidth()) {
-        Text(ctx.getString(R.string.onboarding_continue))
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(Modifier.height(24.dp))
+        Image(
+            painter = painterResource(R.drawable.autogram_logo),
+            contentDescription = null,
+            modifier = Modifier.size(96.dp)
+        )
+        Spacer(Modifier.height(24.dp))
+        Text(
+            text = ctx.getString(R.string.onboarding_welcome_title),
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = ctx.getString(R.string.onboarding_welcome_body),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(40.dp))
+        Button(
+            onClick = { viewModel.goNext() },
+            modifier = Modifier.fillMaxWidth().height(52.dp)
+        ) {
+            Text(
+                ctx.getString(R.string.onboarding_continue),
+                style = MaterialTheme.typography.titleMedium
+            )
+        }
     }
 }
 
