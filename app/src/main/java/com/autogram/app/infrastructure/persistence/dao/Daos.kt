@@ -116,6 +116,9 @@ interface PendingPlaybackDao {
     @Query("DELETE FROM pending_playbacks WHERE id = :id")
     suspend fun delete(id: String)
 
+    @Query("DELETE FROM pending_playbacks WHERE messageId = :messageId")
+    suspend fun deleteByMessageId(messageId: String)
+
     @Query("DELETE FROM pending_playbacks")
     suspend fun deleteAll()
 }

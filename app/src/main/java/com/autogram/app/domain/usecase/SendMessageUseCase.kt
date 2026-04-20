@@ -126,7 +126,9 @@ class SendMessageUseCase @Inject constructor(
             msg = transition(msg, MessageState.DISCARDED)
             _currentStatus.value = SendStatus.Discarded(filterResult.reason ?: "Mensaje vacío")
             // Limpiar archivo
-            audioFile.delete()
+            if (!audioFile.delete()) {
+                Timber.w("No se pudo borrar el audio descartado: ${audioFile.path}")
+            }
             msg = transition(msg, MessageState.IDLE)
             currentMessage = null
             return Result.failure(Exception("Mensaje descartado: ${filterResult.reason}"))

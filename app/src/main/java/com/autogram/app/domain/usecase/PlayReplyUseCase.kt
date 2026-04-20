@@ -201,18 +201,26 @@ class PlayReplyUseCase @Inject constructor(
      * Reproduce el siguiente mensaje en cola.
      */
     private suspend fun playNext() {
-        val next = synchronized(pendingQueue) {
-            if (pendingQueue.isEmpty()) {
-                _playbackStatus.value = PlaybackStatus.Idle
-                pendingReplyNotifier.cancel()
-                return
-            }
-            pendingQueue.removeAt(0)
+        val isEmpty: Boolean
+        val next: Message?
+        synchronized(pendingQueue) {
+            isEmpty = pendingQueue.isEmpty()
+            next = if (isEmpty) null else pendingQueue.removeAt(0)
+        }
+        // BUG-56 FIX: Notifier calls happen outside the synchronized block to
+        // avoid holding the queue lock during NotificationManager I/O.
+        if (isEmpty || next == null) {
+            _playbackStatus.value = PlaybackStatus.Idle
+            pendingReplyNotifier.cancel()
+            return
         }
         pendingReplyNotifier.notifyPending(pendingCount())
-        // BUG-42 FIX: Delete only the specific playback for this message, not all
+        // BUG-57 FIX: Delete by messageId — pendingPlaybackDao.delete(id) was
+        // being called with Message.id but the DAO's id column stores the
+        // PendingPlaybackEntity.id (a separate UUID). Records were never deleted,
+        // so restorePendingQueue() on app restart would re-enqueue old messages.
         playbackScope.launch {
-            try { pendingPlaybackDao.delete(next.id) } catch (_: Exception) {}
+            try { pendingPlaybackDao.deleteByMessageId(next.id) } catch (_: Exception) {}
         }
         playVoiceMessage(next)
     }

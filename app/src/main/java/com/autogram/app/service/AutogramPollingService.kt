@@ -200,7 +200,6 @@ class AutogramPollingService : Service() {
 
         // Auto-reproducir si está configurado
         if (settings.autoPlayReplies && audioFilePath != null) {
-            val audioFile = File(audioFilePath)
             playReplyUseCase.playVoiceMessage(dbMessage, callStateMonitor.isInCall.value)
         }
     }
