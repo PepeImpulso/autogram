@@ -115,6 +115,49 @@ class PlayReplyUseCase @Inject constructor(
     }
 
     /**
+     * User-initiated playback from the history screen. Bypasses silentMode
+     * and isCallActive checks — if the user tapped play, they want audio now.
+     * If something is already playing, stop it first so the new message takes
+     * over instead of being queued behind pending replies.
+     */
+    suspend fun playManually(message: Message) {
+        if (audioPlayer.isPlaying()) audioPlayer.stop()
+        val audioFile = message.audioFilePath?.let { File(it) }
+        if (audioFile == null || !audioFile.exists()) {
+            Timber.w("playManually: missing audio for ${message.id}")
+            return
+        }
+        currentPlayingId = message.id
+        messageRepository.update(message.copy(state = MessageState.PLAYING))
+        _playbackStatus.value = PlaybackStatus.Playing(message.id)
+        val result = audioPlayer.play(audioFile) { playResult ->
+            playbackScope.launch {
+                if (playResult.isSuccess) {
+                    messageRepository.update(message.copy(
+                        state = MessageState.PLAYED,
+                        playedAt = System.currentTimeMillis()
+                    ))
+                } else {
+                    messageRepository.update(message.copy(
+                        state = MessageState.FAILED,
+                        errorMessage = playResult.exceptionOrNull()?.message
+                    ))
+                }
+                currentPlayingId = null
+                _playbackStatus.value = PlaybackStatus.Idle
+            }
+        }
+        if (result.isFailure) {
+            messageRepository.update(message.copy(
+                state = MessageState.FAILED,
+                errorMessage = result.exceptionOrNull()?.message
+            ))
+            currentPlayingId = null
+            _playbackStatus.value = PlaybackStatus.Idle
+        }
+    }
+
+    /**
      * Reproduce un mensaje de texto usando TTS (para futuras versiones).
      */
     fun playTextMessage(message: Message) {
