@@ -5,7 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.autogram.app.domain.repository.QuickReplyRepository
 import com.autogram.app.domain.usecase.PlayReplyUseCase
-import com.autogram.app.domain.usecase.SendMessageUseCase
+import com.autogram.app.domain.usecase.SendVoiceMtprotoUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -17,12 +17,12 @@ import javax.inject.Inject
 @HiltViewModel
 class MainViewModel @Inject constructor(
     application: Application,
-    private val sendMessageUseCase: SendMessageUseCase,
+    private val sendMessageUseCase: SendVoiceMtprotoUseCase,
     private val playReplyUseCase: PlayReplyUseCase,
     private val quickReplyRepository: QuickReplyRepository
 ) : AndroidViewModel(application) {
 
-    val sendStatus: StateFlow<SendMessageUseCase.SendStatus> = sendMessageUseCase.currentStatus
+    val sendStatus: StateFlow<SendVoiceMtprotoUseCase.SendStatus> = sendMessageUseCase.status
     val playbackStatus: StateFlow<PlayReplyUseCase.PlaybackStatus> = playReplyUseCase.playbackStatus
 
     val quickReplies: StateFlow<List<Pair<String, String>>> =
@@ -32,7 +32,7 @@ class MainViewModel @Inject constructor(
 
     fun startRecording() {
         viewModelScope.launch {
-            sendMessageUseCase.startRecording(getApplication())
+            sendMessageUseCase.startRecording()
         }
     }
 

@@ -46,13 +46,11 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.lifecycleScope
 import com.autogram.app.BuildConfig
 import com.autogram.app.R
-import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.domain.usecase.PlayReplyUseCase
-import com.autogram.app.domain.usecase.SendMessageUseCase
+import com.autogram.app.domain.usecase.SendVoiceMtprotoUseCase
 import com.autogram.app.infrastructure.telegram.mtproto.AuthState
 import com.autogram.app.infrastructure.telegram.mtproto.TdLibClient
-import com.autogram.app.service.AutogramPollingService
 import com.autogram.app.ui.theme.AutogramTheme
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
@@ -63,15 +61,11 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
 
     @Inject lateinit var settingsRepository: SettingsRepository
-    @Inject lateinit var conversationRepository: ConversationRepository
     @Inject lateinit var tdLibClient: TdLibClient
 
     override fun onResume() {
         super.onResume()
         lifecycleScope.launch {
-            // 1) MTProto session gate — must be logged in to @pepebot's owner
-            //    account before anything else. Skipping this means the bot-API
-            //    send/receive paths wouldn't appear as "user → bot".
             tdLibClient.ensureStarted()
             val auth = tdLibClient.authState.first { it !is AuthState.Uninitialized && it !is AuthState.Initializing }
             if (auth !is AuthState.Ready) {
@@ -79,19 +73,7 @@ class MainActivity : ComponentActivity() {
                 i.flags = Intent.FLAG_ACTIVITY_NO_HISTORY
                 startActivity(i)
                 finish()
-                return@launch
             }
-
-            // 2) Legacy bot-API gate (kept until Phase 4 cleanup)
-            val active = conversationRepository.getActive()
-            if (active == null || active.botToken.isBlank() || active.targetChatId.isBlank()) {
-                val i = Intent(this@MainActivity, OnboardingActivity::class.java)
-                i.flags = Intent.FLAG_ACTIVITY_NO_HISTORY
-                startActivity(i)
-                finish()
-                return@launch
-            }
-            startPollingService()
         }
     }
 
@@ -110,17 +92,6 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
-        }
-    }
-
-    private fun startPollingService() {
-        val serviceIntent = Intent(this, AutogramPollingService::class.java).apply {
-            action = AutogramPollingService.ACTION_START
-        }
-        try {
-            ContextCompat.startForegroundService(this, serviceIntent)
-        } catch (e: Exception) {
-            timber.log.Timber.e(e, "Error starting foreground service")
         }
     }
 }
@@ -266,23 +237,23 @@ private fun HeroHeader() {
 
 @Composable
 private fun StatusPill(
-    sendStatus: SendMessageUseCase.SendStatus,
+    sendStatus: SendVoiceMtprotoUseCase.SendStatus,
     playback: PlayReplyUseCase.PlaybackStatus
 ) {
     data class Pill(val text: String, val container: Color, val onContainer: Color)
     val scheme = MaterialTheme.colorScheme
     val pill = when (sendStatus) {
-        is SendMessageUseCase.SendStatus.Recording ->
+        is SendVoiceMtprotoUseCase.SendStatus.Recording ->
             Pill("Grabando…", scheme.errorContainer, scheme.onErrorContainer)
-        is SendMessageUseCase.SendStatus.Validating ->
+        is SendVoiceMtprotoUseCase.SendStatus.Validating ->
             Pill("Validando…", scheme.tertiaryContainer, scheme.onTertiaryContainer)
-        is SendMessageUseCase.SendStatus.Sending ->
+        is SendVoiceMtprotoUseCase.SendStatus.Sending ->
             Pill("Enviando…", scheme.primaryContainer, scheme.onPrimaryContainer)
-        is SendMessageUseCase.SendStatus.Sent ->
+        is SendVoiceMtprotoUseCase.SendStatus.Sent ->
             Pill("Enviado ✓", scheme.primaryContainer, scheme.onPrimaryContainer)
-        is SendMessageUseCase.SendStatus.Discarded ->
+        is SendVoiceMtprotoUseCase.SendStatus.Discarded ->
             Pill("Descartado: ${sendStatus.reason}", scheme.tertiaryContainer, scheme.onTertiaryContainer)
-        is SendMessageUseCase.SendStatus.Error ->
+        is SendVoiceMtprotoUseCase.SendStatus.Error ->
             Pill("Error: ${sendStatus.message}", scheme.errorContainer, scheme.onErrorContainer)
         else -> {
             val pendingCount = (playback as? PlayReplyUseCase.PlaybackStatus.PendingCount)?.count ?: 0
@@ -309,14 +280,14 @@ private fun StatusPill(
 
 @Composable
 private fun RecordButton(
-    status: SendMessageUseCase.SendStatus,
+    status: SendVoiceMtprotoUseCase.SendStatus,
     hasPermission: Boolean,
     onRequestPermission: () -> Unit,
     onStart: () -> Unit,
     onSend: () -> Unit,
     onCancel: () -> Unit
 ) {
-    val isRecording = status is SendMessageUseCase.SendStatus.Recording
+    val isRecording = status is SendVoiceMtprotoUseCase.SendStatus.Recording
     val scale by animateFloatAsState(
         targetValue = if (isRecording) 1.1f else 1f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
