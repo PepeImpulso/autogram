@@ -15,16 +15,19 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Mic
@@ -35,17 +38,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.lifecycleScope
 import com.autogram.app.BuildConfig
 import com.autogram.app.R
+import com.autogram.app.domain.model.Conversation
 import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.domain.usecase.SendVoiceMtprotoUseCase
@@ -102,7 +106,9 @@ class MainActivity : ComponentActivity() {
                     MainScreen(
                         onOpenSettings = { startActivity(Intent(this, SettingsActivity::class.java)) },
                         onOpenHistory = { startActivity(Intent(this, HistoryActivity::class.java)) },
-                        onOpenStats = { startActivity(Intent(this, StatsActivity::class.java)) }
+                        onOpenStats = { startActivity(Intent(this, StatsActivity::class.java)) },
+                        onManagePinned = { startActivity(Intent(this, ManagePinnedActivity::class.java)) },
+                        onManageQuickReplies = { startActivity(Intent(this, QuickRepliesSettingsActivity::class.java)) }
                     )
                 }
             }
@@ -115,6 +121,8 @@ private fun MainScreen(
     onOpenSettings: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenStats: () -> Unit,
+    onManagePinned: () -> Unit,
+    onManageQuickReplies: () -> Unit,
     viewModel: MainViewModel = hiltViewModel(),
     updateViewModel: UpdateViewModel = hiltViewModel()
 ) {
@@ -122,6 +130,9 @@ private fun MainScreen(
     val sendStatus by viewModel.sendStatus.collectAsState()
     val playback by viewModel.playbackStatus.collectAsState()
     val quickReplies by viewModel.quickReplies.collectAsState()
+    val pinned by viewModel.pinned.collectAsState()
+    val activeTargetId by viewModel.activeTargetId.collectAsState()
+    val pendingCounts by viewModel.pendingReplyCounts.collectAsState()
     val updateState by updateViewModel.state.collectAsState()
 
     LaunchedEffect(Unit) {
@@ -145,6 +156,9 @@ private fun MainScreen(
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted -> hasMicPermission = granted }
+
+    val primary = pinned.firstOrNull { it.isActive }
+    val secondary = pinned.filter { !it.isActive }
 
     Scaffold(
         bottomBar = {
@@ -182,18 +196,39 @@ private fun MainScreen(
                 .fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            HeroHeader()
-            Spacer(Modifier.height(4.dp))
-            StatusPill(sendStatus, playback)
+            HeroHeader(sendStatus = sendStatus, playback = playback)
             Spacer(Modifier.weight(1f))
-            RecordButton(
-                status = sendStatus,
-                hasPermission = hasMicPermission,
-                onRequestPermission = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
-                onStart = { viewModel.startRecording() },
-                onSend = { viewModel.stopAndSend() },
-                onCancel = { viewModel.cancelRecording() }
-            )
+
+            if (primary != null) {
+                RecordCircle(
+                    conversation = primary,
+                    size = 176.dp,
+                    isRecordingThis = activeTargetId == primary.id &&
+                        sendStatus is SendVoiceMtprotoUseCase.SendStatus.Recording,
+                    pendingCount = pendingCounts[primary.id] ?: 0,
+                    hasPermission = hasMicPermission,
+                    onRequestPermission = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
+                    onStart = { viewModel.startRecording(primary.id) },
+                    onSend = { viewModel.stopAndSend() },
+                    onCancel = { viewModel.cancelRecording() }
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    primary.targetTitle ?: "Merlin",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                primary.topicName?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                NoPrimaryState(onConfigure = onManagePinned)
+            }
+
             Spacer(Modifier.height(16.dp))
             Text(
                 "Mantén pulsado para grabar · suelta para enviar · arrastra fuera para cancelar",
@@ -201,10 +236,26 @@ private fun MainScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 32.dp)
             )
+            Spacer(Modifier.height(24.dp))
+
+            SecondaryCirclesRow(
+                circles = secondary,
+                activeTargetId = activeTargetId,
+                sendStatus = sendStatus,
+                pendingCounts = pendingCounts,
+                hasPermission = hasMicPermission,
+                onRequestPermission = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
+                onStart = { viewModel.startRecording(it.id) },
+                onSend = { viewModel.stopAndSend() },
+                onCancel = { viewModel.cancelRecording() },
+                onManage = onManagePinned
+            )
+
             Spacer(Modifier.weight(1f))
             QuickReplies(
                 items = quickReplies,
-                onSend = { viewModel.sendQuickReply(it) }
+                onSend = { viewModel.sendQuickReply(it) },
+                onEdit = onManageQuickReplies
             )
             Spacer(Modifier.height(16.dp))
         }
@@ -225,11 +276,16 @@ private fun MainScreen(
 }
 
 @Composable
-private fun HeroHeader() {
+private fun HeroHeader(
+    sendStatus: SendVoiceMtprotoUseCase.SendStatus,
+    playback: PlayReplyUseCase.PlaybackStatus
+) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(vertical = 8.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
         Image(
             painter = painterResource(R.drawable.autogram_logo),
@@ -246,6 +302,8 @@ private fun HeroHeader() {
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+        Spacer(Modifier.weight(1f))
+        StatusPill(sendStatus, playback)
     }
 }
 
@@ -293,41 +351,70 @@ private fun StatusPill(
 }
 
 @Composable
-private fun RecordButton(
-    status: SendVoiceMtprotoUseCase.SendStatus,
+private fun NoPrimaryState(onConfigure: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.padding(horizontal = 32.dp)
+    ) {
+        Text(
+            "No hay destino principal configurado.",
+            style = MaterialTheme.typography.titleMedium
+        )
+        Spacer(Modifier.height(12.dp))
+        FilledTonalButton(onClick = onConfigure) {
+            Text("Configurar accesos rápidos")
+        }
+    }
+}
+
+/**
+ * Circular record button — long-press to record, release to send, drag out to
+ * cancel. When [conversation]'s photo is set it shows as the circle background,
+ * with the mic icon overlayed on a translucent dark scrim while recording.
+ */
+@Composable
+private fun RecordCircle(
+    conversation: Conversation,
+    size: Dp,
+    isRecordingThis: Boolean,
+    pendingCount: Int,
     hasPermission: Boolean,
     onRequestPermission: () -> Unit,
     onStart: () -> Unit,
     onSend: () -> Unit,
     onCancel: () -> Unit
 ) {
-    val isRecording = status is SendVoiceMtprotoUseCase.SendStatus.Recording
     val scale by animateFloatAsState(
-        targetValue = if (isRecording) 1.1f else 1f,
+        targetValue = if (isRecordingThis) 1.1f else 1f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-        label = "mic-scale"
+        label = "circle-scale"
     )
-    val containerColor =
-        if (isRecording) MaterialTheme.colorScheme.error
-        else MaterialTheme.colorScheme.primary
-    val pulseColor = containerColor.copy(alpha = if (isRecording) 0.15f else 0f)
+    val haloColor = MaterialTheme.colorScheme.error.copy(alpha = if (isRecordingThis) 0.25f else 0f)
 
-    Box(contentAlignment = Alignment.Center) {
+    Box(modifier = Modifier.size(size + 24.dp)) {
         // Pulse halo when recording
         Box(
             modifier = Modifier
-                .size(200.dp)
-                .scale(scale * 1.15f)
+                .align(Alignment.Center)
+                .size(size + 24.dp)
+                .scale(scale * 1.08f)
                 .clip(CircleShape)
-                .background(pulseColor)
+                .background(haloColor)
         )
         Box(
             modifier = Modifier
-                .size(176.dp)
+                .align(Alignment.Center)
+                .size(size)
                 .scale(scale)
                 .clip(CircleShape)
-                .pointerInput(hasPermission) {
-                    if (!hasPermission) return@pointerInput
+                .pointerInput(hasPermission, conversation.id) {
+                    if (!hasPermission) {
+                        awaitEachGesture {
+                            awaitFirstDown()
+                            onRequestPermission()
+                        }
+                        return@pointerInput
+                    }
                     awaitEachGesture {
                         awaitFirstDown()
                         onStart()
@@ -338,7 +425,7 @@ private fun RecordButton(
                             if (change == null || !change.pressed) break
                             val pos = change.position
                             val outside = pos.x < 0 || pos.y < 0 ||
-                                pos.x > size.width || pos.y > size.height
+                                pos.x > this.size.width || pos.y > this.size.height
                             if (outside && !cancelled) {
                                 cancelled = true
                                 onCancel()
@@ -350,29 +437,116 @@ private fun RecordButton(
                 },
             contentAlignment = Alignment.Center
         ) {
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                shape = CircleShape,
-                color = containerColor,
-                shadowElevation = if (isRecording) 14.dp else 8.dp
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = if (isRecording) Icons.Filled.Close else Icons.Filled.Mic,
-                        contentDescription = if (isRecording) "Cancelar" else "Grabar",
-                        tint = Color.White,
-                        modifier = Modifier.size(72.dp)
-                    )
-                }
+            CircleAvatar(conv = conversation, size = size)
+            if (isRecordingThis) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.error.copy(alpha = 0.55f))
+                )
             }
+            Icon(
+                imageVector = if (isRecordingThis) Icons.Filled.Close else Icons.Filled.Mic,
+                contentDescription = if (isRecordingThis) "Cancelar" else "Grabar",
+                tint = Color.White,
+                modifier = Modifier.size(size * 0.4f)
+            )
+        }
+        if (pendingCount > 0) {
+            PendingBadge(
+                count = pendingCount,
+                modifier = Modifier.align(Alignment.TopEnd)
+            )
         }
     }
-    if (!hasPermission) {
-        Spacer(Modifier.height(12.dp))
-        FilledTonalButton(onClick = onRequestPermission) {
-            Icon(Icons.Filled.Mic, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Conceder permiso de micrófono")
+}
+
+@Composable
+private fun PendingBadge(count: Int, modifier: Modifier = Modifier) {
+    Surface(
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.error,
+        contentColor = MaterialTheme.colorScheme.onError,
+        shadowElevation = 2.dp,
+        modifier = modifier.defaultMinSize(minWidth = 22.dp, minHeight = 22.dp)
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 6.dp)) {
+            Text(
+                text = if (count > 99) "99+" else count.toString(),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
+private fun SecondaryCirclesRow(
+    circles: List<Conversation>,
+    activeTargetId: String?,
+    sendStatus: SendVoiceMtprotoUseCase.SendStatus,
+    pendingCounts: Map<String, Int>,
+    hasPermission: Boolean,
+    onRequestPermission: () -> Unit,
+    onStart: (Conversation) -> Unit,
+    onSend: () -> Unit,
+    onCancel: () -> Unit,
+    onManage: () -> Unit
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp)
+    ) {
+        circles.forEach { conv ->
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                RecordCircle(
+                    conversation = conv,
+                    size = 72.dp,
+                    isRecordingThis = activeTargetId == conv.id &&
+                        sendStatus is SendVoiceMtprotoUseCase.SendStatus.Recording,
+                    pendingCount = pendingCounts[conv.id] ?: 0,
+                    hasPermission = hasPermission,
+                    onRequestPermission = onRequestPermission,
+                    onStart = { onStart(conv) },
+                    onSend = onSend,
+                    onCancel = onCancel
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    conv.topicName ?: conv.targetTitle ?: "",
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1
+                )
+            }
+        }
+        // "+" button — always visible, opens the manage screen.
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier.size(72.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    IconButton(onClick = onManage) {
+                        Icon(
+                            Icons.Filled.Add,
+                            contentDescription = "Gestionar accesos rápidos",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Añadir",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -381,7 +555,8 @@ private fun RecordButton(
 @Composable
 private fun QuickReplies(
     items: List<Pair<String, String>>,
-    onSend: (String) -> Unit
+    onSend: (String) -> Unit,
+    onEdit: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -389,11 +564,24 @@ private fun QuickReplies(
             .padding(horizontal = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            "Respuestas rápidas",
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                "Respuestas rápidas",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            IconButton(onClick = onEdit, modifier = Modifier.size(28.dp)) {
+                Icon(
+                    Icons.Filled.Edit,
+                    contentDescription = "Editar respuestas rápidas",
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
         Spacer(Modifier.height(8.dp))
         FlowRow(horizontalArrangement = Arrangement.Center) {
             items.forEach { (label, text) ->
