@@ -11,6 +11,7 @@ interface MessageRepository {
     suspend fun update(message: Message)
     suspend fun deleteOlderThan(conversationId: String, timestampMs: Long)
     suspend fun getPendingRetries(limit: Int): List<Message>
+    fun observePendingReplyCounts(): Flow<Map<String, Int>>
 }
 
 interface ConversationRepository {
@@ -18,8 +19,15 @@ interface ConversationRepository {
     fun observeActive(): Flow<Conversation?>
     suspend fun getById(id: String): Conversation?
     suspend fun getAll(): List<Conversation>
+    fun observePinned(): Flow<List<Conversation>>
+    suspend fun getPinned(): List<Conversation>
     suspend fun upsert(conversation: Conversation)
     suspend fun setActive(id: String)
+    suspend fun setPinned(id: String, pinned: Boolean)
+    suspend fun setPhotoPath(id: String, path: String?)
+    suspend fun setSortOrder(id: String, order: Int)
+    suspend fun setLastRepliedAt(id: String, timestampMs: Long)
+    suspend fun delete(id: String)
 }
 
 interface SettingsRepository {

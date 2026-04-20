@@ -95,19 +95,31 @@ class TargetPickerViewModel @Inject constructor(
     private fun persistTarget(chat: ChatSummary, topic: TopicSummary?) {
         viewModelScope.launch {
             try {
-                val existing = conversationRepository.getActive()
-                val id = existing?.id ?: UUID.randomUUID().toString()
-                val conversation = Conversation(
-                    id = id,
-                    targetChatId = chat.chatId.toString(),
-                    targetTitle = chat.title,
-                    botToken = "",
-                    isActive = true,
-                    createdAt = existing?.createdAt ?: System.currentTimeMillis(),
-                    topicId = topic?.forumTopicId?.toLong(),
-                    topicName = topic?.name
-                )
-                conversationRepository.upsert(conversation)
+                // Reuse an existing pinned row if the same chat+topic is already
+                // present — just flip the active flag onto it. Otherwise create a
+                // fresh primary row and leave previously-pinned rows intact
+                // (they'll survive as non-primary circles on the main screen).
+                val topicId = topic?.forumTopicId?.toLong()
+                val match = conversationRepository.getPinned().firstOrNull {
+                    it.targetChatId == chat.chatId.toString() && it.topicId == topicId
+                }
+                val id = if (match != null) match.id else {
+                    val newId = UUID.randomUUID().toString()
+                    conversationRepository.upsert(
+                        Conversation(
+                            id = newId,
+                            targetChatId = chat.chatId.toString(),
+                            targetTitle = chat.title,
+                            botToken = "",
+                            isActive = true,
+                            createdAt = System.currentTimeMillis(),
+                            topicId = topicId,
+                            topicName = topic?.name,
+                            isPinned = true
+                        )
+                    )
+                    newId
+                }
                 conversationRepository.setActive(id)
                 _state.value = _state.value.copy(saved = true)
             } catch (e: Exception) {

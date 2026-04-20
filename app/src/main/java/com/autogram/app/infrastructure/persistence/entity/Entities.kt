@@ -50,12 +50,23 @@ data class ConversationEntity(
     val targetChatId: String,
     val targetTitle: String? = null,
     val botToken: String,
+    // `isActive` marks the primary conversation (Merlin — big circle on main screen).
+    // Exactly one row should have isActive=true at a time; the receiver listens on this one.
     val isActive: Boolean = true,
     val createdAt: Long,
     val lastMessageAt: Long? = null,
-    // Phase 2b: forum topics. null = no topic (private chat / regular group / forum default).
     val topicId: Long? = null,
-    val topicName: String? = null
+    val topicName: String? = null,
+    // Shown as a circle on the main screen. The primary is implicitly pinned.
+    val isPinned: Boolean = false,
+    // Absolute path to a user-picked background image for the circle. null = fallback tint.
+    val photoLocalPath: String? = null,
+    // Ordering of secondary (non-primary) circles on the main screen.
+    val sortOrder: Int = 0,
+    // Timestamp of the last *outgoing* message we sent to this target. Used to
+    // compute the "pending-to-reply" badge: count of INCOMING messages with
+    // createdAt > lastRepliedAt. Null = user has never replied to this circle.
+    val lastRepliedAt: Long? = null
 )
 
 @Entity(

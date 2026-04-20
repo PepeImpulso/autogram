@@ -37,12 +37,13 @@ import javax.inject.Inject
 
 /**
  * Foreground service that keeps TDLib alive and pipes incoming voice notes
- * from the user's active target (chat + optional forum topic) into
+ * from every pinned target (chat + optional forum topic) into
  * [PlayReplyUseCase] for automatic playback.
  *
- * The active target is set from [TargetPickerActivity] and is read reactively
- * here — when the user picks a different chat/topic the receive collector is
- * restarted transparently.
+ * The pinned set is read reactively — when the user adds/removes a circle the
+ * collector is re-bound with the new routing table. A single collector handles
+ * all targets so playback queueing in PlayReplyUseCase stays strictly
+ * sequential even when several circles receive at the same time.
  */
 @AndroidEntryPoint
 class MtprotoReceiverService : Service() {
@@ -101,9 +102,10 @@ class MtprotoReceiverService : Service() {
     }
 
     /**
-     * Waits for TDLib auth, then observes the active conversation and (re)starts
-     * the update collector whenever it changes — including the first time it
-     * becomes non-null.
+     * Waits for TDLib auth, then observes the pinned conversation set and
+     * (re)starts a single update collector whose routing table reflects the
+     * current pins — added when the user creates a circle, removed when they
+     * delete one.
      */
     private fun startSupervisor() {
         if (supervisorJob?.isActive == true) return
@@ -111,18 +113,21 @@ class MtprotoReceiverService : Service() {
             tdLibClient.ensureStarted()
             tdLibClient.authState.first { it is AuthState.Ready }
 
-            conversationRepository.observeActive()
+            conversationRepository.observePinned()
                 .distinctUntilChanged { old, new ->
-                    old?.targetChatId == new?.targetChatId && old?.topicId == new?.topicId
+                    // Ignore title / photo changes — only re-bind when the set of
+                    // (chatId, topicId) routing keys actually changes.
+                    old.map { it.targetChatId to it.topicId }.toSet() ==
+                        new.map { it.targetChatId to it.topicId }.toSet()
                 }
-                .collect { target ->
+                .collect { targets ->
                     activeCollectorJob?.cancel()
-                    if (target == null) {
+                    if (targets.isEmpty()) {
                         updateNotification("Configura un destino en Ajustes")
-                        Timber.i("No active conversation — receiver idle")
+                        Timber.i("No pinned conversations — receiver idle")
                         return@collect
                     }
-                    activeCollectorJob = scope.launch { collectFor(target) }
+                    activeCollectorJob = scope.launch { collectFor(targets) }
                 }
         }
     }
@@ -132,35 +137,36 @@ class MtprotoReceiverService : Service() {
         supervisorJob?.cancel(); supervisorJob = null
     }
 
-    private suspend fun collectFor(target: Conversation) {
-        val chatId = target.targetChatId.toLong()
-        val topicId = target.topicId
-        val label = buildString {
-            append(target.targetTitle ?: "chat $chatId")
-            target.topicName?.let { append(" › ").append(it) }
+    private suspend fun collectFor(targets: List<Conversation>) {
+        // Routing table: (chatId, topicId) → Conversation. topicId=null keys
+        // match messages that arrive on a non-forum chat / forum General.
+        val routing: Map<Pair<Long, Long?>, Conversation> = targets.associateBy {
+            it.targetChatId.toLong() to it.topicId
         }
-        updateNotification("Escuchando: $label")
-        Timber.i("Receiver subscribed to chatId=$chatId topicId=$topicId")
+        updateNotification(
+            if (targets.size == 1) {
+                val t = targets.first()
+                "Escuchando: ${t.targetTitle ?: "chat ${t.targetChatId}"}" +
+                    (t.topicName?.let { " › $it" } ?: "")
+            } else {
+                "Escuchando ${targets.size} accesos rápidos"
+            }
+        )
+        Timber.i("Receiver subscribed to ${targets.size} target(s)")
 
         tdLibClient.updates
             .filterIsInstance<TdApi.UpdateNewMessage>()
             .collect { update ->
                 val msg = update.message
-                if (msg.chatId != chatId || msg.isOutgoing) return@collect
-                if (!matchesTopic(msg, topicId)) return@collect
+                if (msg.isOutgoing) return@collect
+                val topicId = (msg.topicId as? TdApi.MessageTopicForum)
+                    ?.forumTopicId?.toLong()
+                val target = routing[msg.chatId to topicId] ?: return@collect
                 when (val content = msg.content) {
                     is TdApi.MessageVoiceNote -> handleVoiceNote(target, msg, content)
                     else -> Timber.d("Ignored non-voice incoming: ${content.javaClass.simpleName}")
                 }
             }
-    }
-
-    // When the user pinned a topic, only messages on that thread pass.
-    // When no topic is set, accept messages that also have no topic (regular
-    // chats / private DMs). This prevents cross-topic leakage in forums.
-    private fun matchesTopic(msg: TdApi.Message, expectedTopicId: Long?): Boolean {
-        val actual = (msg.topicId as? TdApi.MessageTopicForum)?.forumTopicId?.toLong()
-        return actual == expectedTopicId
     }
 
     private suspend fun handleVoiceNote(

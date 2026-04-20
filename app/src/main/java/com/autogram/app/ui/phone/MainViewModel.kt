@@ -3,6 +3,9 @@ package com.autogram.app.ui.phone
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.autogram.app.domain.model.Conversation
+import com.autogram.app.domain.repository.ConversationRepository
+import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.domain.repository.QuickReplyRepository
 import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.domain.usecase.SendVoiceMtprotoUseCase
@@ -19,20 +22,31 @@ class MainViewModel @Inject constructor(
     application: Application,
     private val sendMessageUseCase: SendVoiceMtprotoUseCase,
     private val playReplyUseCase: PlayReplyUseCase,
-    private val quickReplyRepository: QuickReplyRepository
+    private val quickReplyRepository: QuickReplyRepository,
+    private val conversationRepository: ConversationRepository,
+    private val messageRepository: MessageRepository
 ) : AndroidViewModel(application) {
 
     val sendStatus: StateFlow<SendVoiceMtprotoUseCase.SendStatus> = sendMessageUseCase.status
     val playbackStatus: StateFlow<PlayReplyUseCase.PlaybackStatus> = playReplyUseCase.playbackStatus
+    val activeTargetId: StateFlow<String?> = sendMessageUseCase.activeTargetId
+
+    val pinned: StateFlow<List<Conversation>> =
+        conversationRepository.observePinned()
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val pendingReplyCounts: StateFlow<Map<String, Int>> =
+        messageRepository.observePendingReplyCounts()
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
     val quickReplies: StateFlow<List<Pair<String, String>>> =
         quickReplyRepository.observeAll()
             .map { list -> list.map { it.label to it.textContent } }
             .stateIn(viewModelScope, SharingStarted.Eagerly, defaultQuickReplies())
 
-    fun startRecording() {
+    fun startRecording(targetId: String?) {
         viewModelScope.launch {
-            sendMessageUseCase.startRecording()
+            sendMessageUseCase.startRecording(targetId)
         }
     }
 
@@ -48,9 +62,9 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    fun sendQuickReply(text: String) {
+    fun sendQuickReply(text: String, targetId: String? = null) {
         viewModelScope.launch {
-            sendMessageUseCase.sendQuickReply(text)
+            sendMessageUseCase.sendQuickReply(text, targetId)
         }
     }
 

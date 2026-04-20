@@ -50,7 +50,11 @@ data class Conversation(
     val createdAt: Long = System.currentTimeMillis(),
     val lastMessageAt: Long? = null,
     val topicId: Long? = null,
-    val topicName: String? = null
+    val topicName: String? = null,
+    val isPinned: Boolean = false,
+    val photoLocalPath: String? = null,
+    val sortOrder: Int = 0,
+    val lastRepliedAt: Long? = null
 )
 
 data class QuickReply(

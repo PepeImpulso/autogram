@@ -44,9 +44,15 @@ class SendVoiceMtprotoUseCase @Inject constructor(
     private val _status = MutableStateFlow<SendStatus>(SendStatus.Idle)
     val status: StateFlow<SendStatus> = _status.asStateFlow()
 
-    @Volatile private var currentAudioFile: File? = null
+    // Id of the conversation that is currently recording/sending, so the UI can
+    // highlight the right circle when several targets are pinned.
+    private val _activeTargetId = MutableStateFlow<String?>(null)
+    val activeTargetId: StateFlow<String?> = _activeTargetId.asStateFlow()
 
-    suspend fun startRecording(): Result<Unit> {
+    @Volatile private var currentAudioFile: File? = null
+    @Volatile private var currentTargetId: String? = null
+
+    suspend fun startRecording(targetConversationId: String? = null): Result<Unit> {
         if (audioRecorder.isRecording()) {
             return Result.failure(IllegalStateException("Ya hay una grabación en curso"))
         }
@@ -55,6 +61,8 @@ class SendVoiceMtprotoUseCase @Inject constructor(
         val result = audioRecorder.start(audioFile)
         return if (result.isSuccess) {
             currentAudioFile = audioFile
+            currentTargetId = targetConversationId
+            _activeTargetId.value = targetConversationId
             _status.value = SendStatus.Recording
             Result.success(Unit)
         } else {
@@ -68,16 +76,20 @@ class SendVoiceMtprotoUseCase @Inject constructor(
         val audioFile = audioRecorder.stop()
         audioFile?.delete()
         currentAudioFile = null
+        currentTargetId = null
+        _activeTargetId.value = null
         _status.value = SendStatus.Idle
     }
 
     suspend fun stopAndSend(): Result<Long> {
         val startedFile = currentAudioFile
             ?: return Result.failure(IllegalStateException("No hay grabación en curso"))
+        val targetId = currentTargetId
 
         val audioFile = audioRecorder.stop()
         currentAudioFile = null
         if (audioFile == null || !audioFile.exists()) {
+            _activeTargetId.value = null
             _status.value = SendStatus.Error("No se pudo guardar el audio")
             return Result.failure(Exception("No se pudo guardar el audio"))
         }
@@ -86,17 +98,20 @@ class SendVoiceMtprotoUseCase @Inject constructor(
         val filter = emptyMessageFilter.validate(audioFile, minDurationMs = 500)
         if (!filter.accepted) {
             audioFile.delete()
+            _activeTargetId.value = null
             _status.value = SendStatus.Discarded(filter.reason ?: "Mensaje vacío")
             return Result.failure(Exception("Descartado: ${filter.reason}"))
         }
 
         if (tdLibClient.authState.value !is AuthState.Ready) {
+            _activeTargetId.value = null
             _status.value = SendStatus.Error("No autenticado con Telegram")
             return Result.failure(IllegalStateException("MTProto no autenticado"))
         }
 
-        val target = conversationRepository.getActive()
+        val target = resolveTarget(targetId)
         if (target == null) {
+            _activeTargetId.value = null
             _status.value = SendStatus.Error("Configura un destino en Ajustes")
             return Result.failure(IllegalStateException("No active conversation"))
         }
@@ -114,24 +129,32 @@ class SendVoiceMtprotoUseCase @Inject constructor(
                     }
                 }
             )
-            handleSendResult(sendResult)
+            val out = handleSendResult(sendResult)
+            if (out.isSuccess) {
+                conversationRepository.setLastRepliedAt(target.id, System.currentTimeMillis())
+            }
+            out
         } catch (e: Exception) {
             Timber.e(e, "MTProto send failed")
             _status.value = SendStatus.Error(e.message ?: "Error enviando")
             Result.failure(e)
+        } finally {
+            currentTargetId = null
+            _activeTargetId.value = null
         }
     }
 
-    suspend fun sendQuickReply(text: String): Result<Long> {
+    suspend fun sendQuickReply(text: String, targetConversationId: String? = null): Result<Long> {
         if (tdLibClient.authState.value !is AuthState.Ready) {
             _status.value = SendStatus.Error("No autenticado con Telegram")
             return Result.failure(IllegalStateException("MTProto no autenticado"))
         }
-        val target = conversationRepository.getActive()
+        val target = resolveTarget(targetConversationId)
         if (target == null) {
             _status.value = SendStatus.Error("Configura un destino en Ajustes")
             return Result.failure(IllegalStateException("No active conversation"))
         }
+        _activeTargetId.value = target.id
         _status.value = SendStatus.Sending
         return try {
             val sendResult = tdLibClient.send(
@@ -143,13 +166,22 @@ class SendVoiceMtprotoUseCase @Inject constructor(
                     }
                 }
             )
-            handleSendResult(sendResult)
+            val out = handleSendResult(sendResult)
+            if (out.isSuccess) {
+                conversationRepository.setLastRepliedAt(target.id, System.currentTimeMillis())
+            }
+            out
         } catch (e: Exception) {
             Timber.e(e, "MTProto text send failed")
             _status.value = SendStatus.Error(e.message ?: "Error enviando")
             Result.failure(e)
+        } finally {
+            _activeTargetId.value = null
         }
     }
+
+    private suspend fun resolveTarget(id: String?) =
+        if (id != null) conversationRepository.getById(id) else conversationRepository.getActive()
 
     fun reset() {
         _status.value = SendStatus.Idle

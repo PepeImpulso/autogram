@@ -63,6 +63,25 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 }
             )
 
+            Spacer(Modifier.height(4.dp))
+            Button(
+                onClick = {
+                    context.startActivity(android.content.Intent(context, ManagePinnedActivity::class.java))
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Gestionar accesos rápidos")
+            }
+            Spacer(Modifier.height(4.dp))
+            Button(
+                onClick = {
+                    context.startActivity(android.content.Intent(context, QuickRepliesSettingsActivity::class.java))
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Editar respuestas rápidas")
+            }
+
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
             // --- Playback Settings ---

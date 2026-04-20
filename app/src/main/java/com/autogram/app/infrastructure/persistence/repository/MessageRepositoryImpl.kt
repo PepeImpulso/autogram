@@ -46,6 +46,11 @@ class MessageRepositoryImpl @Inject constructor(
         return messageDao.getPendingRetries(limit).map { it.toDomain() }
     }
 
+    override fun observePendingReplyCounts(): Flow<Map<String, Int>> =
+        messageDao.observePendingReplyCounts().map { rows ->
+            rows.associate { it.conversationId to it.count }
+        }
+
     private fun MessageEntity.toDomain() = Message(
         id = id,
         conversationId = conversationId,

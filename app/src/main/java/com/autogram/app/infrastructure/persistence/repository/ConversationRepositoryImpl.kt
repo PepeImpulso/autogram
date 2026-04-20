@@ -14,21 +14,23 @@ class ConversationRepositoryImpl @Inject constructor(
     private val conversationDao: ConversationDao
 ) : ConversationRepository {
 
-    override suspend fun getActive(): Conversation? {
-        return conversationDao.getActive()?.toDomain()
-    }
+    override suspend fun getActive(): Conversation? =
+        conversationDao.getActive()?.toDomain()
 
-    override fun observeActive(): Flow<Conversation?> {
-        return conversationDao.observeActive().map { it?.toDomain() }
-    }
+    override fun observeActive(): Flow<Conversation?> =
+        conversationDao.observeActive().map { it?.toDomain() }
 
-    override suspend fun getById(id: String): Conversation? {
-        return conversationDao.getById(id)?.toDomain()
-    }
+    override suspend fun getById(id: String): Conversation? =
+        conversationDao.getById(id)?.toDomain()
 
-    override suspend fun getAll(): List<Conversation> {
-        return conversationDao.getAll().map { it.toDomain() }
-    }
+    override suspend fun getAll(): List<Conversation> =
+        conversationDao.getAll().map { it.toDomain() }
+
+    override fun observePinned(): Flow<List<Conversation>> =
+        conversationDao.observePinned().map { list -> list.map { it.toDomain() } }
+
+    override suspend fun getPinned(): List<Conversation> =
+        conversationDao.getPinned().map { it.toDomain() }
 
     override suspend fun upsert(conversation: Conversation) {
         conversationDao.upsert(conversation.toEntity())
@@ -39,15 +41,39 @@ class ConversationRepositoryImpl @Inject constructor(
         conversationDao.setActiveAtomic(id)
     }
 
+    override suspend fun setPinned(id: String, pinned: Boolean) {
+        conversationDao.setPinned(id, pinned)
+    }
+
+    override suspend fun setPhotoPath(id: String, path: String?) {
+        conversationDao.setPhotoPath(id, path)
+    }
+
+    override suspend fun setSortOrder(id: String, order: Int) {
+        conversationDao.setSortOrder(id, order)
+    }
+
+    override suspend fun setLastRepliedAt(id: String, timestampMs: Long) {
+        conversationDao.setLastRepliedAt(id, timestampMs)
+    }
+
+    override suspend fun delete(id: String) {
+        conversationDao.deleteById(id)
+    }
+
     private fun ConversationEntity.toDomain() = Conversation(
         id = id, targetChatId = targetChatId, targetTitle = targetTitle,
-        botToken = botToken, isActive = isActive, createdAt = createdAt, lastMessageAt = lastMessageAt,
-        topicId = topicId, topicName = topicName
+        botToken = botToken, isActive = isActive, createdAt = createdAt,
+        lastMessageAt = lastMessageAt, topicId = topicId, topicName = topicName,
+        isPinned = isPinned, photoLocalPath = photoLocalPath, sortOrder = sortOrder,
+        lastRepliedAt = lastRepliedAt
     )
 
     private fun Conversation.toEntity() = ConversationEntity(
         id = id, targetChatId = targetChatId, targetTitle = targetTitle,
-        botToken = botToken, isActive = isActive, createdAt = createdAt, lastMessageAt = lastMessageAt,
-        topicId = topicId, topicName = topicName
+        botToken = botToken, isActive = isActive, createdAt = createdAt,
+        lastMessageAt = lastMessageAt, topicId = topicId, topicName = topicName,
+        isPinned = isPinned, photoLocalPath = photoLocalPath, sortOrder = sortOrder,
+        lastRepliedAt = lastRepliedAt
     )
 }

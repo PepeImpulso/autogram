@@ -38,7 +38,25 @@ interface MessageDao {
 
     @Query("SELECT COUNT(*) FROM messages WHERE state = 'PENDING_PLAYBACK'")
     fun pendingPlaybackCount(): Flow<Int>
+
+    // Badge counter: incoming messages received since the user last replied to
+    // that conversation. Joins with conversations.lastRepliedAt; NULL means the
+    // user has never replied, so every incoming still counts.
+    @Query("""
+        SELECT m.conversationId AS conversationId, COUNT(*) AS count
+        FROM messages m
+        INNER JOIN conversations c ON c.id = m.conversationId
+        WHERE m.direction = 'INCOMING'
+          AND m.createdAt > COALESCE(c.lastRepliedAt, 0)
+        GROUP BY m.conversationId
+    """)
+    fun observePendingReplyCounts(): Flow<List<PendingReplyCountRow>>
 }
+
+data class PendingReplyCountRow(
+    val conversationId: String,
+    val count: Int
+)
 
 @Dao
 interface ConversationDao {
@@ -54,6 +72,12 @@ interface ConversationDao {
     @Query("SELECT * FROM conversations ORDER BY createdAt ASC")
     suspend fun getAll(): List<ConversationEntity>
 
+    @Query("SELECT * FROM conversations WHERE isPinned = 1 OR isActive = 1 ORDER BY isActive DESC, sortOrder ASC, createdAt ASC")
+    fun observePinned(): Flow<List<ConversationEntity>>
+
+    @Query("SELECT * FROM conversations WHERE isPinned = 1 OR isActive = 1 ORDER BY isActive DESC, sortOrder ASC, createdAt ASC")
+    suspend fun getPinned(): List<ConversationEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(conversation: ConversationEntity)
 
@@ -62,6 +86,21 @@ interface ConversationDao {
 
     @Query("UPDATE conversations SET isActive = 1 WHERE id = :id")
     suspend fun setActive(id: String)
+
+    @Query("UPDATE conversations SET isPinned = :pinned WHERE id = :id")
+    suspend fun setPinned(id: String, pinned: Boolean)
+
+    @Query("UPDATE conversations SET photoLocalPath = :path WHERE id = :id")
+    suspend fun setPhotoPath(id: String, path: String?)
+
+    @Query("UPDATE conversations SET sortOrder = :order WHERE id = :id")
+    suspend fun setSortOrder(id: String, order: Int)
+
+    @Query("UPDATE conversations SET lastRepliedAt = :ts WHERE id = :id")
+    suspend fun setLastRepliedAt(id: String, ts: Long)
+
+    @Query("DELETE FROM conversations WHERE id = :id")
+    suspend fun deleteById(id: String)
 
     // BUG-20: Atomic set active operation
     @Transaction
