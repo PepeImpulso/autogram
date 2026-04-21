@@ -10,6 +10,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Battery4Bar
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.History
@@ -188,6 +189,57 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
             ) {
                 UpdatesRow()
             }
+
+            // Only expose the Sentry-test affordance when a DSN is actually
+            // baked in — users on dev builds without Sentry don't need it.
+            if (com.autogram.app.BuildConfig.SENTRY_DSN.isNotBlank()) {
+                SectionCard(
+                    icon = Icons.Filled.BugReport,
+                    title = stringResource(R.string.settings_diagnostics_section)
+                ) {
+                    SentryTestRow()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SentryTestRow() {
+    val ctx = LocalContext.current
+    var sentAtMs by remember { mutableStateOf(0L) }
+    val justSent = sentAtMs != 0L && System.currentTimeMillis() - sentAtMs < 3000
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable {
+                    io.sentry.Sentry.captureException(
+                        RuntimeException("Test event from Ajustes → Diagnóstico")
+                    )
+                    sentAtMs = System.currentTimeMillis()
+                }
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.settings_diagnostics_test_sentry),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Text(
+                    if (justSent) stringResource(R.string.settings_diagnostics_test_sent)
+                    else stringResource(R.string.settings_diagnostics_test_sentry_sub),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (justSent) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Icon(
+                Icons.Filled.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

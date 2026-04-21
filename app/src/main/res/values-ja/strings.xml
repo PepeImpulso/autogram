@@ -109,6 +109,11 @@
     <string name="settings_battery_button_request">バックグラウンド実行を許可</string>
     <string name="settings_battery_button_already">バッテリー例外は既に許可済み</string>
 
+    <string name="settings_diagnostics_section">診断</string>
+    <string name="settings_diagnostics_test_sentry">Sentry にテストイベントを送信</string>
+    <string name="settings_diagnostics_test_sentry_sub">クラッシュではありません。レポートが機能しているか確認できます。</string>
+    <string name="settings_diagnostics_test_sent">送信完了 ✓</string>
+
     <string name="settings_updates_section">アップデート</string>
     <string name="settings_updates_current_version">インストール済みバージョン:%s</string>
     <string name="settings_updates_check">アップデートを確認</string>

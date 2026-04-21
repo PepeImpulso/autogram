@@ -118,6 +118,11 @@
     <string name="settings_battery_button_already">Excepción de batería ya concedida</string>
 
     <!-- Updates -->
+    <string name="settings_diagnostics_section">Diagnóstico</string>
+    <string name="settings_diagnostics_test_sentry">Enviar evento de prueba a Sentry</string>
+    <string name="settings_diagnostics_test_sentry_sub">No es un crash. Sirve para verificar que el reporting funciona.</string>
+    <string name="settings_diagnostics_test_sent">Evento enviado ✓</string>
+
     <string name="settings_updates_section">Actualizaciones</string>
     <string name="settings_updates_current_version">Versión instalada: %s</string>
     <string name="settings_updates_check">Buscar actualizaciones</string>

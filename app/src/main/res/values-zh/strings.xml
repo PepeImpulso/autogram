@@ -109,6 +109,11 @@
     <string name="settings_battery_button_request">允许后台运行</string>
     <string name="settings_battery_button_already">已授予电池例外</string>
 
+    <string name="settings_diagnostics_section">诊断</string>
+    <string name="settings_diagnostics_test_sentry">向 Sentry 发送测试事件</string>
+    <string name="settings_diagnostics_test_sentry_sub">非崩溃。用于验证崩溃上报是否正常。</string>
+    <string name="settings_diagnostics_test_sent">已发送 ✓</string>
+
     <string name="settings_updates_section">更新</string>
     <string name="settings_updates_current_version">已安装版本:%s</string>
     <string name="settings_updates_check">检查更新</string>

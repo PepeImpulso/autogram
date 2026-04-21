@@ -110,6 +110,11 @@
     <string name="settings_battery_button_request">Allow background execution</string>
     <string name="settings_battery_button_already">Battery exception already granted</string>
 
+    <string name="settings_diagnostics_section">Diagnostics</string>
+    <string name="settings_diagnostics_test_sentry">Send test event to Sentry</string>
+    <string name="settings_diagnostics_test_sentry_sub">Non-fatal. Verifies crash reporting is wired up.</string>
+    <string name="settings_diagnostics_test_sent">Test event sent ✓</string>
+
     <string name="settings_updates_section">Updates</string>
     <string name="settings_updates_current_version">Installed version: %s</string>
     <string name="settings_updates_check">Check for updates</string>

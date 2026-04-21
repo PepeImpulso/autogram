@@ -110,6 +110,11 @@
     <string name="settings_battery_button_request">Hintergrundausführung erlauben</string>
     <string name="settings_battery_button_already">Akku-Ausnahme bereits erteilt</string>
 
+    <string name="settings_diagnostics_section">Diagnose</string>
+    <string name="settings_diagnostics_test_sentry">Test-Event an Sentry senden</string>
+    <string name="settings_diagnostics_test_sentry_sub">Kein Crash. Prüft, ob das Reporting funktioniert.</string>
+    <string name="settings_diagnostics_test_sent">Event gesendet ✓</string>
+
     <string name="settings_updates_section">Updates</string>
     <string name="settings_updates_current_version">Installierte Version: %s</string>
     <string name="settings_updates_check">Nach Updates suchen</string>
