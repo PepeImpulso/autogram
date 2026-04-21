@@ -55,7 +55,7 @@ import dagger.hilt.android.AndroidEntryPoint
  * Separate from [TargetPickerActivity] which picks the single *primary* target.
  */
 @AndroidEntryPoint
-class PinnedPickerActivity : ComponentActivity() {
+class PinnedPickerActivity : BaseLocaleActivity() {
 
     private val viewModel: PinnedPickerViewModel by viewModels()
 

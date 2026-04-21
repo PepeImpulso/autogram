@@ -31,7 +31,7 @@ import dagger.hilt.android.AndroidEntryPoint
  * phone but before code) resumes automatically on the right step.
  */
 @AndroidEntryPoint
-class TelegramLoginActivity : ComponentActivity() {
+class TelegramLoginActivity : BaseLocaleActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {

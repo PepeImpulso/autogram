@@ -50,7 +50,7 @@ import dagger.hilt.android.AndroidEntryPoint
  *            selection persists immediately at Step 1.
  */
 @AndroidEntryPoint
-class TargetPickerActivity : ComponentActivity() {
+class TargetPickerActivity : BaseLocaleActivity() {
 
     private val viewModel: TargetPickerViewModel by viewModels()
 

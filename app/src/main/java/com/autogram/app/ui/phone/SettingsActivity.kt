@@ -26,7 +26,7 @@ import dagger.hilt.android.AndroidEntryPoint
  * Permite configurar el token del bot, el chat ID y otros ajustes.
  */
 @AndroidEntryPoint
-class SettingsActivity : ComponentActivity() {
+class SettingsActivity : BaseLocaleActivity() {
     private val viewModel: SettingsViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {

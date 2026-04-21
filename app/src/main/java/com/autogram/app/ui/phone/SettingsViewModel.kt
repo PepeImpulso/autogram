@@ -7,6 +7,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.SettingsRepository
+import com.autogram.app.infrastructure.platform.LocaleHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -87,12 +88,16 @@ class SettingsViewModel @Inject constructor(
 
     fun updateLanguage(tag: String) {
         _uiState.value = _uiState.value.copy(languageTag = tag)
+        // Persist: LocaleHelper's SharedPreferences is the source of truth for
+        // `attachBaseContext` (our non-AppCompat activities); the DB mirror is
+        // just so the row is consistent if someone inspects it.
+        LocaleHelper.saveTag(getApplication(), tag)
         viewModelScope.launch {
             val settings = settingsRepository.get()
             settingsRepository.update(settings.copy(languageTag = tag))
         }
-        // Apply immediately so the activity recreates with the new strings.
-        // Empty tag → follow system (clearing the per-app override).
+        // Tell AppCompat too — this integrates with the system per-app language
+        // picker on API 33+ and keeps the backport SharedPreferences in sync.
         val locales = if (tag.isBlank()) LocaleListCompat.getEmptyLocaleList()
                       else LocaleListCompat.forLanguageTags(tag)
         AppCompatDelegate.setApplicationLocales(locales)

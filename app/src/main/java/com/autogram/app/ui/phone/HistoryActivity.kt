@@ -27,7 +27,7 @@ import java.util.*
  * Actividad de historial de mensajes.
  */
 @AndroidEntryPoint
-class HistoryActivity : ComponentActivity() {
+class HistoryActivity : BaseLocaleActivity() {
     private val viewModel: HistoryViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {

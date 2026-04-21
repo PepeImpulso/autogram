@@ -1,11 +1,13 @@
 package com.autogram.app
 
 import android.app.Application
+import android.content.Context
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import com.autogram.app.domain.repository.SettingsRepository
+import com.autogram.app.infrastructure.platform.LocaleHelper
 import com.autogram.app.infrastructure.platform.PendingReplyNotifier
 import com.autogram.app.infrastructure.retry.RetentionCleanupWorker
 import dagger.hilt.android.HiltAndroidApp
@@ -23,6 +25,13 @@ class AutogramApplication : Application(), Configuration.Provider {
     @Inject lateinit var settingsRepository: SettingsRepository
 
     private val appScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+
+    override fun attachBaseContext(base: Context) {
+        // Apply the saved language *synchronously* via SharedPreferences
+        // before any resource lookup happens. The DB-backed settings row is
+        // mirrored to LocaleHelper prefs so we never need to block on Room.
+        super.attachBaseContext(LocaleHelper.wrap(base))
+    }
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -53,11 +62,19 @@ class AutogramApplication : Application(), Configuration.Provider {
     }
 
     private suspend fun applyStoredLocale() {
-        val tag = runCatching { settingsRepository.get().languageTag }.getOrNull().orEmpty()
-        val locales = if (tag.isBlank()) {
+        val dbTag = runCatching { settingsRepository.get().languageTag }.getOrNull().orEmpty()
+        val prefsTag = LocaleHelper.savedTag(this)
+        // First launch after upgrading from a version without LocaleHelper prefs:
+        // the DB still holds the choice but the SharedPreferences mirror is empty.
+        // Seed it so the next attachBaseContext picks up the saved language.
+        if (dbTag.isNotBlank() && prefsTag.isBlank()) {
+            LocaleHelper.saveTag(this, dbTag)
+        }
+        val effective = if (dbTag.isNotBlank()) dbTag else prefsTag
+        val locales = if (effective.isBlank()) {
             LocaleListCompat.getEmptyLocaleList()  // follow system
         } else {
-            LocaleListCompat.forLanguageTags(tag)
+            LocaleListCompat.forLanguageTags(effective)
         }
         // Must be called from the main thread per AppCompat's contract.
         android.os.Handler(mainLooper).post {

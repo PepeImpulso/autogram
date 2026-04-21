@@ -137,7 +137,13 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
             ) {
                 LanguageSelector(
                     currentTag = state.languageTag,
-                    onSelect = viewModel::updateLanguage
+                    onSelect = { tag ->
+                        viewModel.updateLanguage(tag)
+                        // Force the current activity to redraw with the new locale;
+                        // BaseLocaleActivity.attachBaseContext reads from LocaleHelper
+                        // prefs on the rebuilt instance.
+                        (context as? android.app.Activity)?.recreate()
+                    }
                 )
             }
 

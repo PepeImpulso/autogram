@@ -36,7 +36,7 @@ import java.util.UUID
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class QuickRepliesSettingsActivity : ComponentActivity() {
+class QuickRepliesSettingsActivity : BaseLocaleActivity() {
 
     private val viewModel: QuickRepliesSettingsViewModel by viewModels()
 

@@ -62,7 +62,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class MainActivity : ComponentActivity() {
+class MainActivity : BaseLocaleActivity() {
 
     @Inject lateinit var settingsRepository: SettingsRepository
     @Inject lateinit var tdLibClient: TdLibClient

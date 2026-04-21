@@ -71,7 +71,7 @@ import java.io.File
  * eliminar círculos secundarios.
  */
 @AndroidEntryPoint
-class ManagePinnedActivity : ComponentActivity() {
+class ManagePinnedActivity : BaseLocaleActivity() {
 
     private val viewModel: ManagePinnedViewModel by viewModels()
 
