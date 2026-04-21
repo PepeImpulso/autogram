@@ -135,6 +135,20 @@
                 android:value="true" />
         </service>
 
+        <!-- Disable Sentry's auto-init ContentProvider. It runs before
+             Application.onCreate, reads DSN from manifest meta-data, and
+             crashes the process if the DSN string is literally empty.
+             We init Sentry manually in AutogramApplication so we can
+             gracefully skip when SENTRY_DSN is absent (dev builds). -->
+        <provider
+            android:name="io.sentry.android.core.SentryInitProvider"
+            android:authorities="${applicationId}.SentryInitProvider"
+            tools:node="remove" />
+        <provider
+            android:name="io.sentry.android.core.SentryPerformanceProvider"
+            android:authorities="${applicationId}.SentryPerformanceProvider"
+            tools:node="remove" />
+
         <!-- Disable default WorkManager init: we provide Configuration.Provider in AutogramApplication for Hilt -->
         <provider
             android:name="androidx.startup.InitializationProvider"
