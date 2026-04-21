@@ -133,5 +133,6 @@ data class SettingsEntity(
     val autoPlayReplies: Boolean = true,
     val playbackSpeed: Float = 1.25f,
     val recordingCuesVolume: Int = 50,
-    val languageTag: String = ""
+    val languageTag: String = "",
+    val autoDeletePlayed: Boolean = true
 )

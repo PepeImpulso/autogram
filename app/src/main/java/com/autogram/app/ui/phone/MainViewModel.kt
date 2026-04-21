@@ -39,6 +39,10 @@ class MainViewModel @Inject constructor(
         messageRepository.observePendingReplyCounts()
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
+    val outboxCount: StateFlow<Int> =
+        messageRepository.observeOutboxCount()
+            .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+
     val quickReplies: StateFlow<List<Pair<String, String>>> =
         quickReplyRepository.observeAll()
             .map { list -> list.map { it.label to it.textContent } }

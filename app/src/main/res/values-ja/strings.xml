@@ -34,6 +34,8 @@
     <string name="status_error">エラー ✗</string>
     <string name="status_error_generic">エラー:%s</string>
     <string name="status_pending_count">%d 件の保留メッセージ</string>
+    <string name="status_queued_offline">オフラインでキュー中</string>
+    <string name="status_outbox_count">%d 件キュー中 · 接続時に送信</string>
     <string name="status_playing">返信を再生中…</string>
 
     <string name="nav_home">ホーム</string>
@@ -90,6 +92,8 @@
     <string name="settings_playback_speed">再生速度</string>
     <string name="settings_recording_cues">録音音</string>
     <string name="settings_recording_cues_off">オフ</string>
+    <string name="settings_auto_delete_played">再生後に音声を削除</string>
+    <string name="settings_auto_delete_played_sub">容量を節約。文字起こし（ある場合）は保持されます。</string>
     <string name="settings_retention">履歴保持(日)</string>
     <string name="settings_min_duration">最小録音時間</string>
     <string name="settings_min_duration_value">%d ms</string>

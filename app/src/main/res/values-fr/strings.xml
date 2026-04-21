@@ -35,6 +35,8 @@
     <string name="status_error">Erreur ✗</string>
     <string name="status_error_generic">Erreur : %s</string>
     <string name="status_pending_count">%d messages en attente</string>
+    <string name="status_queued_offline">En attente · hors ligne</string>
+    <string name="status_outbox_count">%d en attente · envoyés à la reconnexion</string>
     <string name="status_playing">Lecture de la réponse…</string>
 
     <string name="nav_home">Accueil</string>
@@ -91,6 +93,8 @@
     <string name="settings_playback_speed">Vitesse de lecture</string>
     <string name="settings_recording_cues">Son d\'enregistrement</string>
     <string name="settings_recording_cues_off">Désactivé</string>
+    <string name="settings_auto_delete_played">Supprimer les audios après lecture</string>
+    <string name="settings_auto_delete_played_sub">Économise de l\'espace. La transcription (quand disponible) est conservée.</string>
     <string name="settings_retention">Conservation de l\'historique (jours)</string>
     <string name="settings_min_duration">Durée minimum d\'enregistrement</string>
     <string name="settings_min_duration_value">%d ms</string>

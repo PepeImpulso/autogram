@@ -7,6 +7,7 @@ enum class MessageState {
     VALIDATING,
     DISCARDED,
     QUEUED,
+    QUEUED_OFFLINE,        // network/TDLib unavailable when the user hit send; retry when back
     SENDING,
     SENT,
     FAILED,
@@ -81,7 +82,10 @@ data class AppSettings(
     // Volume of the start/end recording beeps, 0..100. 0 disables them entirely.
     val recordingCuesVolume: Int = 50,
     // BCP-47 language tag for the UI. Empty string means "follow system".
-    val languageTag: String = ""
+    val languageTag: String = "",
+    // Delete the .ogg file of an incoming voice note right after it finishes
+    // playing. Saves storage; default on because most users want ephemeral.
+    val autoDeletePlayed: Boolean = true
 )
 
 data class DeliveryAttempt(

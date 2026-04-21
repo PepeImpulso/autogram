@@ -10,6 +10,8 @@ import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.infrastructure.audio.AudioRecorder
 import com.autogram.app.infrastructure.audio.EmptyMessageFilter
 import com.autogram.app.infrastructure.audio.RecordingSounds
+import com.autogram.app.infrastructure.platform.ConnectivityObserver
+import com.autogram.app.infrastructure.retry.RetryWorker
 import com.autogram.app.infrastructure.telegram.mtproto.AuthState
 import com.autogram.app.infrastructure.telegram.mtproto.TdLibClient
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -36,7 +38,8 @@ class SendVoiceMtprotoUseCase @Inject constructor(
     private val conversationRepository: ConversationRepository,
     private val messageRepository: MessageRepository,
     private val playReplyUseCase: PlayReplyUseCase,
-    private val recordingSounds: RecordingSounds
+    private val recordingSounds: RecordingSounds,
+    private val connectivityObserver: ConnectivityObserver
 ) {
 
     sealed class SendStatus {
@@ -45,6 +48,9 @@ class SendVoiceMtprotoUseCase @Inject constructor(
         object Validating : SendStatus()
         object Sending : SendStatus()
         data class Sent(val telegramMessageId: Long) : SendStatus()
+        // The user's message is saved — we couldn't reach Telegram (offline / not
+        // authenticated) so it'll be retried by RetryWorker when conditions allow.
+        object QueuedOffline : SendStatus()
         data class Error(val message: String) : SendStatus()
         data class Discarded(val reason: String) : SendStatus()
     }
@@ -118,12 +124,6 @@ class SendVoiceMtprotoUseCase @Inject constructor(
             return Result.failure(Exception("Descartado: ${filter.reason}"))
         }
 
-        if (tdLibClient.authState.value !is AuthState.Ready) {
-            _activeTargetId.value = null
-            _status.value = SendStatus.Error("No autenticado con Telegram")
-            return Result.failure(IllegalStateException("MTProto no autenticado"))
-        }
-
         val target = resolveTarget(targetId)
         if (target == null) {
             _activeTargetId.value = null
@@ -131,8 +131,29 @@ class SendVoiceMtprotoUseCase @Inject constructor(
             return Result.failure(IllegalStateException("No active conversation"))
         }
 
-        _status.value = SendStatus.Sending
         val durationMs = emptyMessageFilter.getDurationMs(audioFile) ?: 0L
+
+        // Offline path: if TDLib isn't authenticated OR there's no validated
+        // internet, we persist the audio in a permanent location and mark the
+        // message QUEUED_OFFLINE. RetryWorker (network-constrained) will pick
+        // it up when conditions allow and call TDLib from there.
+        val authReady = tdLibClient.authState.value is AuthState.Ready
+        val online = connectivityObserver.isOnline()
+        if (!authReady || !online) {
+            val persistedPath = moveToPersistentQueue(audioFile)
+            persistQueuedOffline(
+                target = target,
+                audioFilePath = persistedPath,
+                audioDurationMs = durationMs,
+                textContent = null
+            )
+            currentTargetId = null
+            _activeTargetId.value = null
+            _status.value = SendStatus.QueuedOffline
+            return Result.success(-1L)
+        }
+
+        _status.value = SendStatus.Sending
         return try {
             val chatId = target.targetChatId.toLong()
             val sendResult = tdLibClient.send(
@@ -172,14 +193,24 @@ class SendVoiceMtprotoUseCase @Inject constructor(
     }
 
     suspend fun sendQuickReply(text: String, targetConversationId: String? = null): Result<Long> {
-        if (tdLibClient.authState.value !is AuthState.Ready) {
-            _status.value = SendStatus.Error("No autenticado con Telegram")
-            return Result.failure(IllegalStateException("MTProto no autenticado"))
-        }
         val target = resolveTarget(targetConversationId)
         if (target == null) {
             _status.value = SendStatus.Error("Configura un destino en Ajustes")
             return Result.failure(IllegalStateException("No active conversation"))
+        }
+        // Offline path (same as voice): queue for RetryWorker instead of erroring out.
+        val authReady = tdLibClient.authState.value is AuthState.Ready
+        val online = connectivityObserver.isOnline()
+        if (!authReady || !online) {
+            persistQueuedOffline(
+                target = target,
+                audioFilePath = null,
+                audioDurationMs = 0L,
+                textContent = text
+            )
+            _activeTargetId.value = null
+            _status.value = SendStatus.QueuedOffline
+            return Result.success(-1L)
         }
         _activeTargetId.value = target.id
         _status.value = SendStatus.Sending
@@ -207,6 +238,55 @@ class SendVoiceMtprotoUseCase @Inject constructor(
         } finally {
             _activeTargetId.value = null
         }
+    }
+
+    /**
+     * Move a freshly recorded audio file from cacheDir into a permanent
+     * outbox under filesDir. cacheDir is eviction-eligible under memory
+     * pressure, which would eat queued voice notes while the user is
+     * offline — we can't risk that.
+     */
+    private fun moveToPersistentQueue(src: File): String {
+        val outbox = File(context.filesDir, "audio_outbox").apply { mkdirs() }
+        val dst = File(outbox, src.name)
+        return try {
+            if (src.renameTo(dst)) dst.absolutePath
+            else {
+                src.copyTo(dst, overwrite = true)
+                src.delete()
+                dst.absolutePath
+            }
+        } catch (e: Exception) {
+            Timber.w(e, "moveToPersistentQueue failed; keeping cacheDir path")
+            src.absolutePath
+        }
+    }
+
+    /**
+     * Insert the outgoing message with state=QUEUED_OFFLINE so RetryWorker
+     * picks it up when network comes back. Used for both voice and text.
+     */
+    private suspend fun persistQueuedOffline(
+        target: Conversation,
+        audioFilePath: String?,
+        audioDurationMs: Long,
+        textContent: String?
+    ) {
+        val now = System.currentTimeMillis()
+        val message = Message(
+            id = UUID.randomUUID().toString(),
+            conversationId = target.id,
+            direction = MessageDirection.OUTGOING,
+            state = MessageState.QUEUED_OFFLINE,
+            audioFilePath = audioFilePath,
+            audioDurationMs = if (audioDurationMs > 0) audioDurationMs else null,
+            textContent = textContent,
+            createdAt = now
+        )
+        runCatching { messageRepository.insert(message) }
+            .onFailure { Timber.e(it, "Failed to persist QUEUED_OFFLINE message") }
+        // Kick the worker; it'll wait for network if needed, then drain the outbox.
+        RetryWorker.enqueueOnce(context)
     }
 
     /**

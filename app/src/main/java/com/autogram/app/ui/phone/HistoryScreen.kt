@@ -166,6 +166,7 @@ private fun stateLabel(state: MessageState): String = when (state) {
     MessageState.VALIDATING -> "Validando..."
     MessageState.DISCARDED -> "Descartado"
     MessageState.QUEUED -> "En cola"
+    MessageState.QUEUED_OFFLINE -> "En cola (sin conexión)"
     MessageState.SENDING -> "Enviando..."
     MessageState.SENT -> "Enviado ✓"
     MessageState.FAILED -> "Error ✗"

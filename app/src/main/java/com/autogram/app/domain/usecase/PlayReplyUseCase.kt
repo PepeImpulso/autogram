@@ -94,10 +94,18 @@ class PlayReplyUseCase @Inject constructor(
             // BUG-51 FIX: Check result to mark PLAYED or FAILED correctly
             playbackScope.launch {
                 if (playResult.isSuccess) {
-                    messageRepository.update(message.copy(
+                    val played = message.copy(
                         state = MessageState.PLAYED,
-                        playedAt = System.currentTimeMillis()
-                    ))
+                        playedAt = System.currentTimeMillis(),
+                        // If auto-delete is on, drop the file pointer too so we
+                        // don't show a stale path in History.
+                        audioFilePath = if (settings.autoDeletePlayed) null else message.audioFilePath
+                    )
+                    messageRepository.update(played)
+                    if (settings.autoDeletePlayed) {
+                        runCatching { audioFile.delete() }
+                            .onFailure { Timber.w(it, "Failed to delete played audio ${audioFile.absolutePath}") }
+                    }
                 } else {
                     Timber.e(playResult.exceptionOrNull(), "Error reproduciendo mensaje ${message.id}")
                     messageRepository.update(message.copy(

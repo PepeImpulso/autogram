@@ -38,6 +38,8 @@
     <string name="status_error">Error ✗</string>
     <string name="status_error_generic">Error: %s</string>
     <string name="status_pending_count">%d mensajes pendientes</string>
+    <string name="status_queued_offline">En cola · sin conexión</string>
+    <string name="status_outbox_count">%d en cola · se enviarán al reconectar</string>
     <string name="status_playing">Reproduciendo respuesta…</string>
 
     <!-- Main screen -->
@@ -98,6 +100,8 @@
     <string name="settings_playback_speed">Velocidad de reproducción</string>
     <string name="settings_recording_cues">Sonido al grabar</string>
     <string name="settings_recording_cues_off">Desactivado</string>
+    <string name="settings_auto_delete_played">Borrar audios tras reproducirlos</string>
+    <string name="settings_auto_delete_played_sub">Ahorra espacio. La transcripción (cuando exista) se mantiene.</string>
     <string name="settings_retention">Retención de historial (días)</string>
     <string name="settings_min_duration">Duración mínima de grabación</string>
     <string name="settings_min_duration_value">%d ms</string>

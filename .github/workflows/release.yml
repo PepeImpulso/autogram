@@ -62,10 +62,12 @@ jobs:
         env:
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
           cat > local.properties <<EOF
           telegram.apiId=$TELEGRAM_API_ID
           telegram.apiHash=$TELEGRAM_API_HASH
+          sentry.dsn=$SENTRY_DSN
           EOF
 
       - name: Gradle assembleRelease

@@ -128,6 +128,13 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                     valueRange = 0f..100f,
                     steps = 19
                 )
+                SettingsDivider()
+                SwitchRow(
+                    label = stringResource(R.string.settings_auto_delete_played),
+                    supporting = stringResource(R.string.settings_auto_delete_played_sub),
+                    checked = state.autoDeletePlayed,
+                    onCheckedChange = viewModel::updateAutoDeletePlayed
+                )
             }
 
             SectionCard(

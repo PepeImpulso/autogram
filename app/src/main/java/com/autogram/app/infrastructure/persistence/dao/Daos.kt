@@ -33,6 +33,27 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE state = 'FAILED' AND retryCount < :maxRetries LIMIT :limit")
     suspend fun getPendingRetries(limit: Int, maxRetries: Int = 3): List<MessageEntity>
 
+    // Outbox: both states that should be retried when the network/TDLib comes
+    // back — offline queue + transient failures. Ordered oldest-first so the
+    // user sees replies land in the order they tried to send them.
+    @Query("""
+        SELECT * FROM messages
+        WHERE (state = 'QUEUED_OFFLINE'
+               OR (state = 'FAILED' AND retryCount < :maxRetries))
+          AND direction = 'OUTGOING'
+        ORDER BY createdAt ASC
+        LIMIT :limit
+    """)
+    suspend fun getOutbox(limit: Int = 50, maxRetries: Int = 3): List<MessageEntity>
+
+    // Live count for the UI pill: how many outgoing messages are waiting to go out.
+    @Query("""
+        SELECT COUNT(*) FROM messages
+        WHERE direction = 'OUTGOING'
+          AND (state = 'QUEUED_OFFLINE' OR state = 'FAILED')
+    """)
+    fun observeOutboxCount(): Flow<Int>
+
     // BUG-41 FIX: Removed broken query (MessageEntity has no enqueuedAt column).
     // Pending playbacks are tracked in PendingPlaybackDao instead.
 

@@ -46,6 +46,11 @@ class MessageRepositoryImpl @Inject constructor(
         return messageDao.getPendingRetries(limit).map { it.toDomain() }
     }
 
+    override suspend fun getOutbox(limit: Int, maxRetries: Int): List<Message> =
+        messageDao.getOutbox(limit, maxRetries).map { it.toDomain() }
+
+    override fun observeOutboxCount(): Flow<Int> = messageDao.observeOutboxCount()
+
     override fun observePendingReplyCounts(): Flow<Map<String, Int>> =
         messageDao.observePendingReplyCounts().map { rows ->
             rows.associate { it.conversationId to it.count }

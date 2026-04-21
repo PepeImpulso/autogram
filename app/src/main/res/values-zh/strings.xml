@@ -34,6 +34,8 @@
     <string name="status_error">错误 ✗</string>
     <string name="status_error_generic">错误：%s</string>
     <string name="status_pending_count">%d 条待播放</string>
+    <string name="status_queued_offline">离线排队中</string>
+    <string name="status_outbox_count">%d 条排队中 · 联网后发送</string>
     <string name="status_playing">播放回复中…</string>
 
     <string name="nav_home">主页</string>
@@ -90,6 +92,8 @@
     <string name="settings_playback_speed">播放速度</string>
     <string name="settings_recording_cues">录音提示音</string>
     <string name="settings_recording_cues_off">关闭</string>
+    <string name="settings_auto_delete_played">播放后删除音频</string>
+    <string name="settings_auto_delete_played_sub">节省空间。转录内容（如有）会保留。</string>
     <string name="settings_retention">历史保留(天)</string>
     <string name="settings_min_duration">最短录音时长</string>
     <string name="settings_min_duration_value">%d 毫秒</string>

@@ -11,6 +11,8 @@ interface MessageRepository {
     suspend fun update(message: Message)
     suspend fun deleteOlderThan(conversationId: String, timestampMs: Long)
     suspend fun getPendingRetries(limit: Int): List<Message>
+    suspend fun getOutbox(limit: Int = 50, maxRetries: Int = 3): List<Message>
+    fun observeOutboxCount(): Flow<Int>
     fun observePendingReplyCounts(): Flow<Map<String, Int>>
 }
 

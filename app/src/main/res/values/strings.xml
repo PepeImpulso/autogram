@@ -35,6 +35,8 @@
     <string name="status_error">Error ✗</string>
     <string name="status_error_generic">Error: %s</string>
     <string name="status_pending_count">%d pending messages</string>
+    <string name="status_queued_offline">Queued offline</string>
+    <string name="status_outbox_count">%d queued · sent when online</string>
     <string name="status_playing">Playing reply…</string>
 
     <string name="nav_home">Home</string>
@@ -91,6 +93,8 @@
     <string name="settings_playback_speed">Playback speed</string>
     <string name="settings_recording_cues">Recording sound</string>
     <string name="settings_recording_cues_off">Off</string>
+    <string name="settings_auto_delete_played">Delete audios after playing</string>
+    <string name="settings_auto_delete_played_sub">Saves space. Played messages keep their transcript (when available).</string>
     <string name="settings_retention">History retention (days)</string>
     <string name="settings_min_duration">Minimum recording duration</string>
     <string name="settings_min_duration_value">%d ms</string>

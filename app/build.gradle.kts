@@ -29,6 +29,8 @@ val localProperties = Properties().apply {
 }
 val telegramApiId: String = localProperties.getProperty("telegram.apiId", "0")
 val telegramApiHash: String = localProperties.getProperty("telegram.apiHash", "")
+// Sentry DSN. Empty string disables crash reporting at runtime (see AutogramApplication).
+val sentryDsn: String = localProperties.getProperty("sentry.dsn", "")
 
 android {
     namespace = "com.autogram.app"
@@ -38,13 +40,14 @@ android {
         applicationId = "com.autogram.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 20
-        versionName = "1.3.2"
+        versionCode = 21
+        versionName = "1.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("int", "TELEGRAM_API_ID", telegramApiId)
         buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")
+        buildConfigField("String", "SENTRY_DSN", "\"$sentryDsn\"")
 
         // Restrict native libs to architectures we actually ship.
         // arm64-v8a: all modern phones. x86_64: Android emulators on Intel.
@@ -146,6 +149,10 @@ dependencies {
 
     // Logging
     implementation(libs.timber)
+
+    // Crash reporting (Sentry). No-op at runtime when SENTRY_DSN is empty.
+    implementation(libs.sentry.android)
+    implementation(libs.sentry.timber)
 
     // Testing
     testImplementation(libs.junit)

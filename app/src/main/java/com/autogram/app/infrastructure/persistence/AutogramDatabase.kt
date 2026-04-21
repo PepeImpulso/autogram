@@ -26,7 +26,7 @@ import javax.inject.Singleton
         QuickReplyEntity::class,
         SettingsEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -71,6 +71,16 @@ object DatabaseModule {
         }
     }
 
+    // v6 → v7 adds settings.autoDeletePlayed (bool, default true — saves space
+    // by dropping received .ogg files after the user has heard them).
+    private val MIGRATION_6_7 = object : Migration(6, 7) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "ALTER TABLE settings ADD COLUMN autoDeletePlayed INTEGER NOT NULL DEFAULT 1"
+            )
+        }
+    }
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AutogramDatabase {
@@ -79,7 +89,7 @@ object DatabaseModule {
             AutogramDatabase::class.java,
             "autogram.db"
         )
-            .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+            .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
             // Fallback for any earlier schema (v1 / v2) that has no proper path
             // forward — those versions predate the stable 1.2 line and already
             // wiped once, so destroying from them is acceptable.

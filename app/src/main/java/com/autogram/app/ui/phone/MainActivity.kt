@@ -132,6 +132,7 @@ private fun MainScreen(
     val pinned by viewModel.pinned.collectAsState()
     val activeTargetId by viewModel.activeTargetId.collectAsState()
     val pendingCounts by viewModel.pendingReplyCounts.collectAsState()
+    val outboxCount by viewModel.outboxCount.collectAsState()
     val updateState by updateViewModel.state.collectAsState()
 
     LaunchedEffect(Unit) {
@@ -201,7 +202,7 @@ private fun MainScreen(
                 .fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            HeroHeader(sendStatus = sendStatus, playback = playback)
+            HeroHeader(sendStatus = sendStatus, playback = playback, outboxCount = outboxCount)
             Spacer(Modifier.height(24.dp))
 
             if (primary != null) {
@@ -258,7 +259,8 @@ private fun MainScreen(
 @Composable
 private fun HeroHeader(
     sendStatus: SendVoiceMtprotoUseCase.SendStatus,
-    playback: PlayReplyUseCase.PlaybackStatus
+    playback: PlayReplyUseCase.PlaybackStatus,
+    outboxCount: Int
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -283,14 +285,15 @@ private fun HeroHeader(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.weight(1f))
-        StatusPill(sendStatus, playback)
+        StatusPill(sendStatus, playback, outboxCount)
     }
 }
 
 @Composable
 private fun StatusPill(
     sendStatus: SendVoiceMtprotoUseCase.SendStatus,
-    playback: PlayReplyUseCase.PlaybackStatus
+    playback: PlayReplyUseCase.PlaybackStatus,
+    outboxCount: Int
 ) {
     data class Pill(val text: String, val container: Color, val onContainer: Color)
     val scheme = MaterialTheme.colorScheme
@@ -304,16 +307,23 @@ private fun StatusPill(
             Pill(ctx.getString(R.string.status_sending), scheme.primaryContainer, scheme.onPrimaryContainer)
         is SendVoiceMtprotoUseCase.SendStatus.Sent ->
             Pill(ctx.getString(R.string.status_sent), scheme.primaryContainer, scheme.onPrimaryContainer)
+        is SendVoiceMtprotoUseCase.SendStatus.QueuedOffline ->
+            Pill(ctx.getString(R.string.status_queued_offline), scheme.tertiaryContainer, scheme.onTertiaryContainer)
         is SendVoiceMtprotoUseCase.SendStatus.Discarded ->
             Pill(ctx.getString(R.string.status_discarded, sendStatus.reason), scheme.tertiaryContainer, scheme.onTertiaryContainer)
         is SendVoiceMtprotoUseCase.SendStatus.Error ->
             Pill(ctx.getString(R.string.status_error_generic, sendStatus.message), scheme.errorContainer, scheme.onErrorContainer)
         else -> {
-            val pendingCount = (playback as? PlayReplyUseCase.PlaybackStatus.PendingCount)?.count ?: 0
-            if (pendingCount > 0)
-                Pill(ctx.getString(R.string.status_pending_count, pendingCount), scheme.tertiaryContainer, scheme.onTertiaryContainer)
-            else
-                Pill(ctx.getString(R.string.status_idle), scheme.surfaceVariant, scheme.onSurfaceVariant)
+            // Idle priority: outbox count > pending playback count > just "ready".
+            when {
+                outboxCount > 0 ->
+                    Pill(ctx.getString(R.string.status_outbox_count, outboxCount), scheme.tertiaryContainer, scheme.onTertiaryContainer)
+                (playback as? PlayReplyUseCase.PlaybackStatus.PendingCount)?.count?.let { it > 0 } == true -> {
+                    val c = (playback as PlayReplyUseCase.PlaybackStatus.PendingCount).count
+                    Pill(ctx.getString(R.string.status_pending_count, c), scheme.tertiaryContainer, scheme.onTertiaryContainer)
+                }
+                else -> Pill(ctx.getString(R.string.status_idle), scheme.surfaceVariant, scheme.onSurfaceVariant)
+            }
         }
     }
     Surface(

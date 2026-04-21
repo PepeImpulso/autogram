@@ -10,6 +10,10 @@ import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.infrastructure.platform.LocaleHelper
 import com.autogram.app.infrastructure.platform.PendingReplyNotifier
 import com.autogram.app.infrastructure.retry.RetentionCleanupWorker
+import com.autogram.app.infrastructure.retry.RetryWorker
+import io.sentry.SentryLevel
+import io.sentry.android.core.SentryAndroid
+import io.sentry.android.timber.SentryTimberIntegration
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -41,13 +45,32 @@ class AutogramApplication : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
-        if (BuildConfig.DEBUG) {
+        // Crash reporting via Sentry. If SENTRY_DSN is empty (dev box without
+        // the key in local.properties) we skip init and fall back to Log.e.
+        val dsn = BuildConfig.SENTRY_DSN
+        if (dsn.isNotBlank()) {
+            SentryAndroid.init(this) { options ->
+                options.dsn = dsn
+                options.environment = if (BuildConfig.DEBUG) "debug" else "release"
+                options.release = "autogram@${BuildConfig.VERSION_NAME}+${BuildConfig.VERSION_CODE}"
+                // Ship Timber.e/.w straight into Sentry; e = exception, w = breadcrumb.
+                options.addIntegration(
+                    SentryTimberIntegration(
+                        minEventLevel = SentryLevel.ERROR,
+                        minBreadcrumbLevel = SentryLevel.INFO
+                    )
+                )
+                // Attach screenshots/ANR context to crashes in release builds.
+                options.isAttachScreenshot = !BuildConfig.DEBUG
+                options.isAnrEnabled = true
+            }
+            Timber.plant(Timber.DebugTree().takeIf { BuildConfig.DEBUG } ?: ReleaseTree())
+        } else if (BuildConfig.DEBUG) {
             Timber.plant(Timber.DebugTree())
         } else {
-            // BUG-34: Plant a release tree so errors are logged in production
             Timber.plant(ReleaseTree())
         }
-        Timber.d("Autogram initialized")
+        Timber.d("Autogram initialized (sentry=${dsn.isNotBlank()})")
 
         // Apply saved UI language before any activity inflates its layout.
         // Reading from the DB is suspend so we launch a coroutine — activities
@@ -59,6 +82,9 @@ class AutogramApplication : Application(), Configuration.Provider {
 
         PendingReplyNotifier.ensureChannel(this)
         RetentionCleanupWorker.schedule(this)
+        // Drain any messages left in the outbox from a previous process. Worker
+        // is network-constrained so this is safe even if we're offline now.
+        RetryWorker.enqueueOnce(this)
     }
 
     private suspend fun applyStoredLocale() {

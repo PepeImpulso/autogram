@@ -34,7 +34,8 @@ class SettingsViewModel @Inject constructor(
                 maxRetries = settings.maxRetryAttempts,
                 playbackSpeed = settings.playbackSpeed,
                 recordingCuesVolume = settings.recordingCuesVolume,
-                languageTag = settings.languageTag
+                languageTag = settings.languageTag,
+                autoDeletePlayed = settings.autoDeletePlayed
             )
         }
         viewModelScope.launch {
@@ -86,6 +87,14 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun updateAutoDeletePlayed(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(autoDeletePlayed = enabled)
+        viewModelScope.launch {
+            val s = settingsRepository.get()
+            settingsRepository.update(s.copy(autoDeletePlayed = enabled))
+        }
+    }
+
     fun updateLanguage(tag: String) {
         _uiState.value = _uiState.value.copy(languageTag = tag)
         // Persist: LocaleHelper's SharedPreferences is the source of truth for
@@ -126,6 +135,7 @@ data class SettingsUiState(
     val playbackSpeed: Float = 1.25f,
     val recordingCuesVolume: Int = 50,
     val languageTag: String = "",
+    val autoDeletePlayed: Boolean = true,
     val lastSaveMessage: String? = null,
     val hasTarget: Boolean = false,
     val targetTitle: String? = null,
