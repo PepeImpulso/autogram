@@ -74,7 +74,10 @@ data class AppSettings(
     val maxRecordingDurationMs: Long = 60000,
     val pollingIntervalMs: Long = 3000,
     val maxRetryAttempts: Int = 3,
-    val autoPlayReplies: Boolean = true
+    val autoPlayReplies: Boolean = true,
+    // Speed multiplier applied to incoming voice playback. 1.0 = unchanged.
+    // Default 1.25 — most people already listen to podcasts faster than 1x.
+    val playbackSpeed: Float = 1.25f
 )
 
 data class DeliveryAttempt(

@@ -30,7 +30,11 @@ class AudioPlayer @Inject constructor(
      * @param onComplete Callback invocado al finalizar la reproducción
      */
     // BUG-51 FIX: Callback now receives Result so caller can distinguish success from error
-    fun play(file: File, onComplete: (Result<Unit>) -> Unit = {}): Result<Unit> {
+    fun play(
+        file: File,
+        speed: Float = 1f,
+        onComplete: (Result<Unit>) -> Unit = {}
+    ): Result<Unit> {
         return try {
             stop()
             completionHandler = onComplete
@@ -62,10 +66,19 @@ class AudioPlayer @Inject constructor(
                     true
                 }
                 prepare()
+                // Applying PlaybackParams before start() on some OEMs silently
+                // auto-starts playback; set it after prepare() + right before
+                // start() and guard against invalid speeds.
+                if (speed != 1f) {
+                    runCatching {
+                        val clamped = speed.coerceIn(0.25f, 4f)
+                        playbackParams = playbackParams.setSpeed(clamped)
+                    }.onFailure { Timber.w(it, "setSpeed($speed) failed — playing at 1x") }
+                }
                 start()
             }
             isPlaying = true
-            Timber.d("Reproduciendo: ${file.name}")
+            Timber.d("Reproduciendo: ${file.name} (speed=${speed}x)")
             Result.success(Unit)
         } catch (e: Exception) {
             Timber.e(e, "Error al reproducir audio")

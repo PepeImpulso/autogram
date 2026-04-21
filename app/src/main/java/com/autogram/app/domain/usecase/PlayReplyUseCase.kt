@@ -20,11 +20,18 @@ import java.io.File
 import java.util.UUID
 import java.util.Collections
 import javax.inject.Inject
+import javax.inject.Singleton
 
 /**
  * Caso de uso: reproducir automáticamente las respuestas entrantes.
  * Gestiona la cola de reproducción y el audio focus.
+ *
+ * Singleton — the queue + current-playing state must be shared across the UI
+ * layer (MainViewModel observes `playbackStatus`), the receiver service (posts
+ * incoming voices), and the send-voice use case (calls `stopAll()` to
+ * interrupt when the user starts recording a reply).
  */
+@Singleton
 class PlayReplyUseCase @Inject constructor(
     private val audioPlayer: AudioPlayer,
     private val messageRepository: MessageRepository,
@@ -82,7 +89,7 @@ class PlayReplyUseCase @Inject constructor(
         messageRepository.update(message.copy(state = MessageState.PLAYING))
         _playbackStatus.value = PlaybackStatus.Playing(message.id)
 
-        val result = audioPlayer.play(audioFile) { playResult ->
+        val result = audioPlayer.play(audioFile, speed = settings.playbackSpeed) { playResult ->
             // BUG-12: Use CoroutineScope instead of runBlocking in MediaPlayer callback
             // BUG-51 FIX: Check result to mark PLAYED or FAILED correctly
             playbackScope.launch {
@@ -130,7 +137,8 @@ class PlayReplyUseCase @Inject constructor(
         currentPlayingId = message.id
         messageRepository.update(message.copy(state = MessageState.PLAYING))
         _playbackStatus.value = PlaybackStatus.Playing(message.id)
-        val result = audioPlayer.play(audioFile) { playResult ->
+        val speed = settingsRepository.get().playbackSpeed
+        val result = audioPlayer.play(audioFile, speed = speed) { playResult ->
             playbackScope.launch {
                 if (playResult.isSuccess) {
                     messageRepository.update(message.copy(

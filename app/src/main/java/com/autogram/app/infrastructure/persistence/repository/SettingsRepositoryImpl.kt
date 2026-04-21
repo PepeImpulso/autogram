@@ -30,13 +30,15 @@ class SettingsRepositoryImpl @Inject constructor(
         id = id, activeConversationId = activeConversationId, retentionDays = retentionDays,
         silentMode = silentMode, minRecordingDurationMs = minRecordingDurationMs,
         maxRecordingDurationMs = maxRecordingDurationMs, pollingIntervalMs = pollingIntervalMs,
-        maxRetryAttempts = maxRetryAttempts, autoPlayReplies = autoPlayReplies
+        maxRetryAttempts = maxRetryAttempts, autoPlayReplies = autoPlayReplies,
+        playbackSpeed = playbackSpeed
     )
 
     private fun AppSettings.toEntity() = SettingsEntity(
         id = id, activeConversationId = activeConversationId, retentionDays = retentionDays,
         silentMode = silentMode, minRecordingDurationMs = minRecordingDurationMs,
         maxRecordingDurationMs = maxRecordingDurationMs, pollingIntervalMs = pollingIntervalMs,
-        maxRetryAttempts = maxRetryAttempts, autoPlayReplies = autoPlayReplies
+        maxRetryAttempts = maxRetryAttempts, autoPlayReplies = autoPlayReplies,
+        playbackSpeed = playbackSpeed
     )
 }

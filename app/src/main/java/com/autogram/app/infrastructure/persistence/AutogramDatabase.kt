@@ -5,6 +5,8 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.autogram.app.infrastructure.persistence.converter.Converters
 import com.autogram.app.infrastructure.persistence.dao.*
 import com.autogram.app.infrastructure.persistence.entity.*
@@ -24,7 +26,7 @@ import javax.inject.Singleton
         QuickReplyEntity::class,
         SettingsEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -41,6 +43,16 @@ abstract class AutogramDatabase : RoomDatabase() {
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
 
+    // Preserves user data (pinned circles, primary target, photos) across upgrades.
+    // v3 → v4 adds settings.playbackSpeed.
+    private val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "ALTER TABLE settings ADD COLUMN playbackSpeed REAL NOT NULL DEFAULT 1.25"
+            )
+        }
+    }
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AutogramDatabase {
@@ -48,7 +60,12 @@ object DatabaseModule {
             context,
             AutogramDatabase::class.java,
             "autogram.db"
-        ).fallbackToDestructiveMigration()  // BUG-31: Prevent crash on schema changes during dev
+        )
+            .addMigrations(MIGRATION_3_4)
+            // Fallback for any earlier schema (v1 / v2) that has no proper path
+            // forward — those versions predate the stable 1.2 line and already
+            // wiped once, so destroying from them is acceptable.
+            .fallbackToDestructiveMigration()
             .build()
     }
 

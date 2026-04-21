@@ -5,6 +5,7 @@ import com.autogram.app.domain.model.Conversation
 import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.infrastructure.audio.AudioRecorder
 import com.autogram.app.infrastructure.audio.EmptyMessageFilter
+import com.autogram.app.infrastructure.audio.RecordingSounds
 import com.autogram.app.infrastructure.telegram.mtproto.AuthState
 import com.autogram.app.infrastructure.telegram.mtproto.TdLibClient
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -28,7 +29,9 @@ class SendVoiceMtprotoUseCase @Inject constructor(
     private val tdLibClient: TdLibClient,
     private val audioRecorder: AudioRecorder,
     private val emptyMessageFilter: EmptyMessageFilter,
-    private val conversationRepository: ConversationRepository
+    private val conversationRepository: ConversationRepository,
+    private val playReplyUseCase: PlayReplyUseCase,
+    private val recordingSounds: RecordingSounds
 ) {
 
     sealed class SendStatus {
@@ -56,6 +59,10 @@ class SendVoiceMtprotoUseCase @Inject constructor(
         if (audioRecorder.isRecording()) {
             return Result.failure(IllegalStateException("Ya hay una grabación en curso"))
         }
+        // Interrupt any voice reply currently playing so the driver can speak over
+        // an unwanted/long-winded answer from Merlin and send their own prompt.
+        // Also drops any queued pending playbacks.
+        playReplyUseCase.stopAll()
         val audioDir = File(context.cacheDir, "audio_outgoing").apply { mkdirs() }
         val audioFile = File(audioDir, "${UUID.randomUUID()}.ogg")
         val result = audioRecorder.start(audioFile)
@@ -64,6 +71,7 @@ class SendVoiceMtprotoUseCase @Inject constructor(
             currentTargetId = targetConversationId
             _activeTargetId.value = targetConversationId
             _status.value = SendStatus.Recording
+            recordingSounds.playStart()
             Result.success(Unit)
         } else {
             val err = result.exceptionOrNull()?.message ?: "Error al iniciar grabación"
@@ -79,6 +87,7 @@ class SendVoiceMtprotoUseCase @Inject constructor(
         currentTargetId = null
         _activeTargetId.value = null
         _status.value = SendStatus.Idle
+        recordingSounds.playEnd()
     }
 
     suspend fun stopAndSend(): Result<Long> {
@@ -88,6 +97,7 @@ class SendVoiceMtprotoUseCase @Inject constructor(
 
         val audioFile = audioRecorder.stop()
         currentAudioFile = null
+        recordingSounds.playEnd()
         if (audioFile == null || !audioFile.exists()) {
             _activeTargetId.value = null
             _status.value = SendStatus.Error("No se pudo guardar el audio")

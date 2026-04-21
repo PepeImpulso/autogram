@@ -111,6 +111,29 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 )
             }
 
+            // Playback speed slider. Range 0.5x–2.0x matches MediaPlayer's usable
+            // range for voice (lower gets muddy, higher becomes unintelligible).
+            Column(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Velocidad de reproducción")
+                    Text(
+                        "${"%.2f".format(state.playbackSpeed)}x",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Slider(
+                    value = state.playbackSpeed,
+                    onValueChange = viewModel::updatePlaybackSpeed,
+                    valueRange = 0.5f..2.0f,
+                    // 31 steps between 0.5 and 2.0 → 0.05x granularity.
+                    steps = 29
+                )
+            }
+
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
             // --- Advanced Settings ---

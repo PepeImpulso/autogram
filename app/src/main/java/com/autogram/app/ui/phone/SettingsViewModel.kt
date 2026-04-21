@@ -28,7 +28,8 @@ class SettingsViewModel @Inject constructor(
                 silentMode = settings.silentMode,
                 autoPlay = settings.autoPlayReplies,
                 minDuration = settings.minRecordingDurationMs,
-                maxRetries = settings.maxRetryAttempts
+                maxRetries = settings.maxRetryAttempts,
+                playbackSpeed = settings.playbackSpeed
             )
         }
         viewModelScope.launch {
@@ -62,6 +63,15 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun updatePlaybackSpeed(speed: Float) {
+        val clamped = speed.coerceIn(0.5f, 2.0f)
+        _uiState.value = _uiState.value.copy(playbackSpeed = clamped)
+        viewModelScope.launch {
+            val settings = settingsRepository.get()
+            settingsRepository.update(settings.copy(playbackSpeed = clamped))
+        }
+    }
+
     fun saveSettings() {
         viewModelScope.launch {
             val state = _uiState.value
@@ -82,6 +92,7 @@ data class SettingsUiState(
     val autoPlay: Boolean = true,
     val minDuration: Long = 1500,
     val maxRetries: Int = 3,
+    val playbackSpeed: Float = 1.25f,
     val lastSaveMessage: String? = null,
     val hasTarget: Boolean = false,
     val targetTitle: String? = null,
