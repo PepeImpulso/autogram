@@ -46,6 +46,10 @@ object LocaleHelper {
         return context.createConfigurationContext(config)
     }
 
+    // DO NOT use context.applicationContext here — during Application.attachBaseContext
+    // the applicationContext is still null (Application hasn't been attached yet).
+    // getSharedPreferences works on any Context, including the raw ContextImpl passed
+    // into attachBaseContext.
     private fun prefs(context: Context): SharedPreferences =
-        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 }
