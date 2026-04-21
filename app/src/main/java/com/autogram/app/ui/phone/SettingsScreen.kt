@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.Battery4Bar
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.PlayCircle
@@ -135,6 +136,33 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                     supporting = stringResource(R.string.settings_auto_delete_played_sub),
                     checked = state.autoDeletePlayed,
                     onCheckedChange = viewModel::updateAutoDeletePlayed
+                )
+                SettingsDivider()
+                SwitchRow(
+                    label = stringResource(R.string.settings_haptic),
+                    supporting = stringResource(R.string.settings_haptic_sub),
+                    checked = state.hapticEnabled,
+                    onCheckedChange = viewModel::updateHaptic
+                )
+                SettingsDivider()
+                SwitchRow(
+                    label = stringResource(R.string.settings_preview_before_send),
+                    supporting = stringResource(R.string.settings_preview_before_send_sub),
+                    checked = state.previewBeforeSend,
+                    onCheckedChange = viewModel::updatePreviewBeforeSend
+                )
+            }
+
+            SectionCard(
+                icon = Icons.Filled.Fingerprint,
+                title = stringResource(R.string.settings_section_security),
+                subtitle = stringResource(R.string.settings_section_security_sub)
+            ) {
+                SwitchRow(
+                    label = stringResource(R.string.settings_biometric_lock),
+                    supporting = stringResource(R.string.settings_biometric_lock_sub),
+                    checked = state.biometricLockEnabled,
+                    onCheckedChange = viewModel::updateBiometricLock
                 )
             }
 

@@ -52,6 +52,7 @@ import com.autogram.app.domain.model.Conversation
 import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.domain.usecase.SendVoiceMtprotoUseCase
+import com.autogram.app.infrastructure.platform.BiometricGate
 import com.autogram.app.infrastructure.telegram.mtproto.AuthState
 import com.autogram.app.infrastructure.telegram.mtproto.TdLibClient
 import com.autogram.app.service.MtprotoReceiverService
@@ -70,6 +71,22 @@ class MainActivity : BaseLocaleActivity() {
     override fun onResume() {
         super.onResume()
         lifecycleScope.launch {
+            // Biometric gate: only prompts the first time in the app after
+            // a long pause — BiometricGate enforces a grace window so
+            // Ajustes ⇄ Inicio bounce doesn't trigger a prompt storm.
+            val settings = settingsRepository.get()
+            if (settings.biometricLockEnabled
+                && BiometricGate.isSupported(this@MainActivity)
+                && !BiometricGate.recentlyUnlocked()
+            ) {
+                BiometricGate.ensureUnlocked(
+                    activity = this@MainActivity,
+                    title = getString(R.string.app_name),
+                    subtitle = getString(R.string.biometric_unlock_subtitle),
+                    onAuthenticated = { /* continues below via lifecycleScope */ },
+                    onFailed = { finish() }
+                )
+            }
             tdLibClient.ensureStarted()
             val auth = tdLibClient.authState.first { it !is AuthState.Uninitialized && it !is AuthState.Initializing }
             if (auth !is AuthState.Ready) {
@@ -253,6 +270,42 @@ private fun MainScreen(
             )
         }
         else -> Unit
+    }
+
+    // Preview-before-send dialog. Appears right after the user releases the
+    // record button when Settings → Preview-before-send is on.
+    val previewOpen = sendStatus is SendVoiceMtprotoUseCase.SendStatus.PreviewReady ||
+        sendStatus is SendVoiceMtprotoUseCase.SendStatus.PreviewPlaying
+    if (previewOpen) {
+        val snap = sendStatus  // snapshot to allow smart casts
+        val isPlaying = snap is SendVoiceMtprotoUseCase.SendStatus.PreviewPlaying
+        val durationSec = (snap as? SendVoiceMtprotoUseCase.SendStatus.PreviewReady)?.durationMs?.div(1000)
+        AlertDialog(
+            onDismissRequest = { viewModel.cancelPreview() },
+            title = { Text(stringResource(R.string.preview_title)) },
+            text = {
+                Text(
+                    "${stringResource(R.string.record_mic)} · ${durationSec?.let { "${it}s" } ?: "…"}",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.confirmPreview() }) {
+                    Text(stringResource(R.string.preview_send))
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(
+                        onClick = { viewModel.previewPlay() },
+                        enabled = !isPlaying
+                    ) { Text(stringResource(R.string.preview_play)) }
+                    TextButton(onClick = { viewModel.cancelPreview() }) {
+                        Text(stringResource(R.string.preview_retry))
+                    }
+                }
+            }
+        )
     }
 }
 

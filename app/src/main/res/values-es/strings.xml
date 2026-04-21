@@ -102,6 +102,19 @@
     <string name="settings_recording_cues_off">Desactivado</string>
     <string name="settings_auto_delete_played">Borrar audios tras reproducirlos</string>
     <string name="settings_auto_delete_played_sub">Ahorra espacio. La transcripción (cuando exista) se mantiene.</string>
+    <string name="settings_haptic">Vibración al grabar</string>
+    <string name="settings_haptic_sub">Pulso corto al empezar, doble al soltar.</string>
+    <string name="settings_preview_before_send">Vista previa antes de enviar</string>
+    <string name="settings_preview_before_send_sub">Revisa el audio (reproducir / regrabar / enviar) antes de mandarlo.</string>
+    <string name="settings_section_security">Seguridad</string>
+    <string name="settings_section_security_sub">Quién puede abrir Autogram.</string>
+    <string name="settings_biometric_lock">Desbloquear con huella</string>
+    <string name="settings_biometric_lock_sub">Pide huella o PIN al reabrir la app.</string>
+    <string name="biometric_unlock_subtitle">Desbloquea para continuar</string>
+    <string name="preview_title">Revisar y enviar</string>
+    <string name="preview_play">Reproducir</string>
+    <string name="preview_retry">Regrabar</string>
+    <string name="preview_send">Enviar</string>
     <string name="settings_retention">Retención de historial (días)</string>
     <string name="settings_min_duration">Duración mínima de grabación</string>
     <string name="settings_min_duration_value">%d ms</string>
@@ -143,6 +156,7 @@
     <string name="stats_avg_duration">Duración media</string>
     <string name="stats_last_7_days">Últimos 7 días</string>
     <string name="stats_no_data">Aún no hay datos para mostrar.</string>
+    <string name="history_empty">Aún no hay mensajes.</string>
 
     <!-- Pinned / target pickers -->
     <string name="pinned_title">Accesos rápidos</string>
@@ -150,6 +164,8 @@
     <string name="pinned_label_primary">Principal (Merlin)</string>
     <string name="pinned_label_secondary">Acceso rápido</string>
     <string name="pinned_mark_primary_cd">Marcar como principal</string>
+    <string name="pinned_move_up">Subir</string>
+    <string name="pinned_move_down">Bajar</string>
     <string name="pinned_background_cd">Imagen de fondo</string>
     <string name="pinned_zoom_hint">Pellizca para hacer zoom · arrastra para mover</string>
     <string name="picker_add_shortcut_title">Añadir acceso rápido</string>

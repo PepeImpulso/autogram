@@ -31,7 +31,7 @@ fun StatsScreen(onBack: () -> Unit, viewModel: StatsViewModel = hiltViewModel())
                 title = { Text(ctx.getString(R.string.stats_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, ctx.getString(R.string.common_back))
                     }
                 }
             )

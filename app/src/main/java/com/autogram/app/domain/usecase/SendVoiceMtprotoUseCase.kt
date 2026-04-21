@@ -7,8 +7,11 @@ import com.autogram.app.domain.model.MessageDirection
 import com.autogram.app.domain.model.MessageState
 import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.MessageRepository
+import com.autogram.app.domain.repository.SettingsRepository
+import com.autogram.app.infrastructure.audio.AudioPlayer
 import com.autogram.app.infrastructure.audio.AudioRecorder
 import com.autogram.app.infrastructure.audio.EmptyMessageFilter
+import com.autogram.app.infrastructure.audio.HapticCues
 import com.autogram.app.infrastructure.audio.RecordingSounds
 import com.autogram.app.infrastructure.platform.ConnectivityObserver
 import com.autogram.app.infrastructure.retry.RetryWorker
@@ -39,7 +42,10 @@ class SendVoiceMtprotoUseCase @Inject constructor(
     private val messageRepository: MessageRepository,
     private val playReplyUseCase: PlayReplyUseCase,
     private val recordingSounds: RecordingSounds,
-    private val connectivityObserver: ConnectivityObserver
+    private val hapticCues: HapticCues,
+    private val connectivityObserver: ConnectivityObserver,
+    private val settingsRepository: SettingsRepository,
+    private val audioPlayer: AudioPlayer
 ) {
 
     sealed class SendStatus {
@@ -51,6 +57,11 @@ class SendVoiceMtprotoUseCase @Inject constructor(
         // The user's message is saved — we couldn't reach Telegram (offline / not
         // authenticated) so it'll be retried by RetryWorker when conditions allow.
         object QueuedOffline : SendStatus()
+        // Preview-before-send (toggle in Settings). Holds the file + target so
+        // the UI can offer play / retry / send, and so confirmPreview() can
+        // resume the same send path. File stays on disk until confirm or cancel.
+        data class PreviewReady(val durationMs: Long) : SendStatus()
+        object PreviewPlaying : SendStatus()
         data class Error(val message: String) : SendStatus()
         data class Discarded(val reason: String) : SendStatus()
     }
@@ -65,6 +76,11 @@ class SendVoiceMtprotoUseCase @Inject constructor(
 
     @Volatile private var currentAudioFile: File? = null
     @Volatile private var currentTargetId: String? = null
+    // Preview-mode state: kept alive between stopAndSend() and
+    // confirmPreview()/cancelPreview() so the UI can play it back and retry.
+    @Volatile private var previewFile: File? = null
+    @Volatile private var previewTargetId: String? = null
+    @Volatile private var previewDurationMs: Long = 0L
 
     suspend fun startRecording(targetConversationId: String? = null): Result<Unit> {
         if (audioRecorder.isRecording()) {
@@ -83,6 +99,7 @@ class SendVoiceMtprotoUseCase @Inject constructor(
             _activeTargetId.value = targetConversationId
             _status.value = SendStatus.Recording
             recordingSounds.playStart()
+            hapticCues.playStart()
             Result.success(Unit)
         } else {
             val err = result.exceptionOrNull()?.message ?: "Error al iniciar grabación"
@@ -99,6 +116,7 @@ class SendVoiceMtprotoUseCase @Inject constructor(
         _activeTargetId.value = null
         _status.value = SendStatus.Idle
         recordingSounds.playEnd()
+        hapticCues.playEnd()
     }
 
     suspend fun stopAndSend(): Result<Long> {
@@ -109,6 +127,7 @@ class SendVoiceMtprotoUseCase @Inject constructor(
         val audioFile = audioRecorder.stop()
         currentAudioFile = null
         recordingSounds.playEnd()
+        hapticCues.playEnd()
         if (audioFile == null || !audioFile.exists()) {
             _activeTargetId.value = null
             _status.value = SendStatus.Error("No se pudo guardar el audio")
@@ -132,6 +151,19 @@ class SendVoiceMtprotoUseCase @Inject constructor(
         }
 
         val durationMs = emptyMessageFilter.getDurationMs(audioFile) ?: 0L
+
+        // Preview-before-send: park the file + target, let the UI drive the
+        // decision. confirmPreview() picks up exactly where we left off;
+        // cancelPreview() discards.
+        if (settingsRepository.get().previewBeforeSend) {
+            previewFile = audioFile
+            previewTargetId = target.id
+            previewDurationMs = durationMs
+            _status.value = SendStatus.PreviewReady(durationMs)
+            // Keep activeTargetId highlighted so the circle is recognisable
+            // while the preview sheet is up.
+            return Result.success(-1L)
+        }
 
         // Offline path: if TDLib isn't authenticated OR there's no validated
         // internet, we persist the audio in a permanent location and mark the
@@ -234,6 +266,98 @@ class SendVoiceMtprotoUseCase @Inject constructor(
             Timber.e(e, "MTProto text send failed")
             _status.value = SendStatus.Error(e.message ?: "Error enviando")
             persistOutgoing(target, Result.failure(e), audioFile = null, audioDurationMs = 0L, textContent = text)
+            Result.failure(e)
+        } finally {
+            _activeTargetId.value = null
+        }
+    }
+
+    /**
+     * Play the parked preview file. Invoked from the preview sheet.
+     */
+    suspend fun previewPlay() {
+        val f = previewFile ?: return
+        _status.value = SendStatus.PreviewPlaying
+        audioPlayer.play(f, speed = 1f) { _ ->
+            _status.value = SendStatus.PreviewReady(previewDurationMs)
+        }
+    }
+
+    /**
+     * Discard the parked preview + delete the file. Back to Idle.
+     */
+    suspend fun cancelPreview() {
+        audioPlayer.stop()
+        previewFile?.let { runCatching { it.delete() } }
+        previewFile = null
+        previewTargetId = null
+        previewDurationMs = 0L
+        _activeTargetId.value = null
+        _status.value = SendStatus.Idle
+    }
+
+    /**
+     * User confirmed the preview — resume the normal send path with the
+     * same target + file.
+     */
+    suspend fun confirmPreview(): Result<Long> {
+        val audioFile = previewFile ?: return Result.failure(IllegalStateException("No preview"))
+        val targetId = previewTargetId
+        val durationMs = previewDurationMs
+        audioPlayer.stop()
+        previewFile = null
+        previewTargetId = null
+        previewDurationMs = 0L
+
+        val target = resolveTarget(targetId) ?: run {
+            _activeTargetId.value = null
+            _status.value = SendStatus.Error("Configura un destino en Ajustes")
+            return Result.failure(IllegalStateException("No active conversation"))
+        }
+
+        val authReady = tdLibClient.authState.value is AuthState.Ready
+        val online = connectivityObserver.isOnline()
+        if (!authReady || !online) {
+            val persistedPath = moveToPersistentQueue(audioFile)
+            persistQueuedOffline(
+                target = target,
+                audioFilePath = persistedPath,
+                audioDurationMs = durationMs,
+                textContent = null
+            )
+            _activeTargetId.value = null
+            _status.value = SendStatus.QueuedOffline
+            return Result.success(-1L)
+        }
+
+        _status.value = SendStatus.Sending
+        return try {
+            val sendResult = tdLibClient.send(
+                TdApi.SendMessage().apply {
+                    this.chatId = target.targetChatId.toLong()
+                    this.topicId = target.topicId?.let { TdApi.MessageTopicForum(it.toInt()) }
+                    this.inputMessageContent = TdApi.InputMessageVoiceNote().apply {
+                        voiceNote = TdApi.InputFileLocal(audioFile.absolutePath)
+                        duration = (durationMs / 1000).toInt()
+                    }
+                }
+            )
+            val out = handleSendResult(sendResult)
+            persistOutgoing(
+                target = target,
+                result = out,
+                audioFile = audioFile,
+                audioDurationMs = durationMs,
+                textContent = null
+            )
+            if (out.isSuccess) {
+                conversationRepository.setLastRepliedAt(target.id, System.currentTimeMillis())
+            }
+            out
+        } catch (e: Exception) {
+            Timber.e(e, "confirmPreview send failed")
+            _status.value = SendStatus.Error(e.message ?: "Error enviando")
+            persistOutgoing(target, Result.failure(e), audioFile, durationMs, null)
             Result.failure(e)
         } finally {
             _activeTargetId.value = null

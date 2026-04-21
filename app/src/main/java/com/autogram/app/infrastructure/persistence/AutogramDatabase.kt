@@ -26,7 +26,7 @@ import javax.inject.Singleton
         QuickReplyEntity::class,
         SettingsEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -81,6 +81,15 @@ object DatabaseModule {
         }
     }
 
+    // v7 → v8: M2 UX toggles — haptic cues, preview-before-send, biometric lock.
+    private val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE settings ADD COLUMN hapticEnabled INTEGER NOT NULL DEFAULT 1")
+            db.execSQL("ALTER TABLE settings ADD COLUMN previewBeforeSend INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE settings ADD COLUMN biometricLockEnabled INTEGER NOT NULL DEFAULT 0")
+        }
+    }
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AutogramDatabase {
@@ -89,7 +98,7 @@ object DatabaseModule {
             AutogramDatabase::class.java,
             "autogram.db"
         )
-            .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+            .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
             // Fallback for any earlier schema (v1 / v2) that has no proper path
             // forward — those versions predate the stable 1.2 line and already
             // wiped once, so destroying from them is acceptable.

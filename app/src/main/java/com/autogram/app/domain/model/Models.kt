@@ -85,7 +85,14 @@ data class AppSettings(
     val languageTag: String = "",
     // Delete the .ogg file of an incoming voice note right after it finishes
     // playing. Saves storage; default on because most users want ephemeral.
-    val autoDeletePlayed: Boolean = true
+    val autoDeletePlayed: Boolean = true,
+    // Short vibrations when recording starts/stops. Mirrors the audio cues.
+    val hapticEnabled: Boolean = true,
+    // Show a bottom sheet with play/retry/send after releasing the record
+    // button, instead of firing the send directly.
+    val previewBeforeSend: Boolean = false,
+    // Gate the app behind fingerprint/face unlock when re-entering.
+    val biometricLockEnabled: Boolean = false
 )
 
 data class DeliveryAttempt(

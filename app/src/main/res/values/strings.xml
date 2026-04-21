@@ -95,6 +95,19 @@
     <string name="settings_recording_cues_off">Off</string>
     <string name="settings_auto_delete_played">Delete audios after playing</string>
     <string name="settings_auto_delete_played_sub">Saves space. Played messages keep their transcript (when available).</string>
+    <string name="settings_haptic">Vibration when recording</string>
+    <string name="settings_haptic_sub">Short tick on record start, double-tap on release.</string>
+    <string name="settings_preview_before_send">Preview before sending</string>
+    <string name="settings_preview_before_send_sub">Review the recording with play/retry/send before it goes.</string>
+    <string name="settings_section_security">Security</string>
+    <string name="settings_section_security_sub">Who can open Autogram.</string>
+    <string name="settings_biometric_lock">Unlock with fingerprint</string>
+    <string name="settings_biometric_lock_sub">Requires a biometric or device credential to reopen the app.</string>
+    <string name="biometric_unlock_subtitle">Unlock to continue</string>
+    <string name="preview_title">Review and send</string>
+    <string name="preview_play">Play</string>
+    <string name="preview_retry">Redo</string>
+    <string name="preview_send">Send</string>
     <string name="settings_retention">History retention (days)</string>
     <string name="settings_min_duration">Minimum recording duration</string>
     <string name="settings_min_duration_value">%d ms</string>
@@ -134,12 +147,15 @@
     <string name="stats_avg_duration">Average duration</string>
     <string name="stats_last_7_days">Last 7 days</string>
     <string name="stats_no_data">No data to show yet.</string>
+    <string name="history_empty">No messages yet.</string>
 
     <string name="pinned_title">Shortcuts</string>
     <string name="pinned_empty">No shortcuts yet. Add your main bot or a forum topic.</string>
     <string name="pinned_label_primary">Primary (Merlin)</string>
     <string name="pinned_label_secondary">Shortcut</string>
     <string name="pinned_mark_primary_cd">Mark as primary</string>
+    <string name="pinned_move_up">Move up</string>
+    <string name="pinned_move_down">Move down</string>
     <string name="pinned_background_cd">Background image</string>
     <string name="pinned_zoom_hint">Pinch to zoom · drag to pan</string>
     <string name="picker_add_shortcut_title">Add shortcut</string>

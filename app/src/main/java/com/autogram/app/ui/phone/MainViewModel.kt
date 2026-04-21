@@ -66,6 +66,18 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    fun previewPlay() {
+        viewModelScope.launch { sendMessageUseCase.previewPlay() }
+    }
+
+    fun confirmPreview() {
+        viewModelScope.launch { sendMessageUseCase.confirmPreview() }
+    }
+
+    fun cancelPreview() {
+        viewModelScope.launch { sendMessageUseCase.cancelPreview() }
+    }
+
     fun sendQuickReply(text: String, targetId: String? = null) {
         viewModelScope.launch {
             sendMessageUseCase.sendQuickReply(text, targetId)

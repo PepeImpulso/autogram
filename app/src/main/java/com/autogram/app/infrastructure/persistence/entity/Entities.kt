@@ -134,5 +134,8 @@ data class SettingsEntity(
     val playbackSpeed: Float = 1.25f,
     val recordingCuesVolume: Int = 50,
     val languageTag: String = "",
-    val autoDeletePlayed: Boolean = true
+    val autoDeletePlayed: Boolean = true,
+    val hapticEnabled: Boolean = true,
+    val previewBeforeSend: Boolean = false,
+    val biometricLockEnabled: Boolean = false
 )

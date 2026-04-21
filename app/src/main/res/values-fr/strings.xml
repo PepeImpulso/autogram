@@ -95,6 +95,19 @@
     <string name="settings_recording_cues_off">Désactivé</string>
     <string name="settings_auto_delete_played">Supprimer les audios après lecture</string>
     <string name="settings_auto_delete_played_sub">Économise de l\'espace. La transcription (quand disponible) est conservée.</string>
+    <string name="settings_haptic">Vibration à l\'enregistrement</string>
+    <string name="settings_haptic_sub">Impulsion courte au début, double au relâchement.</string>
+    <string name="settings_preview_before_send">Aperçu avant envoi</string>
+    <string name="settings_preview_before_send_sub">Écoute / recommence / envoie avant de partir.</string>
+    <string name="settings_section_security">Sécurité</string>
+    <string name="settings_section_security_sub">Qui peut ouvrir Autogram.</string>
+    <string name="settings_biometric_lock">Déverrouillage par empreinte</string>
+    <string name="settings_biometric_lock_sub">Demande empreinte ou code pour rouvrir l\'app.</string>
+    <string name="biometric_unlock_subtitle">Déverrouillez pour continuer</string>
+    <string name="preview_title">Relire et envoyer</string>
+    <string name="preview_play">Lire</string>
+    <string name="preview_retry">Refaire</string>
+    <string name="preview_send">Envoyer</string>
     <string name="settings_retention">Conservation de l\'historique (jours)</string>
     <string name="settings_min_duration">Durée minimum d\'enregistrement</string>
     <string name="settings_min_duration_value">%d ms</string>
@@ -134,12 +147,15 @@
     <string name="stats_avg_duration">Durée moyenne</string>
     <string name="stats_last_7_days">7 derniers jours</string>
     <string name="stats_no_data">Pas encore de données à afficher.</string>
+    <string name="history_empty">Pas encore de messages.</string>
 
     <string name="pinned_title">Raccourcis</string>
     <string name="pinned_empty">Pas encore de raccourcis. Ajoutez votre bot principal ou un topic de forum.</string>
     <string name="pinned_label_primary">Principal (Merlin)</string>
     <string name="pinned_label_secondary">Raccourci</string>
     <string name="pinned_mark_primary_cd">Marquer comme principal</string>
+    <string name="pinned_move_up">Monter</string>
+    <string name="pinned_move_down">Descendre</string>
     <string name="pinned_background_cd">Image de fond</string>
     <string name="pinned_zoom_hint">Pincez pour zoomer · glissez pour déplacer</string>
     <string name="picker_add_shortcut_title">Ajouter un raccourci</string>

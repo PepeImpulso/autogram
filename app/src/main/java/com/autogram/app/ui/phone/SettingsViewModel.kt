@@ -35,7 +35,10 @@ class SettingsViewModel @Inject constructor(
                 playbackSpeed = settings.playbackSpeed,
                 recordingCuesVolume = settings.recordingCuesVolume,
                 languageTag = settings.languageTag,
-                autoDeletePlayed = settings.autoDeletePlayed
+                autoDeletePlayed = settings.autoDeletePlayed,
+                hapticEnabled = settings.hapticEnabled,
+                previewBeforeSend = settings.previewBeforeSend,
+                biometricLockEnabled = settings.biometricLockEnabled
             )
         }
         viewModelScope.launch {
@@ -95,6 +98,30 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun updateHaptic(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(hapticEnabled = enabled)
+        viewModelScope.launch {
+            val s = settingsRepository.get()
+            settingsRepository.update(s.copy(hapticEnabled = enabled))
+        }
+    }
+
+    fun updatePreviewBeforeSend(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(previewBeforeSend = enabled)
+        viewModelScope.launch {
+            val s = settingsRepository.get()
+            settingsRepository.update(s.copy(previewBeforeSend = enabled))
+        }
+    }
+
+    fun updateBiometricLock(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(biometricLockEnabled = enabled)
+        viewModelScope.launch {
+            val s = settingsRepository.get()
+            settingsRepository.update(s.copy(biometricLockEnabled = enabled))
+        }
+    }
+
     fun updateLanguage(tag: String) {
         _uiState.value = _uiState.value.copy(languageTag = tag)
         // Persist: LocaleHelper's SharedPreferences is the source of truth for
@@ -136,6 +163,9 @@ data class SettingsUiState(
     val recordingCuesVolume: Int = 50,
     val languageTag: String = "",
     val autoDeletePlayed: Boolean = true,
+    val hapticEnabled: Boolean = true,
+    val previewBeforeSend: Boolean = false,
+    val biometricLockEnabled: Boolean = false,
     val lastSaveMessage: String? = null,
     val hasTarget: Boolean = false,
     val targetTitle: String? = null,

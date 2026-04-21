@@ -32,7 +32,9 @@ class SettingsRepositoryImpl @Inject constructor(
         maxRecordingDurationMs = maxRecordingDurationMs, pollingIntervalMs = pollingIntervalMs,
         maxRetryAttempts = maxRetryAttempts, autoPlayReplies = autoPlayReplies,
         playbackSpeed = playbackSpeed, recordingCuesVolume = recordingCuesVolume,
-        languageTag = languageTag, autoDeletePlayed = autoDeletePlayed
+        languageTag = languageTag, autoDeletePlayed = autoDeletePlayed,
+        hapticEnabled = hapticEnabled, previewBeforeSend = previewBeforeSend,
+        biometricLockEnabled = biometricLockEnabled
     )
 
     private fun AppSettings.toEntity() = SettingsEntity(
@@ -41,6 +43,8 @@ class SettingsRepositoryImpl @Inject constructor(
         maxRecordingDurationMs = maxRecordingDurationMs, pollingIntervalMs = pollingIntervalMs,
         maxRetryAttempts = maxRetryAttempts, autoPlayReplies = autoPlayReplies,
         playbackSpeed = playbackSpeed, recordingCuesVolume = recordingCuesVolume,
-        languageTag = languageTag, autoDeletePlayed = autoDeletePlayed
+        languageTag = languageTag, autoDeletePlayed = autoDeletePlayed,
+        hapticEnabled = hapticEnabled, previewBeforeSend = previewBeforeSend,
+        biometricLockEnabled = biometricLockEnabled
     )
 }

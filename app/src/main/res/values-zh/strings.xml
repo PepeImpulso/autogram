@@ -94,6 +94,19 @@
     <string name="settings_recording_cues_off">关闭</string>
     <string name="settings_auto_delete_played">播放后删除音频</string>
     <string name="settings_auto_delete_played_sub">节省空间。转录内容（如有）会保留。</string>
+    <string name="settings_haptic">录音时振动</string>
+    <string name="settings_haptic_sub">开始短振，松开双振。</string>
+    <string name="settings_preview_before_send">发送前预览</string>
+    <string name="settings_preview_before_send_sub">发送前可播放/重录/发送。</string>
+    <string name="settings_section_security">安全</string>
+    <string name="settings_section_security_sub">谁可以打开 Autogram。</string>
+    <string name="settings_biometric_lock">指纹解锁</string>
+    <string name="settings_biometric_lock_sub">重新打开时要求指纹或设备密码。</string>
+    <string name="biometric_unlock_subtitle">解锁以继续</string>
+    <string name="preview_title">查看并发送</string>
+    <string name="preview_play">播放</string>
+    <string name="preview_retry">重录</string>
+    <string name="preview_send">发送</string>
     <string name="settings_retention">历史保留(天)</string>
     <string name="settings_min_duration">最短录音时长</string>
     <string name="settings_min_duration_value">%d 毫秒</string>
@@ -133,12 +146,15 @@
     <string name="stats_avg_duration">平均时长</string>
     <string name="stats_last_7_days">最近 7 天</string>
     <string name="stats_no_data">暂无数据可显示。</string>
+    <string name="history_empty">暂无消息。</string>
 
     <string name="pinned_title">快捷</string>
     <string name="pinned_empty">尚无快捷。添加主 bot 或论坛话题。</string>
     <string name="pinned_label_primary">主要(Merlin)</string>
     <string name="pinned_label_secondary">快捷</string>
     <string name="pinned_mark_primary_cd">标记为主要</string>
+    <string name="pinned_move_up">上移</string>
+    <string name="pinned_move_down">下移</string>
     <string name="pinned_background_cd">背景图片</string>
     <string name="pinned_zoom_hint">双指缩放 · 拖动平移</string>
     <string name="picker_add_shortcut_title">添加快捷</string>

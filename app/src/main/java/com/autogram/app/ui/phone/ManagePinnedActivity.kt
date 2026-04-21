@@ -19,6 +19,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Image
@@ -151,12 +153,15 @@ private fun ManagePinnedScreen(
             return@Scaffold
         }
         LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
+            // Position among non-primary rows — primary doesn't reorder.
+            val secondary = pinned.filter { !it.isActive }
             items(pinned, key = { it.id }) { conv ->
+                val secondaryIdx = if (conv.isActive) -1 else secondary.indexOfFirst { it.id == conv.id }
                 PinnedRow(
                     conv = conv,
+                    canMoveUp = secondaryIdx > 0,
+                    canMoveDown = secondaryIdx in 0 until secondary.lastIndex,
                     onAvatarTap = {
-                        // Only opens a zoom view if there's actually a photo — tapping
-                        // the fallback coloured initial isn't interesting.
                         conv.photoLocalPath?.let { zoomPath = it }
                     },
                     onSetPrimary = { viewModel.setPrimary(conv.id) },
@@ -167,7 +172,9 @@ private fun ManagePinnedScreen(
                         )
                     },
                     onClearPhoto = { viewModel.clearPhoto(conv.id) },
-                    onRemove = { viewModel.remove(conv.id) }
+                    onRemove = { viewModel.remove(conv.id) },
+                    onMoveUp = { viewModel.moveUp(conv.id) },
+                    onMoveDown = { viewModel.moveDown(conv.id) }
                 )
             }
         }
@@ -181,11 +188,15 @@ private fun ManagePinnedScreen(
 @Composable
 private fun PinnedRow(
     conv: Conversation,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
     onAvatarTap: () -> Unit,
     onSetPrimary: () -> Unit,
     onPickPhoto: () -> Unit,
     onClearPhoto: () -> Unit,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit
 ) {
     val hasPhoto = conv.photoLocalPath != null
     ListItem(
@@ -217,6 +228,16 @@ private fun PinnedRow(
         },
         trailingContent = {
             Row {
+                // Reorder arrows only apply to secondary circles. Disabled
+                // chevrons at the ends make the available range obvious.
+                if (!conv.isActive) {
+                    IconButton(onClick = onMoveUp, enabled = canMoveUp) {
+                        Icon(Icons.Filled.ArrowUpward, stringResource(R.string.pinned_move_up))
+                    }
+                    IconButton(onClick = onMoveDown, enabled = canMoveDown) {
+                        Icon(Icons.Filled.ArrowDownward, stringResource(R.string.pinned_move_down))
+                    }
+                }
                 IconButton(onClick = onSetPrimary) {
                     Icon(
                         imageVector = if (conv.isActive) Icons.Filled.Star

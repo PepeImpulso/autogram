@@ -95,6 +95,19 @@
     <string name="settings_recording_cues_off">Aus</string>
     <string name="settings_auto_delete_played">Audios nach Wiedergabe löschen</string>
     <string name="settings_auto_delete_played_sub">Spart Speicher. Transkripte (sofern vorhanden) bleiben erhalten.</string>
+    <string name="settings_haptic">Vibration beim Aufnehmen</string>
+    <string name="settings_haptic_sub">Kurzer Tick beim Start, Doppel-Tick beim Loslassen.</string>
+    <string name="settings_preview_before_send">Vorschau vor dem Senden</string>
+    <string name="settings_preview_before_send_sub">Prüfen (abspielen / neu aufnehmen / senden) vor dem Versand.</string>
+    <string name="settings_section_security">Sicherheit</string>
+    <string name="settings_section_security_sub">Wer Autogram öffnen darf.</string>
+    <string name="settings_biometric_lock">Mit Fingerabdruck entsperren</string>
+    <string name="settings_biometric_lock_sub">Verlangt Fingerabdruck oder Geräte-PIN beim Öffnen.</string>
+    <string name="biometric_unlock_subtitle">Zum Fortfahren entsperren</string>
+    <string name="preview_title">Überprüfen und senden</string>
+    <string name="preview_play">Abspielen</string>
+    <string name="preview_retry">Nochmal</string>
+    <string name="preview_send">Senden</string>
     <string name="settings_retention">Verlauf aufbewahren (Tage)</string>
     <string name="settings_min_duration">Mindestaufnahmedauer</string>
     <string name="settings_min_duration_value">%d ms</string>
@@ -134,12 +147,15 @@
     <string name="stats_avg_duration">Ø Dauer</string>
     <string name="stats_last_7_days">Letzte 7 Tage</string>
     <string name="stats_no_data">Noch keine Daten zum Anzeigen.</string>
+    <string name="history_empty">Noch keine Nachrichten.</string>
 
     <string name="pinned_title">Kürzel</string>
     <string name="pinned_empty">Noch keine Kürzel. Füge den Haupt-Bot oder ein Forum-Topic hinzu.</string>
     <string name="pinned_label_primary">Haupt (Merlin)</string>
     <string name="pinned_label_secondary">Kürzel</string>
     <string name="pinned_mark_primary_cd">Als Haupt markieren</string>
+    <string name="pinned_move_up">Nach oben</string>
+    <string name="pinned_move_down">Nach unten</string>
     <string name="pinned_background_cd">Hintergrundbild</string>
     <string name="pinned_zoom_hint">Zum Zoomen kneifen · ziehen zum Verschieben</string>
     <string name="picker_add_shortcut_title">Kürzel hinzufügen</string>

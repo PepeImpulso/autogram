@@ -11,8 +11,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.autogram.app.R
 import com.autogram.app.domain.model.Message
 import com.autogram.app.domain.model.MessageDirection
 import com.autogram.app.domain.model.MessageState
@@ -29,10 +31,10 @@ fun HistoryScreen(viewModel: HistoryViewModel, onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Historial") },
+                title = { Text(stringResource(R.string.history_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back))
                     }
                 }
             )
@@ -43,7 +45,7 @@ fun HistoryScreen(viewModel: HistoryViewModel, onBack: () -> Unit) {
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center
             ) {
-                Text("No hay mensajes", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.history_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
             LazyColumn(

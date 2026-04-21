@@ -94,6 +94,19 @@
     <string name="settings_recording_cues_off">オフ</string>
     <string name="settings_auto_delete_played">再生後に音声を削除</string>
     <string name="settings_auto_delete_played_sub">容量を節約。文字起こし（ある場合）は保持されます。</string>
+    <string name="settings_haptic">録音時の振動</string>
+    <string name="settings_haptic_sub">開始時に短く、離す時にダブル。</string>
+    <string name="settings_preview_before_send">送信前のプレビュー</string>
+    <string name="settings_preview_before_send_sub">送信前に再生・録り直し・送信を選べます。</string>
+    <string name="settings_section_security">セキュリティ</string>
+    <string name="settings_section_security_sub">Autogram を開ける人。</string>
+    <string name="settings_biometric_lock">指紋で解除</string>
+    <string name="settings_biometric_lock_sub">再起動時に指紋または端末認証を求めます。</string>
+    <string name="biometric_unlock_subtitle">続行するには解除</string>
+    <string name="preview_title">確認して送信</string>
+    <string name="preview_play">再生</string>
+    <string name="preview_retry">録り直し</string>
+    <string name="preview_send">送信</string>
     <string name="settings_retention">履歴保持(日)</string>
     <string name="settings_min_duration">最小録音時間</string>
     <string name="settings_min_duration_value">%d ms</string>
@@ -133,12 +146,15 @@
     <string name="stats_avg_duration">平均時間</string>
     <string name="stats_last_7_days">過去 7 日</string>
     <string name="stats_no_data">表示できるデータがまだありません。</string>
+    <string name="history_empty">まだメッセージはありません。</string>
 
     <string name="pinned_title">ショートカット</string>
     <string name="pinned_empty">ショートカットがまだありません。メインボットまたはフォーラムトピックを追加。</string>
     <string name="pinned_label_primary">メイン(Merlin)</string>
     <string name="pinned_label_secondary">ショートカット</string>
     <string name="pinned_mark_primary_cd">メインに設定</string>
+    <string name="pinned_move_up">上へ</string>
+    <string name="pinned_move_down">下へ</string>
     <string name="pinned_background_cd">背景画像</string>
     <string name="pinned_zoom_hint">ピンチでズーム · ドラッグで移動</string>
     <string name="picker_add_shortcut_title">ショートカット追加</string>

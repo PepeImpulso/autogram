@@ -76,4 +76,30 @@ class ManagePinnedViewModel @Inject constructor(
             conversationRepository.setPhotoPath(id, null)
         }
     }
+
+    /**
+     * Move the row with `id` up or down within the secondary-circle list.
+     * Primary stays at position 0 and is not reorderable (its sortOrder is
+     * ignored by the main screen's ordering rule).
+     */
+    fun moveUp(id: String) = move(id, -1)
+    fun moveDown(id: String) = move(id, 1)
+
+    private fun move(id: String, delta: Int) {
+        viewModelScope.launch {
+            val all = conversationRepository.getPinned()
+                .filter { !it.isActive }  // only shuffle non-primary rows
+                .sortedBy { it.sortOrder }
+            val idx = all.indexOfFirst { it.id == id }
+            if (idx < 0) return@launch
+            val newIdx = (idx + delta).coerceIn(0, all.lastIndex)
+            if (newIdx == idx) return@launch
+            val swapped = all.toMutableList().also {
+                val tmp = it[idx]; it[idx] = it[newIdx]; it[newIdx] = tmp
+            }
+            swapped.forEachIndexed { i, conv ->
+                conversationRepository.setSortOrder(conv.id, i * 10)
+            }
+        }
+    }
 }
