@@ -34,7 +34,8 @@ class SettingsRepositoryImpl @Inject constructor(
         playbackSpeed = playbackSpeed, recordingCuesVolume = recordingCuesVolume,
         languageTag = languageTag, autoDeletePlayed = autoDeletePlayed,
         hapticEnabled = hapticEnabled, previewBeforeSend = previewBeforeSend,
-        biometricLockEnabled = biometricLockEnabled
+        biometricLockEnabled = biometricLockEnabled,
+        onboardingCompleted = onboardingCompleted
     )
 
     private fun AppSettings.toEntity() = SettingsEntity(
@@ -45,6 +46,7 @@ class SettingsRepositoryImpl @Inject constructor(
         playbackSpeed = playbackSpeed, recordingCuesVolume = recordingCuesVolume,
         languageTag = languageTag, autoDeletePlayed = autoDeletePlayed,
         hapticEnabled = hapticEnabled, previewBeforeSend = previewBeforeSend,
-        biometricLockEnabled = biometricLockEnabled
+        biometricLockEnabled = biometricLockEnabled,
+        onboardingCompleted = onboardingCompleted
     )
 }

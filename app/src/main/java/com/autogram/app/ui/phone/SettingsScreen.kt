@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Battery4Bar
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Fingerprint
@@ -40,6 +41,114 @@ import kotlinx.coroutines.launch
 fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // Export / import plumbing — driven from BackupCard below, hoisted here so
+    // the ActivityResult launchers and pending-bytes buffer live across the
+    // section card recompositions.
+    var pendingExportBytes by remember { mutableStateOf<ByteArray?>(null) }
+    var pendingImportBytes by remember { mutableStateOf<ByteArray?>(null) }
+    var showExportPasswordDialog by remember { mutableStateOf(false) }
+    var showImportPasswordDialog by remember { mutableStateOf(false) }
+    var showImportConfirmDialog by remember { mutableStateOf(false) }
+
+    val createDocumentLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri ->
+        val bytes = pendingExportBytes
+        pendingExportBytes = null
+        if (uri != null && bytes != null) {
+            runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                    ?: error("openOutputStream returned null")
+            }.onSuccess {
+                android.widget.Toast.makeText(context, context.getString(R.string.backup_export_ok), android.widget.Toast.LENGTH_LONG).show()
+            }.onFailure { e ->
+                android.widget.Toast.makeText(context, context.getString(R.string.backup_export_fail, e.message ?: ""), android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    val openDocumentLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    ?: error("openInputStream returned null")
+            }.onSuccess { bytes ->
+                pendingImportBytes = bytes
+                showImportConfirmDialog = true
+            }.onFailure { e ->
+                android.widget.Toast.makeText(context, context.getString(R.string.backup_import_fail, e.message ?: ""), android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    // Observe backup events to wire export bytes → SAF + show import toasts.
+    LaunchedEffect(Unit) {
+        viewModel.backupEvents.collect { event ->
+            when (event) {
+                is SettingsViewModel.BackupEvent.ExportReady -> {
+                    pendingExportBytes = event.bytes
+                    val fname = "autogram-backup-${java.text.SimpleDateFormat("yyyyMMdd-HHmm", java.util.Locale.US).format(java.util.Date())}.autogram"
+                    createDocumentLauncher.launch(fname)
+                }
+                is SettingsViewModel.BackupEvent.ExportFailed ->
+                    android.widget.Toast.makeText(context, context.getString(R.string.backup_export_fail, event.message), android.widget.Toast.LENGTH_LONG).show()
+                SettingsViewModel.BackupEvent.ImportSuccess ->
+                    android.widget.Toast.makeText(context, context.getString(R.string.backup_import_ok), android.widget.Toast.LENGTH_LONG).show()
+                SettingsViewModel.BackupEvent.ImportWrongPassword ->
+                    android.widget.Toast.makeText(context, context.getString(R.string.backup_import_wrong_password), android.widget.Toast.LENGTH_LONG).show()
+                SettingsViewModel.BackupEvent.ImportCorrupt ->
+                    android.widget.Toast.makeText(context, context.getString(R.string.backup_import_corrupt), android.widget.Toast.LENGTH_LONG).show()
+                is SettingsViewModel.BackupEvent.ImportFailed ->
+                    android.widget.Toast.makeText(context, context.getString(R.string.backup_import_fail, event.message), android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    if (showExportPasswordDialog) {
+        ExportPasswordDialog(
+            onDismiss = { showExportPasswordDialog = false },
+            onConfirm = { pwd ->
+                showExportPasswordDialog = false
+                viewModel.requestExport(pwd)
+            }
+        )
+    }
+
+    if (showImportConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showImportConfirmDialog = false; pendingImportBytes = null },
+            title = { Text(stringResource(R.string.backup_import_confirm_title)) },
+            text = { Text(stringResource(R.string.backup_import_confirm_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showImportConfirmDialog = false
+                    showImportPasswordDialog = true
+                }) { Text(stringResource(R.string.backup_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showImportConfirmDialog = false
+                    pendingImportBytes = null
+                }) { Text(stringResource(R.string.backup_cancel)) }
+            }
+        )
+    }
+
+    if (showImportPasswordDialog) {
+        ImportPasswordDialog(
+            onDismiss = { showImportPasswordDialog = false; pendingImportBytes = null },
+            onConfirm = { pwd ->
+                val bytes = pendingImportBytes
+                pendingImportBytes = null
+                showImportPasswordDialog = false
+                if (bytes != null) viewModel.requestImport(bytes, pwd)
+            }
+        )
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -201,6 +310,24 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 ValueRow(
                     label = stringResource(R.string.settings_max_retries),
                     value = "${state.maxRetries}"
+                )
+            }
+
+            SectionCard(
+                icon = Icons.Filled.Backup,
+                title = stringResource(R.string.settings_section_backup),
+                subtitle = stringResource(R.string.settings_section_backup_sub)
+            ) {
+                NavigationRow(
+                    label = stringResource(R.string.settings_backup_export),
+                    supporting = stringResource(R.string.settings_backup_export_sub),
+                    onClick = { showExportPasswordDialog = true }
+                )
+                SettingsDivider()
+                NavigationRow(
+                    label = stringResource(R.string.settings_backup_import),
+                    supporting = stringResource(R.string.settings_backup_import_sub),
+                    onClick = { openDocumentLauncher.launch(arrayOf("*/*")) }
                 )
             }
 
@@ -650,4 +777,99 @@ private fun BatteryOptimizationRow(context: android.content.Context) {
             )
         }
     }
+}
+
+@Composable
+private fun ExportPasswordDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (CharArray) -> Unit
+) {
+    var pwd by remember { mutableStateOf("") }
+    var confirm by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    val emptyMsg = stringResource(R.string.backup_password_empty)
+    val mismatchMsg = stringResource(R.string.backup_password_mismatch)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.backup_password_title)) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = pwd,
+                    onValueChange = { pwd = it; error = null },
+                    label = { Text(stringResource(R.string.backup_password_hint)) },
+                    singleLine = true,
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = confirm,
+                    onValueChange = { confirm = it; error = null },
+                    label = { Text(stringResource(R.string.backup_password_confirm_hint)) },
+                    singleLine = true,
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (error != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                when {
+                    pwd.isEmpty() -> error = emptyMsg
+                    pwd != confirm -> error = mismatchMsg
+                    else -> onConfirm(pwd.toCharArray())
+                }
+            }) { Text(stringResource(R.string.backup_export_confirm)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.backup_cancel)) }
+        }
+    )
+}
+
+@Composable
+private fun ImportPasswordDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (CharArray) -> Unit
+) {
+    var pwd by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    val emptyMsg = stringResource(R.string.backup_password_empty)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.backup_password_title)) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = pwd,
+                    onValueChange = { pwd = it; error = null },
+                    label = { Text(stringResource(R.string.backup_password_import_hint)) },
+                    singleLine = true,
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (error != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                if (pwd.isEmpty()) error = emptyMsg
+                else onConfirm(pwd.toCharArray())
+            }) { Text(stringResource(R.string.backup_confirm)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.backup_cancel)) }
+        }
+    )
 }

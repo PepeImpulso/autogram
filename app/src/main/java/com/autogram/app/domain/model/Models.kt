@@ -92,7 +92,9 @@ data class AppSettings(
     // button, instead of firing the send directly.
     val previewBeforeSend: Boolean = false,
     // Gate the app behind fingerprint/face unlock when re-entering.
-    val biometricLockEnabled: Boolean = false
+    val biometricLockEnabled: Boolean = false,
+    // Set to true once the user finishes the first-run onboarding wizard.
+    val onboardingCompleted: Boolean = false
 )
 
 data class DeliveryAttempt(

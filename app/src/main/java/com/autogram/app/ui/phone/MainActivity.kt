@@ -96,6 +96,12 @@ class MainActivity : BaseLocaleActivity() {
                 finish()
                 return@launch
             }
+            // First-run wizard. `onboardingCompleted` migrates to `true` for
+            // upgrades so existing users aren't surprised; fresh installs see
+            // false and get the wizard once.
+            if (!settings.onboardingCompleted) {
+                startActivity(Intent(this@MainActivity, OnboardingActivity::class.java))
+            }
             startMtprotoReceiverService()
         }
     }

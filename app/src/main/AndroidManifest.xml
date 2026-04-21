@@ -91,6 +91,11 @@
             android:exported="false"
             android:label="@string/app_name" />
 
+        <activity
+            android:name=".ui.phone.OnboardingActivity"
+            android:exported="false"
+            android:label="@string/app_name" />
+
         <!-- Android Auto -->
         <meta-data
             android:name="com.google.android.gms.car.application"

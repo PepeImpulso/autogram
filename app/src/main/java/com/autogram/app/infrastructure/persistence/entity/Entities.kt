@@ -137,5 +137,6 @@ data class SettingsEntity(
     val autoDeletePlayed: Boolean = true,
     val hapticEnabled: Boolean = true,
     val previewBeforeSend: Boolean = false,
-    val biometricLockEnabled: Boolean = false
+    val biometricLockEnabled: Boolean = false,
+    val onboardingCompleted: Boolean = false
 )
