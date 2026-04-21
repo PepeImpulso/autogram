@@ -29,7 +29,8 @@ class SettingsViewModel @Inject constructor(
                 autoPlay = settings.autoPlayReplies,
                 minDuration = settings.minRecordingDurationMs,
                 maxRetries = settings.maxRetryAttempts,
-                playbackSpeed = settings.playbackSpeed
+                playbackSpeed = settings.playbackSpeed,
+                recordingCuesVolume = settings.recordingCuesVolume
             )
         }
         viewModelScope.launch {
@@ -72,6 +73,15 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun updateRecordingCuesVolume(volume: Int) {
+        val clamped = volume.coerceIn(0, 100)
+        _uiState.value = _uiState.value.copy(recordingCuesVolume = clamped)
+        viewModelScope.launch {
+            val settings = settingsRepository.get()
+            settingsRepository.update(settings.copy(recordingCuesVolume = clamped))
+        }
+    }
+
     fun saveSettings() {
         viewModelScope.launch {
             val state = _uiState.value
@@ -93,6 +103,7 @@ data class SettingsUiState(
     val minDuration: Long = 1500,
     val maxRetries: Int = 3,
     val playbackSpeed: Float = 1.25f,
+    val recordingCuesVolume: Int = 50,
     val lastSaveMessage: String? = null,
     val hasTarget: Boolean = false,
     val targetTitle: String? = null,

@@ -31,7 +31,7 @@ class SettingsRepositoryImpl @Inject constructor(
         silentMode = silentMode, minRecordingDurationMs = minRecordingDurationMs,
         maxRecordingDurationMs = maxRecordingDurationMs, pollingIntervalMs = pollingIntervalMs,
         maxRetryAttempts = maxRetryAttempts, autoPlayReplies = autoPlayReplies,
-        playbackSpeed = playbackSpeed
+        playbackSpeed = playbackSpeed, recordingCuesVolume = recordingCuesVolume
     )
 
     private fun AppSettings.toEntity() = SettingsEntity(
@@ -39,6 +39,6 @@ class SettingsRepositoryImpl @Inject constructor(
         silentMode = silentMode, minRecordingDurationMs = minRecordingDurationMs,
         maxRecordingDurationMs = maxRecordingDurationMs, pollingIntervalMs = pollingIntervalMs,
         maxRetryAttempts = maxRetryAttempts, autoPlayReplies = autoPlayReplies,
-        playbackSpeed = playbackSpeed
+        playbackSpeed = playbackSpeed, recordingCuesVolume = recordingCuesVolume
     )
 }

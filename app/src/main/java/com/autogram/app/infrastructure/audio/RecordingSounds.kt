@@ -2,6 +2,7 @@ package com.autogram.app.infrastructure.audio
 
 import android.media.AudioManager
 import android.media.ToneGenerator
+import com.autogram.app.domain.repository.SettingsRepository
 import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -12,27 +13,34 @@ import javax.inject.Singleton
  * needing them to look at the screen.
  *
  * Uses two different tones so the two events are distinguishable by ear even in noisy
- * environments. Low volume (50/100) by design: this is a hint, not a notification.
+ * environments. Volume and on/off come from user settings (AppSettings.recordingCuesVolume,
+ * 0..100 where 0 disables the cues).
  */
 @Singleton
-class RecordingSounds @Inject constructor() {
+class RecordingSounds @Inject constructor(
+    private val settingsRepository: SettingsRepository
+) {
 
-    fun playStart() = playTone(ToneGenerator.TONE_PROP_BEEP, durationMs = 120)
+    suspend fun playStart() = playTone(ToneGenerator.TONE_PROP_BEEP, durationMs = 120)
 
     // A two-tone end cue contrasts with the single-beep start.
-    fun playEnd() = playTone(ToneGenerator.TONE_PROP_BEEP2, durationMs = 150)
+    suspend fun playEnd() = playTone(ToneGenerator.TONE_PROP_BEEP2, durationMs = 150)
 
-    private fun playTone(tone: Int, durationMs: Int) {
+    private suspend fun playTone(tone: Int, durationMs: Int) {
+        val volume = settingsRepository.get().recordingCuesVolume
+        if (volume <= 0) return   // user disabled the cues
+        val clampedVolume = volume.coerceIn(1, 100)
+
         // ToneGenerator must be released after each use; keeping one alive as a field
         // would leak AudioTrack handles across screens / recordings.
         var gen: ToneGenerator? = null
         try {
-            gen = ToneGenerator(AudioManager.STREAM_MUSIC, VOLUME)
+            gen = ToneGenerator(AudioManager.STREAM_MUSIC, clampedVolume)
             gen.startTone(tone, durationMs)
         } catch (e: Exception) {
             Timber.w(e, "RecordingSounds.playTone failed (tone=$tone)")
         } finally {
-            // Release on the ToneGenerator thread after the sound has had time to play.
+            // Release on a daemon thread after the sound has had time to play.
             // Releasing immediately while the tone is queued cuts it off on some devices.
             val toRelease = gen
             if (toRelease != null) {
@@ -42,10 +50,5 @@ class RecordingSounds @Inject constructor() {
                 }.apply { isDaemon = true }.start()
             }
         }
-    }
-
-    companion object {
-        // 50/100 = half max, audible over wind/road noise without being jarring.
-        private const val VOLUME = 50
     }
 }

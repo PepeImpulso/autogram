@@ -134,6 +134,31 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 )
             }
 
+            // Start/end recording cue volume. 0 disables the beeps entirely.
+            Column(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Sonido al grabar")
+                    Text(
+                        if (state.recordingCuesVolume == 0) "Desactivado"
+                        else "${state.recordingCuesVolume}%",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (state.recordingCuesVolume == 0)
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        else MaterialTheme.colorScheme.primary
+                    )
+                }
+                Slider(
+                    value = state.recordingCuesVolume.toFloat(),
+                    onValueChange = { viewModel.updateRecordingCuesVolume(it.toInt()) },
+                    valueRange = 0f..100f,
+                    // 21 positions: 0, 5, 10, ..., 100 — coarse enough to slide with a thumb in a car.
+                    steps = 19
+                )
+            }
+
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
             // --- Advanced Settings ---

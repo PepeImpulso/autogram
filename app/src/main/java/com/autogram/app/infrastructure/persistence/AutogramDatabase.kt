@@ -26,7 +26,7 @@ import javax.inject.Singleton
         QuickReplyEntity::class,
         SettingsEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -53,6 +53,15 @@ object DatabaseModule {
         }
     }
 
+    // v4 → v5 adds settings.recordingCuesVolume (0..100, 0 = cues off).
+    private val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "ALTER TABLE settings ADD COLUMN recordingCuesVolume INTEGER NOT NULL DEFAULT 50"
+            )
+        }
+    }
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AutogramDatabase {
@@ -61,7 +70,7 @@ object DatabaseModule {
             AutogramDatabase::class.java,
             "autogram.db"
         )
-            .addMigrations(MIGRATION_3_4)
+            .addMigrations(MIGRATION_3_4, MIGRATION_4_5)
             // Fallback for any earlier schema (v1 / v2) that has no proper path
             // forward — those versions predate the stable 1.2 line and already
             // wiped once, so destroying from them is acceptable.

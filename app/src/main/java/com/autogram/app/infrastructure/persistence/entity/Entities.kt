@@ -131,5 +131,6 @@ data class SettingsEntity(
     val pollingIntervalMs: Long = 3000,
     val maxRetryAttempts: Int = 3,
     val autoPlayReplies: Boolean = true,
-    val playbackSpeed: Float = 1.25f
+    val playbackSpeed: Float = 1.25f,
+    val recordingCuesVolume: Int = 50
 )
