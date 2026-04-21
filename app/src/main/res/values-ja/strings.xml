@@ -17,6 +17,9 @@
     <string name="common_untitled">(タイトルなし)</string>
 
     <string name="notification_channel_polling">Autogram ポーリング</string>
+    <string name="notification_channel_incoming_voice">音声受信</string>
+    <string name="notification_channel_incoming_voice_desc">音声メッセージが届いたとき。Android Auto で車内に表示するのに必要。</string>
+    <string name="notification_incoming_voice_body">新しい音声メッセージ</string>
     <string name="notification_polling_text">メッセージを受信待機中…</string>
     <string name="notification_channel_pending_replies">保留中の返信</string>
     <string name="notification_channel_pending_replies_desc">返信が届いても再生できない場合に通知します(サイレント、通話中など)。</string>

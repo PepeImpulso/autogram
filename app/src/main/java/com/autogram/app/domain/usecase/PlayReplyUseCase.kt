@@ -5,6 +5,7 @@ import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.infrastructure.audio.AudioPlayer
+import com.autogram.app.infrastructure.audio.TtsPlayer
 import com.autogram.app.infrastructure.persistence.dao.PendingPlaybackDao
 import com.autogram.app.infrastructure.persistence.entity.PendingPlaybackEntity
 import com.autogram.app.infrastructure.platform.PendingReplyNotifier
@@ -34,6 +35,7 @@ import javax.inject.Singleton
 @Singleton
 class PlayReplyUseCase @Inject constructor(
     private val audioPlayer: AudioPlayer,
+    private val ttsPlayer: TtsPlayer,
     private val messageRepository: MessageRepository,
     private val settingsRepository: SettingsRepository,
     private val pendingPlaybackDao: PendingPlaybackDao,  // BUG-05: Persist pending queue
@@ -174,11 +176,27 @@ class PlayReplyUseCase @Inject constructor(
     }
 
     /**
-     * Reproduce un mensaje de texto usando TTS (para futuras versiones).
+     * Read an incoming text reply aloud via Android's TextToSpeech. The engine
+     * picks the voice matching the user's current UI locale so a Merlin reply
+     * in English plays back in an English voice regardless of the device
+     * default. Marks the row PLAYED when the utterance finishes.
      */
-    fun playTextMessage(message: Message) {
-        // TODO: Implementar TTS para mensajes de texto en v1.1
-        Timber.d("TTS playback no implementado aún para: ${message.textContent}")
+    suspend fun playTextMessage(message: Message) {
+        val text = message.textContent ?: return
+        if (text.isBlank()) return
+        currentPlayingId = message.id
+        messageRepository.update(message.copy(state = MessageState.PLAYING))
+        _playbackStatus.value = PlaybackStatus.Playing(message.id)
+        ttsPlayer.speak(text) {
+            playbackScope.launch {
+                messageRepository.update(message.copy(
+                    state = MessageState.PLAYED,
+                    playedAt = System.currentTimeMillis()
+                ))
+                currentPlayingId = null
+                playNext()
+            }
+        }
     }
 
     /**

@@ -17,6 +17,9 @@
     <string name="common_untitled">(ohne Titel)</string>
 
     <string name="notification_channel_polling">Autogram Polling</string>
+    <string name="notification_channel_incoming_voice">Eingehende Sprachnachricht</string>
+    <string name="notification_channel_incoming_voice_desc">Eine Sprachnachricht ist eingegangen. Erforderlich damit Android Auto sie im Auto anzeigt.</string>
+    <string name="notification_incoming_voice_body">Neue Sprachnachricht</string>
     <string name="notification_polling_text">Höre auf Nachrichten…</string>
     <string name="notification_channel_pending_replies">Ausstehende Antworten</string>
     <string name="notification_channel_pending_replies_desc">Benachrichtigt, wenn eine Antwort eintrifft und nicht abgespielt werden kann (Lautlos, Anruf usw.).</string>

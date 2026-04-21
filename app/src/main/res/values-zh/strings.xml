@@ -17,6 +17,9 @@
     <string name="common_untitled">(无标题)</string>
 
     <string name="notification_channel_polling">Autogram 轮询</string>
+    <string name="notification_channel_incoming_voice">语音收到</string>
+    <string name="notification_channel_incoming_voice_desc">收到语音消息。需要此通道以便 Android Auto 在车机上显示。</string>
+    <string name="notification_incoming_voice_body">新语音消息</string>
     <string name="notification_polling_text">正在监听消息…</string>
     <string name="notification_channel_pending_replies">待播放回复</string>
     <string name="notification_channel_pending_replies_desc">当回复到达但无法播放时通知（静音、通话等）。</string>

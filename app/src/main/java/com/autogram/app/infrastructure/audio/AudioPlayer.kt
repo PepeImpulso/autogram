@@ -2,6 +2,7 @@ package com.autogram.app.infrastructure.audio
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
@@ -75,6 +76,10 @@ class AudioPlayer @Inject constructor(
                         playbackParams = playbackParams.setSpeed(clamped)
                     }.onFailure { Timber.w(it, "setSpeed($speed) failed — playing at 1x") }
                 }
+                // Prefer routing to a connected Bluetooth / car output so the
+                // driver hears replies through the car speakers / headset
+                // instead of the phone's loudspeaker.
+                preferBluetoothRoute(this)
                 start()
             }
             isPlaying = true
@@ -146,6 +151,35 @@ class AudioPlayer @Inject constructor(
             }
             .build()
         return audioManager.requestAudioFocus(audioFocusRequest!!) == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+    }
+
+    /**
+     * Route MediaPlayer output through a connected Bluetooth A2DP (stereo) or
+     * wired headset when available — otherwise fall back to whatever the OS
+     * selects. Safe no-op on API < 28 where setPreferredDevice was added.
+     */
+    private fun preferBluetoothRoute(player: MediaPlayer) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
+        try {
+            val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val devices = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            // Priority: A2DP (stereo BT headset / car) → wired headset → SCO (voice BT).
+            val preferred = devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP }
+                ?: devices.firstOrNull {
+                    it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                        it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
+                }
+                ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
+            if (preferred != null) {
+                player.setPreferredDevice(preferred)
+                Timber.d("AudioPlayer routing to ${preferred.productName} (type=${preferred.type})")
+            }
+        } catch (e: SecurityException) {
+            // BLUETOOTH_CONNECT not granted on API 31+ yet — fall back to OS default.
+            Timber.d("BT route unavailable (no permission): ${e.message}")
+        } catch (e: Exception) {
+            Timber.w(e, "preferBluetoothRoute failed; falling back to default route")
+        }
     }
 
     // BUG-38: minSdk=29, always API O+

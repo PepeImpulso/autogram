@@ -17,6 +17,7 @@ import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.infrastructure.platform.CallStateMonitor
+import com.autogram.app.infrastructure.platform.IncomingMessageNotifier
 import com.autogram.app.infrastructure.telegram.mtproto.AuthState
 import com.autogram.app.infrastructure.telegram.mtproto.TdLibClient
 import com.autogram.app.ui.phone.MainActivity
@@ -63,6 +64,7 @@ class MtprotoReceiverService : Service() {
     @Inject lateinit var conversationRepository: ConversationRepository
     @Inject lateinit var playReplyUseCase: PlayReplyUseCase
     @Inject lateinit var callStateMonitor: CallStateMonitor
+    @Inject lateinit var incomingMessageNotifier: IncomingMessageNotifier
 
     private var scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var supervisorJob: Job? = null
@@ -191,6 +193,12 @@ class MtprotoReceiverService : Service() {
             createdAt = tdMsg.date.toLong() * 1000L
         )
         messageRepository.insert(message)
+        // Surface a MessagingStyle+CarAppExtender notification so Android Auto
+        // shows the message on the head unit and lets the user tap Listen/Reply.
+        incomingMessageNotifier.postVoiceReceived(
+            conversation = target,
+            timestampMs = message.createdAt
+        )
         playReplyUseCase.playVoiceMessage(
             message = message,
             isCallActive = callStateMonitor.isInCall.value
