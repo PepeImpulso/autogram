@@ -2,7 +2,11 @@ package com.autogram.app.domain.usecase
 
 import android.content.Context
 import com.autogram.app.domain.model.Conversation
+import com.autogram.app.domain.model.Message
+import com.autogram.app.domain.model.MessageDirection
+import com.autogram.app.domain.model.MessageState
 import com.autogram.app.domain.repository.ConversationRepository
+import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.infrastructure.audio.AudioRecorder
 import com.autogram.app.infrastructure.audio.EmptyMessageFilter
 import com.autogram.app.infrastructure.audio.RecordingSounds
@@ -30,6 +34,7 @@ class SendVoiceMtprotoUseCase @Inject constructor(
     private val audioRecorder: AudioRecorder,
     private val emptyMessageFilter: EmptyMessageFilter,
     private val conversationRepository: ConversationRepository,
+    private val messageRepository: MessageRepository,
     private val playReplyUseCase: PlayReplyUseCase,
     private val recordingSounds: RecordingSounds
 ) {
@@ -127,6 +132,7 @@ class SendVoiceMtprotoUseCase @Inject constructor(
         }
 
         _status.value = SendStatus.Sending
+        val durationMs = emptyMessageFilter.getDurationMs(audioFile) ?: 0L
         return try {
             val chatId = target.targetChatId.toLong()
             val sendResult = tdLibClient.send(
@@ -135,11 +141,21 @@ class SendVoiceMtprotoUseCase @Inject constructor(
                     this.topicId = target.topicId?.let { TdApi.MessageTopicForum(it.toInt()) }
                     this.inputMessageContent = TdApi.InputMessageVoiceNote().apply {
                         voiceNote = TdApi.InputFileLocal(audioFile.absolutePath)
-                        duration = ((emptyMessageFilter.getDurationMs(audioFile) ?: 0L) / 1000).toInt()
+                        duration = (durationMs / 1000).toInt()
                     }
                 }
             )
             val out = handleSendResult(sendResult)
+            // Persist the outgoing message so Stats, History, and success rate
+            // actually reflect reality. Without this row nothing downstream
+            // knows the user ever sent anything.
+            persistOutgoing(
+                target = target,
+                result = out,
+                audioFile = audioFile,
+                audioDurationMs = durationMs,
+                textContent = null
+            )
             if (out.isSuccess) {
                 conversationRepository.setLastRepliedAt(target.id, System.currentTimeMillis())
             }
@@ -147,6 +163,7 @@ class SendVoiceMtprotoUseCase @Inject constructor(
         } catch (e: Exception) {
             Timber.e(e, "MTProto send failed")
             _status.value = SendStatus.Error(e.message ?: "Error enviando")
+            persistOutgoing(target, Result.failure(e), audioFile, durationMs, null)
             Result.failure(e)
         } finally {
             currentTargetId = null
@@ -177,6 +194,7 @@ class SendVoiceMtprotoUseCase @Inject constructor(
                 }
             )
             val out = handleSendResult(sendResult)
+            persistOutgoing(target, out, audioFile = null, audioDurationMs = 0L, textContent = text)
             if (out.isSuccess) {
                 conversationRepository.setLastRepliedAt(target.id, System.currentTimeMillis())
             }
@@ -184,10 +202,41 @@ class SendVoiceMtprotoUseCase @Inject constructor(
         } catch (e: Exception) {
             Timber.e(e, "MTProto text send failed")
             _status.value = SendStatus.Error(e.message ?: "Error enviando")
+            persistOutgoing(target, Result.failure(e), audioFile = null, audioDurationMs = 0L, textContent = text)
             Result.failure(e)
         } finally {
             _activeTargetId.value = null
         }
+    }
+
+    /**
+     * Record the outgoing message in the DB so Stats / History / success-rate
+     * calculations have something to count. State mirrors what actually happened
+     * on the wire: SENT if TDLib accepted it, FAILED otherwise.
+     */
+    private suspend fun persistOutgoing(
+        target: Conversation,
+        result: Result<Long>,
+        audioFile: File?,
+        audioDurationMs: Long,
+        textContent: String?
+    ) {
+        val now = System.currentTimeMillis()
+        val message = Message(
+            id = UUID.randomUUID().toString(),
+            conversationId = target.id,
+            direction = MessageDirection.OUTGOING,
+            state = if (result.isSuccess) MessageState.SENT else MessageState.FAILED,
+            telegramMessageId = result.getOrNull(),
+            audioFilePath = audioFile?.absolutePath,
+            audioDurationMs = if (audioDurationMs > 0) audioDurationMs else null,
+            textContent = textContent,
+            createdAt = now,
+            sentAt = if (result.isSuccess) now else null,
+            errorMessage = result.exceptionOrNull()?.message
+        )
+        runCatching { messageRepository.insert(message) }
+            .onFailure { Timber.w(it, "Failed to persist outgoing message") }
     }
 
     private suspend fun resolveTarget(id: String?) =

@@ -22,7 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
@@ -169,6 +169,12 @@ private fun MainScreen(
                 )
                 NavigationBarItem(
                     selected = false,
+                    onClick = onManageQuickReplies,
+                    icon = { Icon(Icons.Filled.Bolt, contentDescription = null) },
+                    label = { Text("Atajos") }
+                )
+                NavigationBarItem(
+                    selected = false,
                     onClick = onOpenHistory,
                     icon = { Icon(Icons.Filled.History, contentDescription = null) },
                     label = { Text(ctx.getString(R.string.history_title)) }
@@ -198,42 +204,23 @@ private fun MainScreen(
             Spacer(Modifier.height(24.dp))
 
             if (primary != null) {
-                RecordCircle(
-                    conversation = primary,
-                    size = 176.dp,
+                PrimaryRow(
+                    primary = primary,
                     isRecordingThis = activeTargetId == primary.id &&
                         sendStatus is SendVoiceMtprotoUseCase.SendStatus.Recording,
                     pendingCount = pendingCounts[primary.id] ?: 0,
                     hasPermission = hasMicPermission,
+                    quickReplies = quickReplies,
                     onRequestPermission = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
                     onStart = { viewModel.startRecording(primary.id) },
                     onSend = { viewModel.stopAndSend() },
-                    onCancel = { viewModel.cancelRecording() }
+                    onCancel = { viewModel.cancelRecording() },
+                    onQuickReply = { viewModel.sendQuickReply(it) }
                 )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    primary.targetTitle ?: "Merlin",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                primary.topicName?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
             } else {
                 NoPrimaryState(onConfigure = onManagePinned)
             }
 
-            Spacer(Modifier.height(16.dp))
-            Text(
-                "Mantén pulsado para grabar · suelta para enviar · arrastra fuera para cancelar",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 32.dp)
-            )
             Spacer(Modifier.height(24.dp))
 
             SecondaryCirclesRow(
@@ -250,12 +237,6 @@ private fun MainScreen(
             )
 
             Spacer(Modifier.weight(1f))
-            QuickReplies(
-                items = quickReplies,
-                onSend = { viewModel.sendQuickReply(it) },
-                onEdit = onManageQuickReplies
-            )
-            Spacer(Modifier.height(16.dp))
         }
     }
 
@@ -581,45 +562,73 @@ private fun SecondaryCirclesRow(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+/**
+ * Primary target on the left (Merlin circle + name), quick-reply shortcuts
+ * on the right. Shortcuts send voice-less text to the primary conversation
+ * — no selector needed, they always go to Merlin.
+ */
 @Composable
-private fun QuickReplies(
-    items: List<Pair<String, String>>,
-    onSend: (String) -> Unit,
-    onEdit: () -> Unit
+private fun PrimaryRow(
+    primary: Conversation,
+    isRecordingThis: Boolean,
+    pendingCount: Int,
+    hasPermission: Boolean,
+    quickReplies: List<Pair<String, String>>,
+    onRequestPermission: () -> Unit,
+    onStart: () -> Unit,
+    onSend: () -> Unit,
+    onCancel: () -> Unit,
+    onQuickReply: (String) -> Unit
 ) {
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                "Respuestas rápidas",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            RecordCircle(
+                conversation = primary,
+                size = 176.dp,
+                isRecordingThis = isRecordingThis,
+                pendingCount = pendingCount,
+                hasPermission = hasPermission,
+                onRequestPermission = onRequestPermission,
+                onStart = onStart,
+                onSend = onSend,
+                onCancel = onCancel
             )
-            IconButton(onClick = onEdit, modifier = Modifier.size(28.dp)) {
-                Icon(
-                    Icons.Filled.Edit,
-                    contentDescription = "Editar respuestas rápidas",
-                    modifier = Modifier.size(16.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+            Spacer(Modifier.height(8.dp))
+            Text(
+                primary.targetTitle ?: "Merlin",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            primary.topicName?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
-        Spacer(Modifier.height(8.dp))
-        FlowRow(horizontalArrangement = Arrangement.Center) {
-            items.forEach { (label, text) ->
-                AssistChip(
-                    onClick = { onSend(text) },
-                    label = { Text(label) },
-                    modifier = Modifier.padding(horizontal = 4.dp)
-                )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            quickReplies.forEach { (label, text) ->
+                FilledTonalButton(
+                    onClick = { onQuickReply(text) },
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelMedium,
+                        maxLines = 1
+                    )
+                }
             }
         }
     }
