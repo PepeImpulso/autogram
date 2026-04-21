@@ -15,6 +15,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.res.stringResource
+import com.autogram.app.R
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
@@ -91,10 +93,10 @@ private fun QuickRepliesScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Respuestas rápidas") },
+                title = { Text(stringResource(R.string.quick_replies_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back))
                     }
                 }
             )
@@ -103,7 +105,7 @@ private fun QuickRepliesScreen(
             ExtendedFloatingActionButton(
                 onClick = { editing = null; showEditor = true },
                 icon = { Icon(Icons.Filled.Add, null) },
-                text = { Text("Nueva") }
+                text = { Text(stringResource(R.string.quick_replies_new)) }
             )
         }
     ) { padding ->
@@ -114,7 +116,7 @@ private fun QuickRepliesScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    "Crea tus propias respuestas rápidas para enviar con un toque desde la pantalla principal.",
+                    stringResource(R.string.quick_replies_empty),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -129,7 +131,7 @@ private fun QuickRepliesScreen(
                         },
                         trailingContent = {
                             IconButton(onClick = { viewModel.delete(r.id) }) {
-                                Icon(Icons.Filled.Delete, "Eliminar")
+                                Icon(Icons.Filled.Delete, stringResource(R.string.common_delete))
                             }
                         },
                         modifier = Modifier.clickable(onClick = {
@@ -166,20 +168,20 @@ private fun QuickReplyEditor(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (initial == null) "Nueva respuesta" else "Editar respuesta") },
+        title = { Text(if (initial == null) stringResource(R.string.quick_replies_dialog_new_title) else stringResource(R.string.quick_replies_dialog_edit_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = label,
                     onValueChange = { label = it },
-                    label = { Text("Etiqueta (chip)") },
+                    label = { Text(stringResource(R.string.quick_replies_label)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = text,
                     onValueChange = { text = it },
-                    label = { Text("Texto que se envía") },
+                    label = { Text(stringResource(R.string.quick_replies_text)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                     modifier = Modifier.fillMaxWidth().heightIn(min = 96.dp)
                 )
@@ -189,10 +191,10 @@ private fun QuickReplyEditor(
             TextButton(
                 onClick = { onSave(label, text) },
                 enabled = label.isNotBlank() && text.isNotBlank()
-            ) { Text("Guardar") }
+            ) { Text(stringResource(R.string.common_save)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancelar") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
         }
     )
 }

@@ -79,7 +79,9 @@ data class AppSettings(
     // Default 1.25 — most people already listen to podcasts faster than 1x.
     val playbackSpeed: Float = 1.25f,
     // Volume of the start/end recording beeps, 0..100. 0 disables them entirely.
-    val recordingCuesVolume: Int = 50
+    val recordingCuesVolume: Int = 50,
+    // BCP-47 language tag for the UI. Empty string means "follow system".
+    val languageTag: String = ""
 )
 
 data class DeliveryAttempt(

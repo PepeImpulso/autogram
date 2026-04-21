@@ -1,6 +1,8 @@
 package com.autogram.app.ui.phone
 
 import android.app.Application
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.os.LocaleListCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.autogram.app.domain.repository.ConversationRepository
@@ -30,7 +32,8 @@ class SettingsViewModel @Inject constructor(
                 minDuration = settings.minRecordingDurationMs,
                 maxRetries = settings.maxRetryAttempts,
                 playbackSpeed = settings.playbackSpeed,
-                recordingCuesVolume = settings.recordingCuesVolume
+                recordingCuesVolume = settings.recordingCuesVolume,
+                languageTag = settings.languageTag
             )
         }
         viewModelScope.launch {
@@ -82,6 +85,19 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun updateLanguage(tag: String) {
+        _uiState.value = _uiState.value.copy(languageTag = tag)
+        viewModelScope.launch {
+            val settings = settingsRepository.get()
+            settingsRepository.update(settings.copy(languageTag = tag))
+        }
+        // Apply immediately so the activity recreates with the new strings.
+        // Empty tag → follow system (clearing the per-app override).
+        val locales = if (tag.isBlank()) LocaleListCompat.getEmptyLocaleList()
+                      else LocaleListCompat.forLanguageTags(tag)
+        AppCompatDelegate.setApplicationLocales(locales)
+    }
+
     fun saveSettings() {
         viewModelScope.launch {
             val state = _uiState.value
@@ -104,6 +120,7 @@ data class SettingsUiState(
     val maxRetries: Int = 3,
     val playbackSpeed: Float = 1.25f,
     val recordingCuesVolume: Int = 50,
+    val languageTag: String = "",
     val lastSaveMessage: String? = null,
     val hasTarget: Boolean = false,
     val targetTitle: String? = null,

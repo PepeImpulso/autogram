@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -165,13 +166,13 @@ private fun MainScreen(
                     selected = true,
                     onClick = {},
                     icon = { Icon(Icons.Filled.Home, contentDescription = null) },
-                    label = { Text("Inicio") }
+                    label = { Text(ctx.getString(R.string.nav_home)) }
                 )
                 NavigationBarItem(
                     selected = false,
                     onClick = onManageQuickReplies,
                     icon = { Icon(Icons.Filled.Bolt, contentDescription = null) },
-                    label = { Text("Atajos") }
+                    label = { Text(ctx.getString(R.string.nav_shortcuts)) }
                 )
                 NavigationBarItem(
                     selected = false,
@@ -272,7 +273,7 @@ private fun HeroHeader(
             modifier = Modifier.size(32.dp)
         )
         Text(
-            "Autogram",
+            stringResource(R.string.app_name),
             style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.onBackground
         )
@@ -293,25 +294,26 @@ private fun StatusPill(
 ) {
     data class Pill(val text: String, val container: Color, val onContainer: Color)
     val scheme = MaterialTheme.colorScheme
+    val ctx = LocalContext.current
     val pill = when (sendStatus) {
         is SendVoiceMtprotoUseCase.SendStatus.Recording ->
-            Pill("Grabando…", scheme.errorContainer, scheme.onErrorContainer)
+            Pill(ctx.getString(R.string.status_recording), scheme.errorContainer, scheme.onErrorContainer)
         is SendVoiceMtprotoUseCase.SendStatus.Validating ->
-            Pill("Validando…", scheme.tertiaryContainer, scheme.onTertiaryContainer)
+            Pill(ctx.getString(R.string.status_validating), scheme.tertiaryContainer, scheme.onTertiaryContainer)
         is SendVoiceMtprotoUseCase.SendStatus.Sending ->
-            Pill("Enviando…", scheme.primaryContainer, scheme.onPrimaryContainer)
+            Pill(ctx.getString(R.string.status_sending), scheme.primaryContainer, scheme.onPrimaryContainer)
         is SendVoiceMtprotoUseCase.SendStatus.Sent ->
-            Pill("Enviado ✓", scheme.primaryContainer, scheme.onPrimaryContainer)
+            Pill(ctx.getString(R.string.status_sent), scheme.primaryContainer, scheme.onPrimaryContainer)
         is SendVoiceMtprotoUseCase.SendStatus.Discarded ->
-            Pill("Descartado: ${sendStatus.reason}", scheme.tertiaryContainer, scheme.onTertiaryContainer)
+            Pill(ctx.getString(R.string.status_discarded, sendStatus.reason), scheme.tertiaryContainer, scheme.onTertiaryContainer)
         is SendVoiceMtprotoUseCase.SendStatus.Error ->
-            Pill("Error: ${sendStatus.message}", scheme.errorContainer, scheme.onErrorContainer)
+            Pill(ctx.getString(R.string.status_error_generic, sendStatus.message), scheme.errorContainer, scheme.onErrorContainer)
         else -> {
             val pendingCount = (playback as? PlayReplyUseCase.PlaybackStatus.PendingCount)?.count ?: 0
             if (pendingCount > 0)
-                Pill("$pendingCount mensajes pendientes", scheme.tertiaryContainer, scheme.onTertiaryContainer)
+                Pill(ctx.getString(R.string.status_pending_count, pendingCount), scheme.tertiaryContainer, scheme.onTertiaryContainer)
             else
-                Pill("Listo", scheme.surfaceVariant, scheme.onSurfaceVariant)
+                Pill(ctx.getString(R.string.status_idle), scheme.surfaceVariant, scheme.onSurfaceVariant)
         }
     }
     Surface(
@@ -331,17 +333,18 @@ private fun StatusPill(
 
 @Composable
 private fun NoPrimaryState(onConfigure: () -> Unit) {
+    val ctx = LocalContext.current
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.padding(horizontal = 32.dp)
     ) {
         Text(
-            "No hay destino principal configurado.",
+            ctx.getString(R.string.main_no_primary_title),
             style = MaterialTheme.typography.titleMedium
         )
         Spacer(Modifier.height(12.dp))
         FilledTonalButton(onClick = onConfigure) {
-            Text("Configurar accesos rápidos")
+            Text(ctx.getString(R.string.main_configure_shortcuts))
         }
     }
 }
@@ -428,7 +431,7 @@ private fun RecordCircle(
                 )
                 Icon(
                     imageVector = Icons.Filled.Close,
-                    contentDescription = "Cancelar",
+                    contentDescription = stringResource(R.string.record_cancel),
                     tint = Color.White,
                     modifier = Modifier.size(size * 0.4f)
                 )
@@ -463,7 +466,7 @@ private fun MicBadge(circleSize: Dp, modifier: Modifier = Modifier) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
             Icon(
                 imageVector = Icons.Filled.Mic,
-                contentDescription = "Grabar",
+                contentDescription = stringResource(R.string.record_mic),
                 modifier = Modifier.size(badgeSize * 0.6f)
             )
         }
@@ -546,7 +549,7 @@ private fun SecondaryCirclesRow(
                     IconButton(onClick = onManage) {
                         Icon(
                             Icons.Filled.Add,
-                            contentDescription = "Gestionar accesos rápidos",
+                            contentDescription = stringResource(R.string.main_manage_shortcuts_cd),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -554,7 +557,7 @@ private fun SecondaryCirclesRow(
             }
             Spacer(Modifier.height(4.dp))
             Text(
-                "Añadir",
+                stringResource(R.string.main_add_shortcut),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -601,7 +604,7 @@ private fun PrimaryRow(
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                primary.targetTitle ?: "Merlin",
+                primary.targetTitle ?: stringResource(R.string.main_default_primary_name),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )

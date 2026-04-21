@@ -53,8 +53,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.autogram.app.R
 import com.autogram.app.domain.model.Conversation
 import com.autogram.app.ui.theme.AutogramTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -118,10 +120,10 @@ private fun ManagePinnedScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Accesos rápidos") },
+                title = { Text(stringResource(R.string.pinned_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back))
                     }
                 }
             )
@@ -130,7 +132,7 @@ private fun ManagePinnedScreen(
             ExtendedFloatingActionButton(
                 onClick = onAdd,
                 icon = { Icon(Icons.Filled.Add, null) },
-                text = { Text("Añadir") }
+                text = { Text(stringResource(R.string.common_add)) }
             )
         }
     ) { padding ->
@@ -141,7 +143,7 @@ private fun ManagePinnedScreen(
                 verticalArrangement = Arrangement.Center
             ) {
                 Text(
-                    "Aún no hay accesos rápidos. Añade el bot principal o un topic de un grupo foro.",
+                    stringResource(R.string.pinned_empty),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -196,17 +198,18 @@ private fun PinnedRow(
             )
         },
         headlineContent = {
+            val untitled = stringResource(R.string.common_untitled)
             Text(
                 buildString {
-                    append(conv.targetTitle ?: "(sin título)")
+                    append(conv.targetTitle ?: untitled)
                     conv.topicName?.let { append(" › ").append(it) }
                 }
             )
         },
         supportingContent = {
             Text(
-                if (conv.isActive) "Principal (Merlin)"
-                else "Acceso rápido",
+                if (conv.isActive) stringResource(R.string.pinned_label_primary)
+                else stringResource(R.string.pinned_label_secondary),
                 style = MaterialTheme.typography.bodySmall,
                 color = if (conv.isActive) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.onSurfaceVariant
@@ -218,7 +221,7 @@ private fun PinnedRow(
                     Icon(
                         imageVector = if (conv.isActive) Icons.Filled.Star
                                       else Icons.Outlined.StarBorder,
-                        contentDescription = "Marcar como principal",
+                        contentDescription = stringResource(R.string.pinned_mark_primary_cd),
                         tint = if (conv.isActive) MaterialTheme.colorScheme.primary
                                else MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -226,13 +229,13 @@ private fun PinnedRow(
                 IconButton(
                     onClick = if (conv.photoLocalPath != null) onClearPhoto else onPickPhoto
                 ) {
-                    Icon(Icons.Filled.Image, "Imagen de fondo")
+                    Icon(Icons.Filled.Image, stringResource(R.string.pinned_background_cd))
                 }
                 // Allow removing only non-primary circles — the primary target
                 // is managed through Settings › Destino de mensajes.
                 if (!conv.isActive) {
                     IconButton(onClick = onRemove) {
-                        Icon(Icons.Filled.Delete, "Quitar")
+                        Icon(Icons.Filled.Delete, stringResource(R.string.common_remove))
                     }
                 }
             }
@@ -315,12 +318,12 @@ private fun ZoomablePhotoDialog(path: String, onDismiss: () -> Unit) {
             ) {
                 Icon(
                     Icons.Filled.Close,
-                    contentDescription = "Cerrar",
+                    contentDescription = stringResource(R.string.common_close),
                     tint = Color.White
                 )
             }
             Text(
-                "Pellizca para hacer zoom · arrastra para mover",
+                stringResource(R.string.pinned_zoom_hint),
                 color = Color.White.copy(alpha = 0.7f),
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 32.dp)

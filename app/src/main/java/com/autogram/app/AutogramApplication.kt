@@ -1,11 +1,18 @@
 package com.autogram.app
 
 import android.app.Application
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.os.LocaleListCompat
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
+import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.infrastructure.platform.PendingReplyNotifier
 import com.autogram.app.infrastructure.retry.RetentionCleanupWorker
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import timber.log.Timber
 import javax.inject.Inject
 
@@ -13,6 +20,9 @@ import javax.inject.Inject
 class AutogramApplication : Application(), Configuration.Provider {
 
     @Inject lateinit var workerFactory: HiltWorkerFactory
+    @Inject lateinit var settingsRepository: SettingsRepository
+
+    private val appScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -30,8 +40,29 @@ class AutogramApplication : Application(), Configuration.Provider {
         }
         Timber.d("Autogram initialized")
 
+        // Apply saved UI language before any activity inflates its layout.
+        // Reading from the DB is suspend so we launch a coroutine — activities
+        // that need to apply the locale before first draw should also call
+        // AppCompatDelegate.getApplicationLocales() defensively.
+        appScope.launch {
+            applyStoredLocale()
+        }
+
         PendingReplyNotifier.ensureChannel(this)
         RetentionCleanupWorker.schedule(this)
+    }
+
+    private suspend fun applyStoredLocale() {
+        val tag = runCatching { settingsRepository.get().languageTag }.getOrNull().orEmpty()
+        val locales = if (tag.isBlank()) {
+            LocaleListCompat.getEmptyLocaleList()  // follow system
+        } else {
+            LocaleListCompat.forLanguageTags(tag)
+        }
+        // Must be called from the main thread per AppCompat's contract.
+        android.os.Handler(mainLooper).post {
+            AppCompatDelegate.setApplicationLocales(locales)
+        }
     }
 
     /** BUG-34: Minimal release tree that logs errors to Log.e */

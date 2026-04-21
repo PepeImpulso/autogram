@@ -37,7 +37,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.autogram.app.R
 import com.autogram.app.infrastructure.telegram.mtproto.ChatKind
 import com.autogram.app.infrastructure.telegram.mtproto.ChatSummary
 import com.autogram.app.infrastructure.telegram.mtproto.TopicSummary
@@ -94,7 +96,7 @@ private fun PinnedPickerScreen(
                 title = {
                     Text(
                         when (val s = state.step) {
-                            is PinnedPickerViewModel.Step.Chats -> "Añadir acceso rápido"
+                            is PinnedPickerViewModel.Step.Chats -> stringResource(R.string.picker_add_shortcut_title)
                             is PinnedPickerViewModel.Step.Topics -> s.chat.title
                         }
                     )
@@ -103,7 +105,7 @@ private fun PinnedPickerScreen(
                     IconButton(onClick = {
                         if (onTopicStep) viewModel.onBackToChats() else onFinish()
                     }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back))
                     }
                 }
             )
@@ -124,7 +126,7 @@ private fun PinnedPickerScreen(
                             if (state.addedCount > 0) add("+${state.addedCount}")
                             if (state.removedCount > 0) add("-${state.removedCount}")
                         }
-                        Text("Guardar cambios (${parts.joinToString(" ")})")
+                        Text("${stringResource(R.string.picker_save_changes_prefix)} (${parts.joinToString(" ")})")
                     }
                 }
             }
@@ -174,9 +176,12 @@ private fun ErrorBlock(message: String) {
 @Composable
 private fun ChatList(chats: List<ChatSummary>, onClick: (ChatSummary) -> Unit) {
     if (chats.isEmpty()) {
-        EmptyState("No se encontraron chats disponibles.")
+        EmptyState(stringResource(R.string.picker_no_chats_short))
         return
     }
+    val privateLabel = stringResource(R.string.picker_chat_private)
+    val supergroupLabel = stringResource(R.string.picker_chat_supergroup)
+    val forumSuffix = stringResource(R.string.picker_chat_forum_suffix)
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         items(chats, key = { it.chatId }) { chat ->
             ListItem(
@@ -186,11 +191,11 @@ private fun ChatList(chats: List<ChatSummary>, onClick: (ChatSummary) -> Unit) {
                         buildString {
                             append(
                                 when (chat.kind) {
-                                    ChatKind.Private -> "Chat privado"
-                                    ChatKind.Supergroup -> "Supergrupo"
+                                    ChatKind.Private -> privateLabel
+                                    ChatKind.Supergroup -> supergroupLabel
                                 }
                             )
-                            if (chat.isForum) append(" · con topics")
+                            if (chat.isForum) append(" ").append(forumSuffix)
                         },
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -211,17 +216,20 @@ private fun MultiTopicList(
     onToggle: (TopicSummary) -> Unit
 ) {
     if (topics.isEmpty()) {
-        EmptyState("Este chat no tiene topics visibles.")
+        EmptyState(stringResource(R.string.picker_no_topics))
         return
     }
+    val generalLabel = stringResource(R.string.picker_topic_general)
+    val closedLabel = stringResource(R.string.picker_topic_closed)
+    val primaryLock = stringResource(R.string.picker_topic_primary_lock)
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         items(topics, key = { it.forumTopicId }) { topic ->
             val isChecked = topic.forumTopicId in selected
             val isPrimary = topic.forumTopicId in lockedPrimary
             val tags = listOfNotNull(
-                if (topic.isGeneral) "General" else null,
-                if (topic.isClosed) "cerrado" else null,
-                if (isPrimary) "principal (Merlin)" else null
+                if (topic.isGeneral) generalLabel else null,
+                if (topic.isClosed) closedLabel else null,
+                if (isPrimary) primaryLock else null
             ).joinToString(" · ")
             ListItem(
                 leadingContent = {

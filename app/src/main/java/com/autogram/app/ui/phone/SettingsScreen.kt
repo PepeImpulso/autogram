@@ -1,5 +1,6 @@
 package com.autogram.app.ui.phone
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -12,19 +13,20 @@ import androidx.compose.material.icons.filled.Battery4Bar
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.SystemUpdate
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.clickable
+import com.autogram.app.R
 import kotlinx.coroutines.launch
 
 /**
@@ -41,10 +43,10 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         topBar = {
             TopAppBar(
-                title = { Text("Configuración", fontWeight = FontWeight.SemiBold) },
+                title = { Text(stringResource(R.string.settings_title), fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -63,8 +65,8 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
         ) {
             SectionCard(
                 icon = Icons.Filled.ChatBubble,
-                title = "Destino",
-                subtitle = "El chat o topic principal a donde se envían tus mensajes."
+                title = stringResource(R.string.settings_section_destination),
+                subtitle = stringResource(R.string.settings_section_destination_sub)
             ) {
                 TargetSummary(
                     title = state.targetTitle,
@@ -73,15 +75,16 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 )
                 SettingsDivider()
                 NavigationRow(
-                    label = if (state.hasTarget) "Cambiar destino" else "Elegir destino",
+                    label = if (state.hasTarget) stringResource(R.string.settings_change_target)
+                            else stringResource(R.string.settings_choose_target),
                     onClick = {
                         context.startActivity(android.content.Intent(context, TargetPickerActivity::class.java))
                     }
                 )
                 SettingsDivider()
                 NavigationRow(
-                    label = "Gestionar accesos rápidos",
-                    supporting = "Círculos secundarios con sus fotos.",
+                    label = stringResource(R.string.settings_manage_pinned),
+                    supporting = stringResource(R.string.settings_manage_pinned_sub),
                     onClick = {
                         context.startActivity(android.content.Intent(context, ManagePinnedActivity::class.java))
                     }
@@ -90,24 +93,24 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
 
             SectionCard(
                 icon = Icons.Filled.PlayCircle,
-                title = "Reproducción",
-                subtitle = "Cómo suena cuando llegan respuestas y cómo grabas las tuyas."
+                title = stringResource(R.string.settings_section_playback),
+                subtitle = stringResource(R.string.settings_section_playback_sub)
             ) {
                 SwitchRow(
-                    label = "Auto-reproducir respuestas",
+                    label = stringResource(R.string.settings_autoplay),
                     checked = state.autoPlay,
                     onCheckedChange = viewModel::updateAutoPlay
                 )
                 SettingsDivider()
                 SwitchRow(
-                    label = "Modo silencio",
-                    supporting = "Los audios entrantes se encolan en vez de sonar.",
+                    label = stringResource(R.string.settings_silent),
+                    supporting = stringResource(R.string.settings_silent_sub),
                     checked = state.silentMode,
                     onCheckedChange = viewModel::updateSilentMode
                 )
                 SettingsDivider()
                 SliderRow(
-                    label = "Velocidad de reproducción",
+                    label = stringResource(R.string.settings_playback_speed),
                     value = state.playbackSpeed,
                     valueLabel = "${"%.2f".format(state.playbackSpeed)}x",
                     onValueChange = viewModel::updatePlaybackSpeed,
@@ -116,9 +119,9 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 )
                 SettingsDivider()
                 SliderRow(
-                    label = "Sonido al grabar",
+                    label = stringResource(R.string.settings_recording_cues),
                     value = state.recordingCuesVolume.toFloat(),
-                    valueLabel = if (state.recordingCuesVolume == 0) "Desactivado"
+                    valueLabel = if (state.recordingCuesVolume == 0) stringResource(R.string.settings_recording_cues_off)
                                  else "${state.recordingCuesVolume}%",
                     valueLabelDim = state.recordingCuesVolume == 0,
                     onValueChange = { viewModel.updateRecordingCuesVolume(it.toInt()) },
@@ -128,30 +131,47 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
             }
 
             SectionCard(
+                icon = Icons.Filled.Language,
+                title = stringResource(R.string.settings_section_language),
+                subtitle = stringResource(R.string.settings_section_language_sub)
+            ) {
+                LanguageSelector(
+                    currentTag = state.languageTag,
+                    onSelect = viewModel::updateLanguage
+                )
+            }
+
+            SectionCard(
                 icon = Icons.Filled.History,
-                title = "Histórico",
-                subtitle = "Límites que afectan al almacenamiento y a la red."
+                title = stringResource(R.string.settings_section_history),
+                subtitle = stringResource(R.string.settings_section_history_sub)
             ) {
                 RetentionField(
                     initialDays = state.retentionDays,
                     onCommit = viewModel::updateRetentionDays
                 )
                 SettingsDivider()
-                ValueRow("Duración mínima de grabación", "${state.minDuration} ms")
+                ValueRow(
+                    label = stringResource(R.string.settings_min_duration),
+                    value = stringResource(R.string.settings_min_duration_value, state.minDuration.toInt())
+                )
                 SettingsDivider()
-                ValueRow("Reintentos máximos de envío", "${state.maxRetries}")
+                ValueRow(
+                    label = stringResource(R.string.settings_max_retries),
+                    value = "${state.maxRetries}"
+                )
             }
 
             SectionCard(
                 icon = Icons.Filled.Battery4Bar,
-                title = context.getString(com.autogram.app.R.string.settings_battery_section)
+                title = stringResource(R.string.settings_battery_section)
             ) {
                 BatteryOptimizationRow(context)
             }
 
             SectionCard(
                 icon = Icons.Filled.SystemUpdate,
-                title = context.getString(com.autogram.app.R.string.settings_updates_section)
+                title = stringResource(R.string.settings_updates_section)
             ) {
                 UpdatesRow()
             }
@@ -238,7 +258,7 @@ private fun TargetSummary(title: String?, topicName: String?, hasTarget: Boolean
     ) {
         if (hasTarget) {
             Text(
-                title ?: "(sin título)",
+                title ?: stringResource(R.string.common_untitled),
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium
             )
@@ -251,7 +271,7 @@ private fun TargetSummary(title: String?, topicName: String?, hasTarget: Boolean
             }
         } else {
             Text(
-                "No hay destino configurado.",
+                stringResource(R.string.settings_no_target),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -388,7 +408,7 @@ private fun RetentionField(initialDays: Int, onCommit: (Int) -> Unit) {
                 it.toIntOrNull()?.let(onCommit)
             }
         },
-        label = { Text("Retención de historial (días)") },
+        label = { Text(stringResource(R.string.settings_retention)) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         singleLine = true,
         modifier = Modifier
@@ -398,12 +418,45 @@ private fun RetentionField(initialDays: Int, onCommit: (Int) -> Unit) {
 }
 
 @Composable
+private fun LanguageSelector(currentTag: String, onSelect: (String) -> Unit) {
+    // Each entry is (BCP-47 tag, label). Empty tag = follow system default.
+    val options = listOf(
+        "" to stringResource(R.string.settings_language_system),
+        "es" to stringResource(R.string.settings_language_es),
+        "en" to stringResource(R.string.settings_language_en),
+        "fr" to stringResource(R.string.settings_language_fr),
+        "de" to stringResource(R.string.settings_language_de),
+        "zh" to stringResource(R.string.settings_language_zh),
+        "ja" to stringResource(R.string.settings_language_ja)
+    )
+    Column(modifier = Modifier.fillMaxWidth()) {
+        options.forEachIndexed { i, (tag, label) ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onSelect(tag) }
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = tag == currentTag,
+                    onClick = { onSelect(tag) }
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(label, style = MaterialTheme.typography.bodyLarge)
+            }
+            if (i < options.lastIndex) SettingsDivider()
+        }
+    }
+}
+
+@Composable
 private fun UpdatesRow(viewModel: UpdateViewModel = androidx.hilt.navigation.compose.hiltViewModel()) {
     val ctx = LocalContext.current
     val state by viewModel.state.collectAsState()
     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
         Text(
-            ctx.getString(com.autogram.app.R.string.settings_updates_current_version, viewModel.currentVersion),
+            ctx.getString(R.string.settings_updates_current_version, viewModel.currentVersion),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -411,7 +464,7 @@ private fun UpdatesRow(viewModel: UpdateViewModel = androidx.hilt.navigation.com
         when (val s = state) {
             is UpdateViewModel.State.UpToDate -> {
                 Text(
-                    ctx.getString(com.autogram.app.R.string.settings_updates_up_to_date, s.latest),
+                    ctx.getString(R.string.settings_updates_up_to_date, s.latest),
                     color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.bodySmall
                 )
@@ -419,7 +472,7 @@ private fun UpdatesRow(viewModel: UpdateViewModel = androidx.hilt.navigation.com
             }
             is UpdateViewModel.State.Error -> {
                 Text(
-                    ctx.getString(com.autogram.app.R.string.settings_updates_error, s.message),
+                    ctx.getString(R.string.settings_updates_error, s.message),
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall
                 )
@@ -445,14 +498,14 @@ private fun UpdatesRow(viewModel: UpdateViewModel = androidx.hilt.navigation.com
                 is UpdateViewModel.State.Checking -> {
                     CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(8.dp))
-                    Text(ctx.getString(com.autogram.app.R.string.settings_updates_checking))
+                    Text(ctx.getString(R.string.settings_updates_checking))
                 }
                 is UpdateViewModel.State.Downloading -> {
                     CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(8.dp))
-                    Text(ctx.getString(com.autogram.app.R.string.update_downloading))
+                    Text(ctx.getString(R.string.update_downloading))
                 }
-                else -> Text(ctx.getString(com.autogram.app.R.string.settings_updates_check))
+                else -> Text(ctx.getString(R.string.settings_updates_check))
             }
         }
     }
@@ -498,8 +551,8 @@ private fun BatteryOptimizationRow(context: android.content.Context) {
         ) {
             Text(
                 context.getString(
-                    if (isIgnoring) com.autogram.app.R.string.settings_battery_button_already
-                    else com.autogram.app.R.string.settings_battery_button_request
+                    if (isIgnoring) R.string.settings_battery_button_already
+                    else R.string.settings_battery_button_request
                 )
             )
         }

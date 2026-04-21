@@ -34,7 +34,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.autogram.app.R
 import com.autogram.app.infrastructure.telegram.mtproto.ChatKind
 import com.autogram.app.infrastructure.telegram.mtproto.ChatSummary
 import com.autogram.app.infrastructure.telegram.mtproto.TopicSummary
@@ -87,7 +89,7 @@ private fun TargetPickerScreen(
                 title = {
                     Text(
                         when (val s = state.step) {
-                            is TargetPickerViewModel.Step.Chats -> "Elige chat"
+                            is TargetPickerViewModel.Step.Chats -> stringResource(R.string.picker_choose_chat)
                             is TargetPickerViewModel.Step.Topics -> s.chat.title
                         }
                     )
@@ -96,7 +98,7 @@ private fun TargetPickerScreen(
                     IconButton(onClick = {
                         if (onTopicStep) viewModel.onBackToChats() else onFinish()
                     }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back))
                     }
                 }
             )
@@ -144,9 +146,12 @@ private fun ErrorBlock(message: String) {
 @Composable
 private fun ChatList(chats: List<ChatSummary>, onClick: (ChatSummary) -> Unit) {
     if (chats.isEmpty()) {
-        EmptyState("No se encontraron chats disponibles.\nAsegúrate de haber iniciado al menos una conversación en Telegram.")
+        EmptyState(stringResource(R.string.picker_no_chats))
         return
     }
+    val privateLabel = stringResource(R.string.picker_chat_private)
+    val supergroupLabel = stringResource(R.string.picker_chat_supergroup)
+    val forumSuffix = stringResource(R.string.picker_chat_forum_suffix)
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         items(chats, key = { it.chatId }) { chat ->
             ListItem(
@@ -156,11 +161,11 @@ private fun ChatList(chats: List<ChatSummary>, onClick: (ChatSummary) -> Unit) {
                         buildString {
                             append(
                                 when (chat.kind) {
-                                    ChatKind.Private -> "Chat privado"
-                                    ChatKind.Supergroup -> "Supergrupo"
+                                    ChatKind.Private -> privateLabel
+                                    ChatKind.Supergroup -> supergroupLabel
                                 }
                             )
-                            if (chat.isForum) append(" · con topics")
+                            if (chat.isForum) append(" ").append(forumSuffix)
                         },
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -176,14 +181,16 @@ private fun ChatList(chats: List<ChatSummary>, onClick: (ChatSummary) -> Unit) {
 @Composable
 private fun TopicList(topics: List<TopicSummary>, onClick: (TopicSummary) -> Unit) {
     if (topics.isEmpty()) {
-        EmptyState("Este chat no tiene topics visibles.")
+        EmptyState(stringResource(R.string.picker_no_topics))
         return
     }
+    val generalLabel = stringResource(R.string.picker_topic_general)
+    val closedLabel = stringResource(R.string.picker_topic_closed)
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         items(topics, key = { it.forumTopicId }) { topic ->
             val tags = listOfNotNull(
-                if (topic.isGeneral) "General" else null,
-                if (topic.isClosed) "cerrado" else null
+                if (topic.isGeneral) generalLabel else null,
+                if (topic.isClosed) closedLabel else null
             ).joinToString(" · ")
             ListItem(
                 headlineContent = { Text(topic.name) },

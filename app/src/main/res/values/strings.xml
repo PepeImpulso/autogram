@@ -6,6 +6,17 @@
     <string name="history_title">Historial</string>
     <string name="stats_title">Estadísticas</string>
 
+    <!-- Common -->
+    <string name="common_back">Volver</string>
+    <string name="common_cancel">Cancelar</string>
+    <string name="common_close">Cerrar</string>
+    <string name="common_save">Guardar</string>
+    <string name="common_delete">Eliminar</string>
+    <string name="common_remove">Quitar</string>
+    <string name="common_add">Añadir</string>
+    <string name="common_edit">Editar</string>
+    <string name="common_untitled">(sin título)</string>
+
     <!-- Notifications -->
     <string name="notification_channel_polling">Autogram Polling</string>
     <string name="notification_polling_text">Escuchando mensajes…</string>
@@ -20,15 +31,41 @@
     <!-- Status -->
     <string name="status_idle">Listo</string>
     <string name="status_recording">Grabando…</string>
+    <string name="status_validating">Validando…</string>
     <string name="status_sending">Enviando…</string>
     <string name="status_sent">Enviado ✓</string>
+    <string name="status_discarded">Descartado: %s</string>
     <string name="status_error">Error ✗</string>
+    <string name="status_error_generic">Error: %s</string>
+    <string name="status_pending_count">%d mensajes pendientes</string>
     <string name="status_playing">Reproduciendo respuesta…</string>
 
-    <!-- Quick replies (defaults) -->
+    <!-- Main screen -->
+    <string name="nav_home">Inicio</string>
+    <string name="nav_shortcuts">Atajos</string>
+    <string name="record_request_mic_permission">Conceder permiso de micrófono</string>
+    <string name="record_cancel">Cancelar</string>
+    <string name="record_mic">Grabar</string>
+    <string name="main_no_primary_title">No hay destino principal configurado.</string>
+    <string name="main_configure_shortcuts">Configurar accesos rápidos</string>
+    <string name="main_add_shortcut">Añadir</string>
+    <string name="main_manage_shortcuts_cd">Gestionar accesos rápidos</string>
+    <string name="main_default_primary_name">Merlin</string>
+
+    <!-- Quick replies (defaults + screen) -->
     <string name="quick_reply_driving">Conduciendo</string>
     <string name="quick_reply_later">Después</string>
     <string name="quick_reply_ok">OK</string>
+    <string name="quick_reply_driving_text">Estoy conduciendo, te respondo luego.</string>
+    <string name="quick_reply_later_text">Ahora no puedo, hablamos luego.</string>
+    <string name="quick_reply_ok_text">OK, entendido.</string>
+    <string name="quick_replies_title">Respuestas rápidas</string>
+    <string name="quick_replies_empty">Crea tus propias respuestas rápidas para enviar con un toque desde la pantalla principal.</string>
+    <string name="quick_replies_new">Nueva</string>
+    <string name="quick_replies_dialog_new_title">Nueva respuesta</string>
+    <string name="quick_replies_dialog_edit_title">Editar respuesta</string>
+    <string name="quick_replies_label">Etiqueta (chip)</string>
+    <string name="quick_replies_text">Texto que se envía</string>
 
     <!-- Android Auto labels -->
     <string name="aa_record">Grabar</string>
@@ -42,6 +79,36 @@
     <string name="aa_voice_help_body">Di alguno de estos comandos: \n· repetir — vuelve a reproducir el último mensaje\n· cancelar — cancela la grabación actual\n· pausar — pausa la reproducción\n· reanudar — reanuda la reproducción\n· enviar — envía la grabación actual\n· silencio — activa/desactiva el modo silencio</string>
 
     <!-- Settings -->
+    <string name="settings_section_destination">Destino</string>
+    <string name="settings_section_destination_sub">El chat o topic principal a donde se envían tus mensajes.</string>
+    <string name="settings_section_playback">Reproducción</string>
+    <string name="settings_section_playback_sub">Cómo suena cuando llegan respuestas y cómo grabas las tuyas.</string>
+    <string name="settings_section_history">Histórico</string>
+    <string name="settings_section_history_sub">Límites que afectan al almacenamiento y a la red.</string>
+    <string name="settings_section_language">Idioma</string>
+    <string name="settings_section_language_sub">Idioma de la interfaz. Se aplica al momento.</string>
+    <string name="settings_no_target">No hay destino configurado.</string>
+    <string name="settings_change_target">Cambiar destino</string>
+    <string name="settings_choose_target">Elegir destino</string>
+    <string name="settings_manage_pinned">Gestionar accesos rápidos</string>
+    <string name="settings_manage_pinned_sub">Círculos secundarios con sus fotos.</string>
+    <string name="settings_autoplay">Auto-reproducir respuestas</string>
+    <string name="settings_silent">Modo silencio</string>
+    <string name="settings_silent_sub">Los audios entrantes se encolan en vez de sonar.</string>
+    <string name="settings_playback_speed">Velocidad de reproducción</string>
+    <string name="settings_recording_cues">Sonido al grabar</string>
+    <string name="settings_recording_cues_off">Desactivado</string>
+    <string name="settings_retention">Retención de historial (días)</string>
+    <string name="settings_min_duration">Duración mínima de grabación</string>
+    <string name="settings_min_duration_value">%d ms</string>
+    <string name="settings_max_retries">Reintentos máximos de envío</string>
+    <string name="settings_language_system">Sistema (por defecto)</string>
+    <string name="settings_language_es">Español</string>
+    <string name="settings_language_en">English</string>
+    <string name="settings_language_fr">Français</string>
+    <string name="settings_language_de">Deutsch</string>
+    <string name="settings_language_zh">中文</string>
+    <string name="settings_language_ja">日本語</string>
     <string name="settings_battery_section">Batería</string>
     <string name="settings_battery_button_request">Permitir ejecución en segundo plano</string>
     <string name="settings_battery_button_already">Excepción de batería ya concedida</string>
@@ -67,6 +134,42 @@
     <string name="stats_avg_duration">Duración media</string>
     <string name="stats_last_7_days">Últimos 7 días</string>
     <string name="stats_no_data">Aún no hay datos para mostrar.</string>
+
+    <!-- Pinned / target pickers -->
+    <string name="pinned_title">Accesos rápidos</string>
+    <string name="pinned_empty">Aún no hay accesos rápidos. Añade el bot principal o un topic de un grupo foro.</string>
+    <string name="pinned_label_primary">Principal (Merlin)</string>
+    <string name="pinned_label_secondary">Acceso rápido</string>
+    <string name="pinned_mark_primary_cd">Marcar como principal</string>
+    <string name="pinned_background_cd">Imagen de fondo</string>
+    <string name="pinned_zoom_hint">Pellizca para hacer zoom · arrastra para mover</string>
+    <string name="picker_add_shortcut_title">Añadir acceso rápido</string>
+    <string name="picker_choose_chat">Elige chat</string>
+    <string name="picker_no_chats">No se encontraron chats disponibles.\nAsegúrate de haber iniciado al menos una conversación en Telegram.</string>
+    <string name="picker_no_chats_short">No se encontraron chats disponibles.</string>
+    <string name="picker_chat_private">Chat privado</string>
+    <string name="picker_chat_supergroup">Supergrupo</string>
+    <string name="picker_chat_forum_suffix">· con topics</string>
+    <string name="picker_no_topics">Este chat no tiene topics visibles.</string>
+    <string name="picker_topic_general">General</string>
+    <string name="picker_topic_closed">cerrado</string>
+    <string name="picker_topic_primary_lock">principal (Merlin)</string>
+    <string name="picker_save_changes_prefix">Guardar cambios</string>
+    <string name="picker_error_load_chats">Error cargando chats</string>
+    <string name="picker_error_load_topics">Error cargando topics</string>
+    <string name="picker_error_save_target">Error guardando destino</string>
+    <string name="picker_error_save_topics">Error guardando topics</string>
+    <string name="picker_target_missing">Configura un destino en Ajustes</string>
+
+    <!-- Record / send -->
+    <string name="record_already_recording">Ya hay una grabación en curso</string>
+    <string name="record_start_error">Error al iniciar grabación</string>
+    <string name="record_not_running">No hay grabación en curso</string>
+    <string name="record_cannot_save">No se pudo guardar el audio</string>
+    <string name="record_empty_message">Mensaje vacío</string>
+    <string name="record_not_authenticated">No autenticado con Telegram</string>
+    <string name="record_no_target">Configura un destino en Ajustes</string>
+    <string name="record_generic_error">Error enviando</string>
 
     <!-- Telegram MTProto login -->
     <string name="tg_login_title">Conectar con Telegram</string>

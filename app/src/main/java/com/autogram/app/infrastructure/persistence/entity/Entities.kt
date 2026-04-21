@@ -132,5 +132,6 @@ data class SettingsEntity(
     val maxRetryAttempts: Int = 3,
     val autoPlayReplies: Boolean = true,
     val playbackSpeed: Float = 1.25f,
-    val recordingCuesVolume: Int = 50
+    val recordingCuesVolume: Int = 50,
+    val languageTag: String = ""
 )

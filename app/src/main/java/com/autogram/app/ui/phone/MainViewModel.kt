@@ -72,9 +72,15 @@ class MainViewModel @Inject constructor(
         sendMessageUseCase.reset()
     }
 
-    private fun defaultQuickReplies(): List<Pair<String, String>> = listOf(
-        "Conduciendo" to "Estoy conduciendo, te respondo luego.",
-        "Después" to "Ahora no puedo, hablamos luego.",
-        "OK" to "OK, entendido."
-    )
+    private fun defaultQuickReplies(): List<Pair<String, String>> {
+        val ctx = getApplication<Application>()
+        return listOf(
+            ctx.getString(com.autogram.app.R.string.quick_reply_driving)
+                to ctx.getString(com.autogram.app.R.string.quick_reply_driving_text),
+            ctx.getString(com.autogram.app.R.string.quick_reply_later)
+                to ctx.getString(com.autogram.app.R.string.quick_reply_later_text),
+            ctx.getString(com.autogram.app.R.string.quick_reply_ok)
+                to ctx.getString(com.autogram.app.R.string.quick_reply_ok_text)
+        )
+    }
 }
