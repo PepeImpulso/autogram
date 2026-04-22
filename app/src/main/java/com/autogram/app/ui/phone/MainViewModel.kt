@@ -11,6 +11,9 @@ import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.domain.model.CircleFolder
 import com.autogram.app.domain.model.Message
 import com.autogram.app.domain.model.MessageDirection
+import com.autogram.app.domain.model.QuickReply
+import com.autogram.app.domain.model.QuickReplyFilter
+import com.autogram.app.domain.model.QuickReplyKind
 import com.autogram.app.domain.repository.CircleFolderRepository
 import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.domain.usecase.SendVoiceMtprotoUseCase
@@ -110,10 +113,23 @@ class MainViewModel @Inject constructor(
         messageRepository.observeOutboxCount()
             .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
 
-    val quickReplies: StateFlow<List<Pair<String, String>>> =
+    val quickReplies: StateFlow<List<QuickReply>> =
         quickReplyRepository.observeAll()
-            .map { list -> list.map { it.label to it.textContent } }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, defaultQuickReplies())
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val quickReplyFilter: StateFlow<QuickReplyFilter> =
+        settingsRepository.observe()
+            .map { it.quickReplyFilter }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, QuickReplyFilter.ALL)
+
+    fun setQuickReplyFilter(filter: QuickReplyFilter) {
+        viewModelScope.launch {
+            val current = settingsRepository.get()
+            if (current.quickReplyFilter != filter) {
+                settingsRepository.update(current.copy(quickReplyFilter = filter))
+            }
+        }
+    }
 
     init {
         // Auto-clear the selected folder when it disappears (the user deleted
@@ -194,6 +210,27 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    fun sendQuickReplyShortcut(shortcut: QuickReply, targetId: String? = null) {
+        viewModelScope.launch {
+            when (shortcut.kind) {
+                QuickReplyKind.TEXT -> {
+                    sendMessageUseCase.sendQuickReply(shortcut.textContent, targetId)
+                }
+                QuickReplyKind.VOICE -> {
+                    val path = shortcut.audioFilePath
+                    if (!path.isNullOrBlank()) {
+                        sendMessageUseCase.sendVoiceShortcut(
+                            audioFilePath = path,
+                            audioDurationMs = shortcut.audioDurationMs,
+                            targetConversationId = targetId
+                        )
+                    }
+                }
+            }
+            _suggestedChips.value = emptyList()
+        }
+    }
+
     fun dismissSuggestions() {
         _suggestedChips.value = emptyList()
     }
@@ -209,15 +246,4 @@ class MainViewModel @Inject constructor(
         private const val SUGGESTION_TTL_MS = 5 * 60 * 1000L
     }
 
-    private fun defaultQuickReplies(): List<Pair<String, String>> {
-        val ctx = getApplication<Application>()
-        return listOf(
-            ctx.getString(com.autogram.app.R.string.quick_reply_driving)
-                to ctx.getString(com.autogram.app.R.string.quick_reply_driving_text),
-            ctx.getString(com.autogram.app.R.string.quick_reply_later)
-                to ctx.getString(com.autogram.app.R.string.quick_reply_later_text),
-            ctx.getString(com.autogram.app.R.string.quick_reply_ok)
-                to ctx.getString(com.autogram.app.R.string.quick_reply_ok_text)
-        )
-    }
 }

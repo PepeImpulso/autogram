@@ -1,6 +1,7 @@
 package com.autogram.app.infrastructure.persistence.repository
 
 import com.autogram.app.domain.model.QuickReply
+import com.autogram.app.domain.model.QuickReplyKind
 import com.autogram.app.domain.repository.QuickReplyRepository
 import com.autogram.app.infrastructure.persistence.dao.QuickReplyDao
 import com.autogram.app.infrastructure.persistence.entity.QuickReplyEntity
@@ -30,6 +31,25 @@ class QuickReplyRepositoryImpl @Inject constructor(
         quickReplyDao.delete(id)
     }
 
-    private fun QuickReplyEntity.toDomain() = QuickReply(id, label, textContent, position, isEnabled)
-    private fun QuickReply.toEntity() = QuickReplyEntity(id, label, textContent, position, isEnabled)
+    private fun QuickReplyEntity.toDomain() = QuickReply(
+        id = id,
+        label = label,
+        kind = runCatching { QuickReplyKind.valueOf(kind) }.getOrDefault(QuickReplyKind.TEXT),
+        textContent = textContent,
+        audioFilePath = audioFilePath,
+        audioDurationMs = audioDurationMs,
+        position = position,
+        isEnabled = isEnabled
+    )
+
+    private fun QuickReply.toEntity() = QuickReplyEntity(
+        id = id,
+        label = label,
+        kind = kind.name,
+        textContent = textContent,
+        audioFilePath = audioFilePath,
+        audioDurationMs = audioDurationMs,
+        position = position,
+        isEnabled = isEnabled
+    )
 }

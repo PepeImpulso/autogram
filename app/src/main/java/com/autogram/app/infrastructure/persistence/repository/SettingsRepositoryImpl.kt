@@ -1,6 +1,7 @@
 package com.autogram.app.infrastructure.persistence.repository
 
 import com.autogram.app.domain.model.AppSettings
+import com.autogram.app.domain.model.QuickReplyFilter
 import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.infrastructure.persistence.dao.SettingsDao
 import com.autogram.app.infrastructure.persistence.entity.SettingsEntity
@@ -42,7 +43,9 @@ class SettingsRepositoryImpl @Inject constructor(
         summaryEngine = summaryEngine,
         summaryLlmEndpoint = summaryLlmEndpoint,
         summaryLlmApiKey = summaryLlmApiKey,
-        summaryLlmModel = summaryLlmModel
+        summaryLlmModel = summaryLlmModel,
+        quickReplyFilter = runCatching { QuickReplyFilter.valueOf(quickReplyFilter) }
+            .getOrDefault(QuickReplyFilter.ALL)
     )
 
     private fun AppSettings.toEntity() = SettingsEntity(
@@ -61,6 +64,7 @@ class SettingsRepositoryImpl @Inject constructor(
         summaryEngine = summaryEngine,
         summaryLlmEndpoint = summaryLlmEndpoint,
         summaryLlmApiKey = summaryLlmApiKey,
-        summaryLlmModel = summaryLlmModel
+        summaryLlmModel = summaryLlmModel,
+        quickReplyFilter = quickReplyFilter.name
     )
 }

@@ -178,6 +178,7 @@ private fun MainScreen(
     val lastIncomingAudio by viewModel.lastIncomingWithAudio.collectAsState()
     val folders by viewModel.folders.collectAsState()
     val selectedFolderId by viewModel.selectedFolderId.collectAsState()
+    val quickReplyFilter by viewModel.quickReplyFilter.collectAsState()
 
     LaunchedEffect(Unit) {
         // Silent update check throttled: the ViewModel check() is cheap but we
@@ -316,11 +317,13 @@ private fun MainScreen(
                     pendingCount = if (showPendingBadges) (pendingCounts[primary.id] ?: 0) else 0,
                     hasPermission = hasMicPermission,
                     quickReplies = quickReplies,
+                    quickReplyFilter = quickReplyFilter,
+                    onFilterChange = viewModel::setQuickReplyFilter,
                     onRequestPermission = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
                     onStart = { viewModel.startRecording(primary.id) },
                     onSend = { viewModel.stopAndSend() },
                     onCancel = { viewModel.cancelRecording() },
-                    onQuickReply = { viewModel.sendQuickReply(it) }
+                    onQuickReply = { viewModel.sendQuickReplyShortcut(it, primary.id) }
                 )
             } else {
                 NoPrimaryState(onConfigure = onManagePinned)
@@ -914,63 +917,131 @@ private fun PrimaryRow(
     isRecordingThis: Boolean,
     pendingCount: Int,
     hasPermission: Boolean,
-    quickReplies: List<Pair<String, String>>,
+    quickReplies: List<com.autogram.app.domain.model.QuickReply>,
+    quickReplyFilter: com.autogram.app.domain.model.QuickReplyFilter,
+    onFilterChange: (com.autogram.app.domain.model.QuickReplyFilter) -> Unit,
     onRequestPermission: () -> Unit,
     onStart: () -> Unit,
     onSend: () -> Unit,
     onCancel: () -> Unit,
-    onQuickReply: (String) -> Unit
+    onQuickReply: (com.autogram.app.domain.model.QuickReply) -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            RecordCircle(
-                conversation = primary,
-                size = 176.dp,
-                isRecordingThis = isRecordingThis,
-                pendingCount = pendingCount,
-                hasPermission = hasPermission,
-                onRequestPermission = onRequestPermission,
-                onStart = onStart,
-                onSend = onSend,
-                onCancel = onCancel
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                primary.targetTitle ?: stringResource(R.string.main_default_primary_name),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            primary.topicName?.let {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+    val hasBothKinds = remember(quickReplies) {
+        quickReplies.any { it.kind == com.autogram.app.domain.model.QuickReplyKind.TEXT } &&
+        quickReplies.any { it.kind == com.autogram.app.domain.model.QuickReplyKind.VOICE }
+    }
+    val visible = remember(quickReplies, quickReplyFilter) {
+        when (quickReplyFilter) {
+            com.autogram.app.domain.model.QuickReplyFilter.ALL -> quickReplies
+            com.autogram.app.domain.model.QuickReplyFilter.TEXT ->
+                quickReplies.filter { it.kind == com.autogram.app.domain.model.QuickReplyKind.TEXT }
+            com.autogram.app.domain.model.QuickReplyFilter.VOICE ->
+                quickReplies.filter { it.kind == com.autogram.app.domain.model.QuickReplyKind.VOICE }
         }
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+    }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        if (hasBothKinds) {
+            QuickReplyFilterRow(
+                selected = quickReplyFilter,
+                onSelect = onFilterChange,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            quickReplies.forEach { (label, text) ->
-                FilledTonalButton(
-                    onClick = { onQuickReply(text) },
-                    modifier = Modifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-                ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                RecordCircle(
+                    conversation = primary,
+                    size = 176.dp,
+                    isRecordingThis = isRecordingThis,
+                    pendingCount = pendingCount,
+                    hasPermission = hasPermission,
+                    onRequestPermission = onRequestPermission,
+                    onStart = onStart,
+                    onSend = onSend,
+                    onCancel = onCancel
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    primary.targetTitle ?: stringResource(R.string.main_default_primary_name),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                primary.topicName?.let {
                     Text(
-                        label,
-                        style = MaterialTheme.typography.labelMedium,
-                        maxLines = 1
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                visible.forEach { r ->
+                    QuickReplyChipButton(
+                        reply = r,
+                        onTap = { onQuickReply(r) }
                     )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun QuickReplyFilterRow(
+    selected: com.autogram.app.domain.model.QuickReplyFilter,
+    onSelect: (com.autogram.app.domain.model.QuickReplyFilter) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        com.autogram.app.domain.model.QuickReplyFilter.values().forEach { f ->
+            val labelRes = when (f) {
+                com.autogram.app.domain.model.QuickReplyFilter.ALL -> R.string.quick_replies_filter_all
+                com.autogram.app.domain.model.QuickReplyFilter.TEXT -> R.string.quick_replies_filter_text
+                com.autogram.app.domain.model.QuickReplyFilter.VOICE -> R.string.quick_replies_filter_voice
+            }
+            androidx.compose.material3.FilterChip(
+                selected = selected == f,
+                onClick = { onSelect(f) },
+                label = { Text(stringResource(labelRes), style = MaterialTheme.typography.labelSmall) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuickReplyChipButton(
+    reply: com.autogram.app.domain.model.QuickReply,
+    onTap: () -> Unit
+) {
+    val isVoice = reply.kind == com.autogram.app.domain.model.QuickReplyKind.VOICE
+    FilledTonalButton(
+        onClick = onTap,
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        Icon(
+            imageVector = if (isVoice) androidx.compose.material.icons.Icons.Filled.Mic
+                          else androidx.compose.material.icons.Icons.Filled.Bolt,
+            contentDescription = null,
+            modifier = Modifier.size(16.dp)
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            reply.label,
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1
+        )
     }
 }

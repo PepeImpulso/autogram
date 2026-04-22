@@ -225,6 +225,88 @@ class SendVoiceMtprotoUseCase @Inject constructor(
         }
     }
 
+    /**
+     * Send a pre-recorded .ogg from `filesDir/voice_shortcuts/` as a voice
+     * note to the active (or explicitly chosen) target.
+     *
+     * Unlike `stopAndSend`, the file is **not** owned by this call — it's a
+     * persistent shortcut the user may re-use — so we copy it into the
+     * outbox queue on the offline path instead of moving it, and we never
+     * delete it on success. `persistOutgoing` receives a null `audioFile`
+     * so the History row doesn't try to re-play the shared asset (which
+     * could race with the user deleting / re-recording the shortcut).
+     */
+    suspend fun sendVoiceShortcut(
+        audioFilePath: String,
+        audioDurationMs: Long,
+        targetConversationId: String? = null
+    ): Result<Long> {
+        val file = java.io.File(audioFilePath)
+        if (!file.exists() || file.length() == 0L) {
+            _status.value = SendStatus.Error("Audio del atajo no encontrado")
+            return Result.failure(IllegalStateException("Voice shortcut file missing: $audioFilePath"))
+        }
+        val target = resolveTarget(targetConversationId)
+        if (target == null) {
+            _status.value = SendStatus.Error("Configura un destino en Ajustes")
+            return Result.failure(IllegalStateException("No active conversation"))
+        }
+
+        val authReady = tdLibClient.authState.value is AuthState.Ready
+        val online = connectivityObserver.isOnline()
+        if (!authReady || !online) {
+            // Copy (not move) — the shortcut must survive the queue run.
+            val queued = copyToPersistentQueue(file)
+            persistQueuedOffline(
+                target = target,
+                audioFilePath = queued,
+                audioDurationMs = audioDurationMs,
+                textContent = null
+            )
+            _activeTargetId.value = null
+            _status.value = SendStatus.QueuedOffline
+            return Result.success(-1L)
+        }
+
+        _activeTargetId.value = target.id
+        _status.value = SendStatus.Sending
+        return try {
+            val sendResult = tdLibClient.send(
+                TdApi.SendMessage().apply {
+                    this.chatId = target.targetChatId.toLong()
+                    this.topicId = target.topicId.toForumTopicOrNull()
+                    this.inputMessageContent = TdApi.InputMessageVoiceNote().apply {
+                        voiceNote = TdApi.InputFileLocal(file.absolutePath)
+                        duration = (audioDurationMs / 1000).toInt()
+                    }
+                }
+            )
+            val out = handleSendResult(sendResult)
+            // Reference the shortcut file directly in History so the user
+            // can replay what they sent. If they later delete the shortcut
+            // the History row remains but its playback becomes a no-op —
+            // acceptable, and cheaper than duplicating the file per send.
+            persistOutgoing(
+                target = target,
+                result = out,
+                audioFile = file,
+                audioDurationMs = audioDurationMs,
+                textContent = null
+            )
+            if (out.isSuccess) {
+                conversationRepository.setLastRepliedAt(target.id, System.currentTimeMillis())
+            }
+            out
+        } catch (e: Exception) {
+            Timber.e(e, "MTProto voice-shortcut send failed")
+            _status.value = SendStatus.Error(e.message ?: "Error enviando")
+            persistOutgoing(target, Result.failure(e), audioFile = null, audioDurationMs, textContent = null)
+            Result.failure(e)
+        } finally {
+            _activeTargetId.value = null
+        }
+    }
+
     suspend fun sendQuickReply(text: String, targetConversationId: String? = null): Result<Long> {
         val target = resolveTarget(targetConversationId)
         if (target == null) {
@@ -383,6 +465,24 @@ class SendVoiceMtprotoUseCase @Inject constructor(
             }
         } catch (e: Exception) {
             Timber.w(e, "moveToPersistentQueue failed; keeping cacheDir path")
+            src.absolutePath
+        }
+    }
+
+    /**
+     * Copy (not move) a persistent file into the outbox queue. Used for
+     * voice shortcuts where the caller needs to preserve the source file
+     * for re-use. Filename is prefixed with a timestamp so concurrent
+     * queued sends of the same shortcut don't clobber each other.
+     */
+    private fun copyToPersistentQueue(src: File): String {
+        val outbox = File(context.filesDir, "audio_outbox").apply { mkdirs() }
+        val dst = File(outbox, "${System.currentTimeMillis()}-${src.name}")
+        return try {
+            src.copyTo(dst, overwrite = true)
+            dst.absolutePath
+        } catch (e: Exception) {
+            Timber.w(e, "copyToPersistentQueue failed; keeping source path")
             src.absolutePath
         }
     }

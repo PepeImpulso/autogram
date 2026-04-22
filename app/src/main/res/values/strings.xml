@@ -73,6 +73,25 @@
     <string name="quick_replies_dialog_edit_title">Edit shortcut</string>
     <string name="quick_replies_label">Label (chip)</string>
     <string name="quick_replies_text">Message to send</string>
+    <string name="quick_replies_pick_kind">Type of shortcut</string>
+    <string name="quick_replies_kind_text">Text</string>
+    <string name="quick_replies_kind_text_sub">Send a typed message</string>
+    <string name="quick_replies_kind_voice">Voice</string>
+    <string name="quick_replies_kind_voice_sub">Send a pre-recorded voice note</string>
+    <string name="quick_replies_voice_new_title">New voice shortcut</string>
+    <string name="quick_replies_voice_edit_title">Edit voice shortcut</string>
+    <string name="quick_replies_voice_hint_idle">Record a voice note to send when you tap the chip.</string>
+    <string name="quick_replies_voice_recording">Recording…</string>
+    <string name="quick_replies_voice_ready">Recorded · %1$s</string>
+    <string name="quick_replies_voice_playing">Playing preview…</string>
+    <string name="quick_replies_voice_start">Record</string>
+    <string name="quick_replies_voice_stop">Stop</string>
+    <string name="quick_replies_voice_preview">Preview</string>
+    <string name="quick_replies_voice_stop_preview">Stop preview</string>
+    <string name="quick_replies_voice_redo">Redo</string>
+    <string name="quick_replies_filter_all">All</string>
+    <string name="quick_replies_filter_text">Text</string>
+    <string name="quick_replies_filter_voice">Voice</string>
 
     <string name="aa_record">Record</string>
     <string name="aa_stop_send">Stop and send</string>

@@ -110,10 +110,20 @@ data class CircleFolder(
     val sortOrder: Int = 0
 )
 
+enum class QuickReplyKind { TEXT, VOICE }
+
+enum class QuickReplyFilter { ALL, TEXT, VOICE }
+
 data class QuickReply(
     val id: String,
     val label: String,
-    val textContent: String,
+    val kind: QuickReplyKind = QuickReplyKind.TEXT,
+    // Only meaningful when kind == TEXT. Empty for VOICE.
+    val textContent: String = "",
+    // Only meaningful when kind == VOICE. Absolute path to a persistent
+    // .ogg/Opus file under `filesDir/voice_shortcuts/<id>.ogg`.
+    val audioFilePath: String? = null,
+    val audioDurationMs: Long = 0L,
     val position: Int,
     val isEnabled: Boolean = true
 )
@@ -163,7 +173,10 @@ data class AppSettings(
     // summaryEngine == LLM_ENDPOINT. Never logged; scrubbed from Sentry.
     val summaryLlmEndpoint: String = "",
     val summaryLlmApiKey: String = "",
-    val summaryLlmModel: String = "gpt-4o-mini"
+    val summaryLlmModel: String = "gpt-4o-mini",
+    // Which kind of quick-reply shortcuts show in the chip row on the home
+    // screen. ALL shows both; user can bias toward just text or just voice.
+    val quickReplyFilter: QuickReplyFilter = QuickReplyFilter.ALL
 )
 
 data class DeliveryAttempt(

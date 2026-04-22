@@ -73,6 +73,25 @@
     <string name="quick_replies_dialog_edit_title">Kürzel bearbeiten</string>
     <string name="quick_replies_label">Bezeichnung</string>
     <string name="quick_replies_text">Zu sendender Text</string>
+    <string name="quick_replies_pick_kind">Kürzeltyp</string>
+    <string name="quick_replies_kind_text">Text</string>
+    <string name="quick_replies_kind_text_sub">Eine geschriebene Nachricht senden</string>
+    <string name="quick_replies_kind_voice">Sprache</string>
+    <string name="quick_replies_kind_voice_sub">Eine voraufgezeichnete Sprachnotiz senden</string>
+    <string name="quick_replies_voice_new_title">Neues Sprachkürzel</string>
+    <string name="quick_replies_voice_edit_title">Sprachkürzel bearbeiten</string>
+    <string name="quick_replies_voice_hint_idle">Nimm eine Sprachnotiz auf, die gesendet wird, wenn du auf den Chip tippst.</string>
+    <string name="quick_replies_voice_recording">Aufnahme…</string>
+    <string name="quick_replies_voice_ready">Aufgenommen · %1$s</string>
+    <string name="quick_replies_voice_playing">Vorschau wird wiedergegeben…</string>
+    <string name="quick_replies_voice_start">Aufnehmen</string>
+    <string name="quick_replies_voice_stop">Stoppen</string>
+    <string name="quick_replies_voice_preview">Vorschau</string>
+    <string name="quick_replies_voice_stop_preview">Vorschau stoppen</string>
+    <string name="quick_replies_voice_redo">Neu aufnehmen</string>
+    <string name="quick_replies_filter_all">Alle</string>
+    <string name="quick_replies_filter_text">Text</string>
+    <string name="quick_replies_filter_voice">Sprache</string>
 
     <string name="aa_record">Aufnehmen</string>
     <string name="aa_stop_send">Stoppen und senden</string>

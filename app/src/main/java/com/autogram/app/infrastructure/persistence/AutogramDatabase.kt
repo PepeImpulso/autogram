@@ -27,7 +27,7 @@ import javax.inject.Singleton
         SettingsEntity::class,
         CircleFolderEntity::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -138,6 +138,20 @@ object DatabaseModule {
         }
     }
 
+    // v13 → v14: quick_replies gains kind/audioFilePath/audioDurationMs so
+    // each shortcut can be either TEXT (original) or VOICE (pre-recorded
+    // .ogg sent as a voice note). Existing rows keep kind='TEXT'. Also
+    // adds settings.quickReplyFilter so the user can hide one kind from
+    // the home-screen chip row.
+    private val MIGRATION_13_14 = object : Migration(13, 14) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE quick_replies ADD COLUMN kind TEXT NOT NULL DEFAULT 'TEXT'")
+            db.execSQL("ALTER TABLE quick_replies ADD COLUMN audioFilePath TEXT DEFAULT NULL")
+            db.execSQL("ALTER TABLE quick_replies ADD COLUMN audioDurationMs INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE settings ADD COLUMN quickReplyFilter TEXT NOT NULL DEFAULT 'ALL'")
+        }
+    }
+
     // v11 → v12: summary fields on messages + summary engine config in settings.
     // Feature is off by default (summaryEngine=NONE); turning it on requires
     // the user to pick an engine in Settings → Summary.
@@ -161,7 +175,7 @@ object DatabaseModule {
             AutogramDatabase::class.java,
             "autogram.db"
         )
-            .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
+            .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
             // Fallback for any earlier schema (v1 / v2) that has no proper path
             // forward — those versions predate the stable 1.2 line and already
             // wiped once, so destroying from them is acceptable.

@@ -73,6 +73,25 @@
     <string name="quick_replies_dialog_edit_title">Modifier le raccourci</string>
     <string name="quick_replies_label">Libellé</string>
     <string name="quick_replies_text">Message à envoyer</string>
+    <string name="quick_replies_pick_kind">Type de raccourci</string>
+    <string name="quick_replies_kind_text">Texte</string>
+    <string name="quick_replies_kind_text_sub">Envoyer un message écrit</string>
+    <string name="quick_replies_kind_voice">Voix</string>
+    <string name="quick_replies_kind_voice_sub">Envoyer une note vocale préenregistrée</string>
+    <string name="quick_replies_voice_new_title">Nouveau raccourci vocal</string>
+    <string name="quick_replies_voice_edit_title">Modifier le raccourci vocal</string>
+    <string name="quick_replies_voice_hint_idle">Enregistrez une note vocale à envoyer en appuyant sur la puce.</string>
+    <string name="quick_replies_voice_recording">Enregistrement…</string>
+    <string name="quick_replies_voice_ready">Enregistré · %1$s</string>
+    <string name="quick_replies_voice_playing">Lecture de l\'aperçu…</string>
+    <string name="quick_replies_voice_start">Enregistrer</string>
+    <string name="quick_replies_voice_stop">Arrêter</string>
+    <string name="quick_replies_voice_preview">Aperçu</string>
+    <string name="quick_replies_voice_stop_preview">Arrêter l\'aperçu</string>
+    <string name="quick_replies_voice_redo">Refaire</string>
+    <string name="quick_replies_filter_all">Tous</string>
+    <string name="quick_replies_filter_text">Texte</string>
+    <string name="quick_replies_filter_voice">Voix</string>
 
     <string name="aa_record">Enregistrer</string>
     <string name="aa_stop_send">Arrêter et envoyer</string>

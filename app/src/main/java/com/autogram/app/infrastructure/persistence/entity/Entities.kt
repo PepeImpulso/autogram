@@ -133,7 +133,12 @@ data class PendingPlaybackEntity(
 data class QuickReplyEntity(
     @PrimaryKey val id: String,
     val label: String,
-    val textContent: String,
+    // "TEXT" | "VOICE" — stored as string so we can add new kinds without
+    // a migration. Defaults keep every pre-v14 row as TEXT.
+    val kind: String = "TEXT",
+    val textContent: String = "",
+    val audioFilePath: String? = null,
+    val audioDurationMs: Long = 0L,
     val position: Int,
     val isEnabled: Boolean = true
 )
@@ -163,5 +168,8 @@ data class SettingsEntity(
     val summaryEngine: SummaryEngineType = SummaryEngineType.NONE,
     val summaryLlmEndpoint: String = "",
     val summaryLlmApiKey: String = "",
-    val summaryLlmModel: String = "gpt-4o-mini"
+    val summaryLlmModel: String = "gpt-4o-mini",
+    // "ALL" | "TEXT" | "VOICE" — persisted as string for the same reason
+    // kind is persisted as string on quick_replies.
+    val quickReplyFilter: String = "ALL"
 )

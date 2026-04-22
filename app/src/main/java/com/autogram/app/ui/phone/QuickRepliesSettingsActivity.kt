@@ -1,8 +1,13 @@
 package com.autogram.app.ui.phone
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -17,27 +22,41 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.res.stringResource
 import com.autogram.app.R
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.autogram.app.domain.model.QuickReply
+import com.autogram.app.domain.model.QuickReplyKind
 import com.autogram.app.domain.repository.QuickReplyRepository
+import com.autogram.app.infrastructure.audio.AudioPlayer
+import com.autogram.app.infrastructure.audio.AudioRecorder
 import com.autogram.app.ui.theme.AutogramTheme
 import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import timber.log.Timber
+import java.io.File
 import java.util.UUID
 import javax.inject.Inject
 
@@ -56,15 +75,28 @@ class QuickRepliesSettingsActivity : BaseLocaleActivity() {
     }
 }
 
+sealed class VoiceRecordState {
+    data object Idle : VoiceRecordState()
+    data class Recording(val startedAt: Long) : VoiceRecordState()
+    data class Recorded(val file: File, val durationMs: Long) : VoiceRecordState()
+    data class Playing(val file: File, val durationMs: Long) : VoiceRecordState()
+}
+
 @HiltViewModel
 class QuickRepliesSettingsViewModel @Inject constructor(
-    private val repo: QuickReplyRepository
+    @ApplicationContext private val context: Context,
+    private val repo: QuickReplyRepository,
+    private val recorder: AudioRecorder,
+    private val player: AudioPlayer
 ) : ViewModel() {
 
     val replies: StateFlow<List<QuickReply>> =
         repo.observeAll().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    fun save(existing: QuickReply?, label: String, text: String) {
+    private val _voiceState = MutableStateFlow<VoiceRecordState>(VoiceRecordState.Idle)
+    val voiceState: StateFlow<VoiceRecordState> = _voiceState.asStateFlow()
+
+    fun saveText(existing: QuickReply?, label: String, text: String) {
         if (label.isBlank() || text.isBlank()) return
         viewModelScope.launch {
             val all = repo.getAll()
@@ -73,7 +105,10 @@ class QuickRepliesSettingsViewModel @Inject constructor(
                 QuickReply(
                     id = existing?.id ?: UUID.randomUUID().toString(),
                     label = label.trim(),
+                    kind = QuickReplyKind.TEXT,
                     textContent = text.trim(),
+                    audioFilePath = null,
+                    audioDurationMs = 0L,
                     position = position,
                     isEnabled = existing?.isEnabled ?: true
                 )
@@ -81,9 +116,163 @@ class QuickRepliesSettingsViewModel @Inject constructor(
         }
     }
 
-    fun delete(id: String) {
-        viewModelScope.launch { repo.delete(id) }
+    fun saveVoice(existing: QuickReply?, label: String) {
+        if (label.isBlank()) return
+        val state = _voiceState.value
+        // Three cases: (1) a brand-new recording is pending (Recorded or
+        // Playing), (2) editing an existing voice shortcut with no new take
+        // — just relabel — (3) no recording anywhere: can't save.
+        viewModelScope.launch {
+            val id = existing?.id ?: UUID.randomUUID().toString()
+            val audioPath: String
+            val durationMs: Long
+            when (state) {
+                is VoiceRecordState.Recorded, is VoiceRecordState.Playing -> {
+                    val (src, dur) = when (state) {
+                        is VoiceRecordState.Recorded -> state.file to state.durationMs
+                        is VoiceRecordState.Playing -> state.file to state.durationMs
+                        else -> return@launch
+                    }
+                    // Atomic replace: copy to a staging file next to dst,
+                    // rename over dst, THEN delete src. If the copy throws,
+                    // the old shortcut survives intact and we bail out.
+                    val dir = File(context.filesDir, "voice_shortcuts").apply { mkdirs() }
+                    val dst = File(dir, "$id.ogg")
+                    val staging = File(dir, "$id.ogg.new")
+                    runCatching { if (staging.exists()) staging.delete() }
+                    val copyResult = runCatching { src.copyTo(staging, overwrite = true) }
+                    if (copyResult.isFailure) {
+                        Timber.w(copyResult.exceptionOrNull(), "voice shortcut save: copy failed; keeping previous file")
+                        runCatching { staging.delete() }
+                        return@launch
+                    }
+                    val renamed = runCatching {
+                        if (dst.exists()) dst.delete()
+                        staging.renameTo(dst)
+                    }.getOrDefault(false)
+                    if (!renamed) {
+                        Timber.w("voice shortcut save: rename staging→dst failed; keeping previous file")
+                        runCatching { staging.delete() }
+                        return@launch
+                    }
+                    runCatching { src.delete() }
+                    audioPath = dst.absolutePath
+                    durationMs = dur
+                }
+                else -> {
+                    // Idle + editing existing: keep the old audio, relabel only.
+                    val p = existing?.audioFilePath
+                    if (p.isNullOrBlank()) return@launch
+                    audioPath = p
+                    durationMs = existing.audioDurationMs
+                }
+            }
+            val all = repo.getAll()
+            val position = existing?.position ?: ((all.maxOfOrNull { it.position } ?: 0) + 1)
+            repo.upsert(
+                QuickReply(
+                    id = id,
+                    label = label.trim(),
+                    kind = QuickReplyKind.VOICE,
+                    textContent = "",
+                    audioFilePath = audioPath,
+                    audioDurationMs = durationMs,
+                    position = position,
+                    isEnabled = existing?.isEnabled ?: true
+                )
+            )
+            _voiceState.value = VoiceRecordState.Idle
+        }
     }
+
+    fun delete(reply: QuickReply) {
+        viewModelScope.launch {
+            // Best-effort delete of the voice file when removing a voice
+            // shortcut. If the row vanished but the file survived it's dead
+            // weight; the retention worker will clean it up eventually but
+            // this gives immediate feedback on storage use.
+            if (reply.kind == QuickReplyKind.VOICE) {
+                reply.audioFilePath?.let { runCatching { File(it).delete() } }
+            }
+            repo.delete(reply.id)
+        }
+    }
+
+    fun startRecording() {
+        if (_voiceState.value is VoiceRecordState.Recording) return
+        // MediaRecorder.prepare()+start() can block 50-300ms on cold mic on
+        // some OEMs; off-load to IO so the Compose UI doesn't jank while
+        // the user's finger is still on the Record button.
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val dir = File(context.cacheDir, "voice_shortcut_tmp").apply { mkdirs() }
+            val tmp = File(dir, "shortcut-${System.currentTimeMillis()}.ogg")
+            val result = recorder.start(tmp, maxDurationMs = 60_000)
+            if (result.isSuccess) {
+                _voiceState.value = VoiceRecordState.Recording(System.currentTimeMillis())
+            } else {
+                Timber.w("Voice shortcut record start failed: ${result.exceptionOrNull()?.message}")
+            }
+        }
+    }
+
+    fun stopRecording() {
+        val state = _voiceState.value
+        if (state !is VoiceRecordState.Recording) return
+        // MediaRecorder.stop() can briefly block while flushing buffers.
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val durationMs = System.currentTimeMillis() - state.startedAt
+            val file = recorder.stop()
+            if (file != null && file.exists() && file.length() > 0L) {
+                _voiceState.value = VoiceRecordState.Recorded(file, durationMs)
+            } else {
+                _voiceState.value = VoiceRecordState.Idle
+            }
+        }
+    }
+
+    fun previewPlay() {
+        val state = _voiceState.value
+        val (file, duration) = when (state) {
+            is VoiceRecordState.Recorded -> state.file to state.durationMs
+            is VoiceRecordState.Playing -> return  // already playing
+            else -> return
+        }
+        _voiceState.value = VoiceRecordState.Playing(file, duration)
+        player.play(file) {
+            _voiceState.value = VoiceRecordState.Recorded(file, duration)
+        }
+    }
+
+    fun previewStop() {
+        val state = _voiceState.value
+        if (state is VoiceRecordState.Playing) {
+            player.stop()
+            _voiceState.value = VoiceRecordState.Recorded(state.file, state.durationMs)
+        }
+    }
+
+    fun resetVoiceState() {
+        val state = _voiceState.value
+        if (state is VoiceRecordState.Playing) player.stop()
+        if (state is VoiceRecordState.Recording) {
+            runCatching { recorder.stop()?.delete() }
+        }
+        if (state is VoiceRecordState.Recorded) runCatching { state.file.delete() }
+        if (state is VoiceRecordState.Playing) runCatching { state.file.delete() }
+        _voiceState.value = VoiceRecordState.Idle
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        resetVoiceState()
+    }
+}
+
+private sealed class EditorTarget {
+    data object None : EditorTarget()
+    data class Text(val existing: QuickReply?) : EditorTarget()
+    data class Voice(val existing: QuickReply?) : EditorTarget()
+    data object KindPicker : EditorTarget()
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -93,8 +282,7 @@ private fun QuickRepliesScreen(
     onBack: () -> Unit
 ) {
     val replies by viewModel.replies.collectAsState()
-    var editing by remember { mutableStateOf<QuickReply?>(null) }
-    var showEditor by remember { mutableStateOf(false) }
+    var target by remember { mutableStateOf<EditorTarget>(EditorTarget.None) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -118,7 +306,7 @@ private fun QuickRepliesScreen(
         },
         floatingActionButton = {
             ExtendedFloatingActionButton(
-                onClick = { editing = null; showEditor = true },
+                onClick = { target = EditorTarget.KindPicker },
                 icon = { Icon(Icons.Filled.Add, null) },
                 text = { Text(stringResource(R.string.quick_replies_new)) }
             )
@@ -136,23 +324,43 @@ private fun QuickRepliesScreen(
             items(replies, key = { it.id }) { r ->
                 QuickReplyCard(
                     reply = r,
-                    onTap = { editing = r; showEditor = true },
-                    onDelete = { viewModel.delete(r.id) }
+                    onTap = {
+                        target = if (r.kind == QuickReplyKind.VOICE) EditorTarget.Voice(r)
+                                 else EditorTarget.Text(r)
+                    },
+                    onDelete = { viewModel.delete(r) }
                 )
             }
             item { Spacer(Modifier.height(72.dp)) }
         }
     }
 
-    if (showEditor) {
-        QuickReplyEditor(
-            initial = editing,
+    when (val t = target) {
+        is EditorTarget.None -> Unit
+        is EditorTarget.KindPicker -> KindPickerSheet(
+            onPickText = { target = EditorTarget.Text(null) },
+            onPickVoice = { target = EditorTarget.Voice(null) },
+            onDismiss = { target = EditorTarget.None }
+        )
+        is EditorTarget.Text -> QuickReplyTextEditor(
+            initial = t.existing,
             onSave = { label, text ->
-                viewModel.save(editing, label, text)
-                showEditor = false
-                editing = null
+                viewModel.saveText(t.existing, label, text)
+                target = EditorTarget.None
             },
-            onDismiss = { showEditor = false; editing = null }
+            onDismiss = { target = EditorTarget.None }
+        )
+        is EditorTarget.Voice -> QuickReplyVoiceEditor(
+            viewModel = viewModel,
+            initial = t.existing,
+            onSave = { label ->
+                viewModel.saveVoice(t.existing, label)
+                target = EditorTarget.None
+            },
+            onDismiss = {
+                viewModel.resetVoiceState()
+                target = EditorTarget.None
+            }
         )
     }
 }
@@ -193,6 +401,7 @@ private fun QuickReplyCard(
     onTap: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val isVoice = reply.kind == QuickReplyKind.VOICE
     ElevatedCard(
         onClick = onTap,
         modifier = Modifier.fillMaxWidth(),
@@ -210,14 +419,16 @@ private fun QuickReplyCard(
         ) {
             Surface(
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.primaryContainer,
+                color = if (isVoice) MaterialTheme.colorScheme.tertiaryContainer
+                        else MaterialTheme.colorScheme.primaryContainer,
                 modifier = Modifier.size(40.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        Icons.Filled.Bolt,
+                        imageVector = if (isVoice) Icons.Filled.Mic else Icons.Filled.Bolt,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        tint = if (isVoice) MaterialTheme.colorScheme.onTertiaryContainer
+                               else MaterialTheme.colorScheme.onPrimaryContainer,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -233,7 +444,7 @@ private fun QuickReplyCard(
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    reply.textContent,
+                    if (isVoice) formatDuration(reply.audioDurationMs) else reply.textContent,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
@@ -241,8 +452,6 @@ private fun QuickReplyCard(
                 )
             }
             Spacer(Modifier.width(8.dp))
-            // Edit hint icon + delete. Edit is implicit via card tap so we
-            // don't need a separate button — show a pencil as a cue.
             Icon(
                 Icons.Filled.Edit,
                 contentDescription = null,
@@ -261,8 +470,95 @@ private fun QuickReplyCard(
     }
 }
 
+private fun formatDuration(ms: Long): String {
+    val totalSec = (ms / 1000).toInt().coerceAtLeast(0)
+    val m = totalSec / 60
+    val s = totalSec % 60
+    return "%d:%02d".format(m, s)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun QuickReplyEditor(
+private fun KindPickerSheet(
+    onPickText: () -> Unit,
+    onPickVoice: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                stringResource(R.string.quick_replies_pick_kind),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
+            )
+            KindOption(
+                icon = Icons.Filled.TextFields,
+                title = stringResource(R.string.quick_replies_kind_text),
+                subtitle = stringResource(R.string.quick_replies_kind_text_sub),
+                onClick = onPickText
+            )
+            KindOption(
+                icon = Icons.Filled.Mic,
+                title = stringResource(R.string.quick_replies_kind_voice),
+                subtitle = stringResource(R.string.quick_replies_kind_voice_sub),
+                onClick = onPickVoice
+            )
+            Spacer(Modifier.height(12.dp))
+        }
+    }
+}
+
+@Composable
+private fun KindOption(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.size(44.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        icon,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuickReplyTextEditor(
     initial: QuickReply?,
     onSave: (label: String, text: String) -> Unit,
     onDismiss: () -> Unit
@@ -303,3 +599,169 @@ private fun QuickReplyEditor(
     )
 }
 
+@Composable
+private fun QuickReplyVoiceEditor(
+    viewModel: QuickRepliesSettingsViewModel,
+    initial: QuickReply?,
+    onSave: (label: String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val voiceState by viewModel.voiceState.collectAsState()
+    var label by remember { mutableStateOf(initial?.label ?: "") }
+    val ctx = LocalContext.current
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) viewModel.startRecording()
+    }
+
+    // Guarantees the recorder/player is released when the dialog leaves
+    // composition for any reason (save, cancel, back-press, rotation). The
+    // VM's resetVoiceState is idempotent so calling it here and in the
+    // explicit dismiss paths is harmless.
+    DisposableEffect(Unit) {
+        onDispose { viewModel.resetVoiceState() }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                if (initial == null) stringResource(R.string.quick_replies_voice_new_title)
+                else stringResource(R.string.quick_replies_voice_edit_title)
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = label,
+                    onValueChange = { label = it },
+                    label = { Text(stringResource(R.string.quick_replies_label)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                VoiceRecorderControls(
+                    state = voiceState,
+                    onStartRecord = {
+                        val granted = ContextCompat.checkSelfPermission(
+                            ctx, Manifest.permission.RECORD_AUDIO
+                        ) == PackageManager.PERMISSION_GRANTED
+                        if (granted) viewModel.startRecording()
+                        else permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    },
+                    onStopRecord = { viewModel.stopRecording() },
+                    onPlay = { viewModel.previewPlay() },
+                    onStopPlay = { viewModel.previewStop() },
+                    onDiscard = { viewModel.resetVoiceState() }
+                )
+            }
+        },
+        confirmButton = {
+            val hasNewRecording = voiceState is VoiceRecordState.Recorded ||
+                                  voiceState is VoiceRecordState.Playing
+            val hasExistingAudio = initial?.audioFilePath?.isNotBlank() == true
+            TextButton(
+                onClick = { onSave(label) },
+                enabled = label.isNotBlank() && (hasNewRecording || hasExistingAudio)
+            ) { Text(stringResource(R.string.common_save)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
+        }
+    )
+}
+
+@Composable
+private fun VoiceRecorderControls(
+    state: VoiceRecordState,
+    onStartRecord: () -> Unit,
+    onStopRecord: () -> Unit,
+    onPlay: () -> Unit,
+    onStopPlay: () -> Unit,
+    onDiscard: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            val label = when (state) {
+                VoiceRecordState.Idle -> stringResource(R.string.quick_replies_voice_hint_idle)
+                is VoiceRecordState.Recording -> stringResource(R.string.quick_replies_voice_recording)
+                is VoiceRecordState.Recorded -> stringResource(
+                    R.string.quick_replies_voice_ready,
+                    formatDuration(state.durationMs)
+                )
+                is VoiceRecordState.Playing -> stringResource(R.string.quick_replies_voice_playing)
+            }
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                when (state) {
+                    VoiceRecordState.Idle -> {
+                        FilledTonalButton(
+                            onClick = onStartRecord,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Filled.Mic, null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.quick_replies_voice_start))
+                        }
+                    }
+                    is VoiceRecordState.Recording -> {
+                        FilledTonalButton(
+                            onClick = onStopRecord,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        ) {
+                            Icon(Icons.Filled.Stop, null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.quick_replies_voice_stop))
+                        }
+                    }
+                    is VoiceRecordState.Recorded -> {
+                        FilledTonalButton(
+                            onClick = onPlay,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Filled.PlayArrow, null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.quick_replies_voice_preview))
+                        }
+                        OutlinedButton(onClick = onDiscard) {
+                            Text(stringResource(R.string.quick_replies_voice_redo))
+                        }
+                    }
+                    is VoiceRecordState.Playing -> {
+                        FilledTonalButton(
+                            onClick = onStopPlay,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Filled.Stop, null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.quick_replies_voice_stop_preview))
+                        }
+                        OutlinedButton(onClick = onDiscard) {
+                            Text(stringResource(R.string.quick_replies_voice_redo))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
