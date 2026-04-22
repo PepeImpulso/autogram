@@ -45,6 +45,8 @@
     <string name="status_error_generic">エラー:%s</string>
     <string name="status_pending_count">%d 件の保留メッセージ</string>
     <string name="status_queued_offline">オフラインでキュー中</string>
+    <string name="status_queued_offline_count">オフラインでキュー · %d</string>
+    <string name="status_sending_queue">キューを送信中 · %d</string>
     <string name="status_outbox_count">%d 件キュー中 · 接続時に送信</string>
     <string name="status_playing">返信を再生中…</string>
 
@@ -300,6 +302,8 @@
     <string name="pinned_zoom_hint">ピンチでズーム · ドラッグで移動</string>
     <string name="picker_add_shortcut_title">ショートカット追加</string>
     <string name="picker_choose_chat">チャット選択</string>
+    <string name="picker_description_chat">Autogram が音声メモを送信する Telegram チャットを選びます。変更するまでこのチャットが送信先になります。</string>
+    <string name="picker_description_topic">フォーラムグループです。メッセージを届けるトピックを選びます。</string>
     <string name="picker_choose_topic">トピック選択</string>
     <string name="picker_search_chat_placeholder">チャットを検索</string>
     <string name="picker_search_topic_placeholder">トピックを検索</string>

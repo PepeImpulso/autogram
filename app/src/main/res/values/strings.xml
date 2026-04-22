@@ -46,7 +46,9 @@
     <string name="status_error_generic">Error: %s</string>
     <string name="status_pending_count">%d pending messages</string>
     <string name="status_queued_offline">Queued offline</string>
+    <string name="status_queued_offline_count">Queued offline · %d</string>
     <string name="status_outbox_count">%d queued · sent when online</string>
+    <string name="status_sending_queue">Sending queued · %d</string>
     <string name="status_playing">Playing reply…</string>
 
     <string name="nav_home">Home</string>
@@ -301,6 +303,8 @@
     <string name="pinned_zoom_hint">Pinch to zoom · drag to pan</string>
     <string name="picker_add_shortcut_title">Add shortcut</string>
     <string name="picker_choose_chat">Choose chat</string>
+    <string name="picker_description_chat">Pick the Telegram chat where Autogram will send your voice notes. This becomes the active target until you change it.</string>
+    <string name="picker_description_topic">This is a forum group. Pick the topic where the messages should land.</string>
     <string name="picker_choose_topic">Choose topic</string>
     <string name="picker_search_chat_placeholder">Search chats</string>
     <string name="picker_search_topic_placeholder">Search topics</string>

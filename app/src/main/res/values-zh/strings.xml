@@ -45,6 +45,8 @@
     <string name="status_error_generic">错误：%s</string>
     <string name="status_pending_count">%d 条待播放</string>
     <string name="status_queued_offline">离线排队中</string>
+    <string name="status_queued_offline_count">离线排队 · %d</string>
+    <string name="status_sending_queue">正在发送队列 · %d</string>
     <string name="status_outbox_count">%d 条排队中 · 联网后发送</string>
     <string name="status_playing">播放回复中…</string>
 
@@ -300,6 +302,8 @@
     <string name="pinned_zoom_hint">双指缩放 · 拖动平移</string>
     <string name="picker_add_shortcut_title">添加快捷</string>
     <string name="picker_choose_chat">选择聊天</string>
+    <string name="picker_description_chat">选择 Autogram 发送语音消息的 Telegram 聊天。此聊天将作为活动目标，直到你更改为止。</string>
+    <string name="picker_description_topic">这是一个话题群组。选择消息要发送到的话题。</string>
     <string name="picker_choose_topic">选择话题</string>
     <string name="picker_search_chat_placeholder">搜索聊天</string>
     <string name="picker_search_topic_placeholder">搜索话题</string>

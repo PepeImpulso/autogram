@@ -29,6 +29,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Groups
@@ -163,6 +164,14 @@ private fun TargetPickerScreen(
             // Search field hides while loading / on error — the box has
             // nothing to filter and the spinner takes the full area.
             if (!state.loading && state.error == null) {
+                PickerDescription(
+                    text = when (state.step) {
+                        is TargetPickerViewModel.Step.Chats ->
+                            stringResource(R.string.picker_description_chat)
+                        is TargetPickerViewModel.Step.Topics ->
+                            stringResource(R.string.picker_description_topic)
+                    }
+                )
                 SearchField(
                     query = query,
                     onChange = { query = it },
@@ -196,6 +205,37 @@ private fun TargetPickerScreen(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun PickerDescription(text: String) {
+    // Short orientation block at the top of each step. Set as surfaceVariant
+    // card so it reads as guidance rather than content the user can tap.
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Icon(
+                Icons.Filled.Info,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

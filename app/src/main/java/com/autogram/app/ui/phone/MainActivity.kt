@@ -172,6 +172,7 @@ private fun MainScreen(
     val activeTargetId by viewModel.activeTargetId.collectAsState()
     val pendingCounts by viewModel.pendingReplyCounts.collectAsState()
     val outboxCount by viewModel.outboxCount.collectAsState()
+    val isOnline by viewModel.isOnline.collectAsState()
     val updateState by updateViewModel.state.collectAsState()
     val suggestions by viewModel.suggestedChips.collectAsState()
     val showPendingBadges by viewModel.showPendingBadges.collectAsState()
@@ -278,7 +279,7 @@ private fun MainScreen(
                 .fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            HeroHeader(sendStatus = sendStatus, playback = playback, outboxCount = outboxCount)
+            HeroHeader(sendStatus = sendStatus, playback = playback, outboxCount = outboxCount, online = isOnline)
 
             if (folders.isNotEmpty()) {
                 FolderTabRow(
@@ -421,7 +422,8 @@ private fun MainScreen(
 private fun HeroHeader(
     sendStatus: SendVoiceMtprotoUseCase.SendStatus,
     playback: PlayReplyUseCase.PlaybackStatus,
-    outboxCount: Int
+    outboxCount: Int,
+    online: Boolean
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -446,7 +448,7 @@ private fun HeroHeader(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.weight(1f))
-        StatusPill(sendStatus, playback, outboxCount)
+        StatusPill(sendStatus, playback, outboxCount, online)
     }
 }
 
@@ -454,7 +456,8 @@ private fun HeroHeader(
 private fun StatusPill(
     sendStatus: SendVoiceMtprotoUseCase.SendStatus,
     playback: PlayReplyUseCase.PlaybackStatus,
-    outboxCount: Int
+    outboxCount: Int,
+    online: Boolean
 ) {
     data class Pill(val text: String, val container: Color, val onContainer: Color)
     val scheme = MaterialTheme.colorScheme
@@ -468,8 +471,23 @@ private fun StatusPill(
             Pill(ctx.getString(R.string.status_sending), scheme.primaryContainer, scheme.onPrimaryContainer)
         is SendVoiceMtprotoUseCase.SendStatus.Sent ->
             Pill(ctx.getString(R.string.status_sent), scheme.primaryContainer, scheme.onPrimaryContainer)
-        is SendVoiceMtprotoUseCase.SendStatus.QueuedOffline ->
-            Pill(ctx.getString(R.string.status_queued_offline), scheme.tertiaryContainer, scheme.onTertiaryContainer)
+        is SendVoiceMtprotoUseCase.SendStatus.QueuedOffline -> {
+            // The SendStatus.QueuedOffline value is set when the user taps
+            // send while offline; RetryWorker later drains the outbox but
+            // has no channel back to reset this field. So instead of
+            // trusting SendStatus alone, we gate on the outbox count:
+            //   - outbox == 0 → worker finished, fall through to Idle.
+            //   - outbox > 0 && !online → still queued.
+            //   - outbox > 0 && online → worker is retrying right now.
+            when {
+                outboxCount == 0 ->
+                    Pill(ctx.getString(R.string.status_idle), scheme.surfaceVariant, scheme.onSurfaceVariant)
+                !online ->
+                    Pill(ctx.getString(R.string.status_queued_offline_count, outboxCount), scheme.tertiaryContainer, scheme.onTertiaryContainer)
+                else ->
+                    Pill(ctx.getString(R.string.status_sending_queue, outboxCount), scheme.primaryContainer, scheme.onPrimaryContainer)
+            }
+        }
         is SendVoiceMtprotoUseCase.SendStatus.Discarded ->
             Pill(ctx.getString(R.string.status_discarded, sendStatus.reason), scheme.tertiaryContainer, scheme.onTertiaryContainer)
         is SendVoiceMtprotoUseCase.SendStatus.Error ->

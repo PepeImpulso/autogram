@@ -24,7 +24,19 @@ import dagger.hilt.components.SingletonComponent
  */
 class AutogramCarAppService : CarAppService() {
 
+    override fun onCreate() {
+        super.onCreate()
+        // Shows up in logcat as `AutogramCarAppService  onCreate` when
+        // Android Auto actually discovers and instantiates the service.
+        // Absence in logcat during an AA connect is a strong signal that
+        // the manifest isn't being matched — e.g. the user hasn't enabled
+        // "Unknown sources" in Android Auto → Developer Settings.
+        timber.log.Timber.i("AutogramCarAppService onCreate — AA instantiated the service")
+    }
+
     override fun createHostValidator(): HostValidator {
+        // Release builds use the release-signed AA allowlist; debug builds
+        // allow any host so the DHU (Desktop Head Unit) can connect.
         return if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) {
             HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
         } else {
@@ -34,7 +46,10 @@ class AutogramCarAppService : CarAppService() {
         }
     }
 
-    override fun onCreateSession(): Session = AutogramCarSession()
+    override fun onCreateSession(): Session {
+        timber.log.Timber.i("AutogramCarAppService onCreateSession — AA host opened the app")
+        return AutogramCarSession()
+    }
 }
 
 /**

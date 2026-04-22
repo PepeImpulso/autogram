@@ -18,6 +18,7 @@ import com.autogram.app.domain.repository.CircleFolderRepository
 import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.domain.usecase.SendVoiceMtprotoUseCase
 import com.autogram.app.domain.usecase.SuggestQuickReplyUseCase
+import com.autogram.app.infrastructure.platform.ConnectivityObserver
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -39,8 +40,11 @@ class MainViewModel @Inject constructor(
     private val messageRepository: MessageRepository,
     private val settingsRepository: SettingsRepository,
     private val folderRepository: CircleFolderRepository,
-    private val suggestQuickReplyUseCase: SuggestQuickReplyUseCase
+    private val suggestQuickReplyUseCase: SuggestQuickReplyUseCase,
+    connectivityObserver: ConnectivityObserver
 ) : AndroidViewModel(application) {
+
+    val isOnline: StateFlow<Boolean> = connectivityObserver.online
 
     val folders: StateFlow<List<CircleFolder>> =
         folderRepository.observeAll()

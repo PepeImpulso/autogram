@@ -43,7 +43,6 @@ import androidx.lifecycle.viewModelScope
 import com.autogram.app.domain.model.QuickReply
 import com.autogram.app.domain.model.QuickReplyKind
 import com.autogram.app.domain.repository.QuickReplyRepository
-import com.autogram.app.infrastructure.audio.AudioPlayer
 import com.autogram.app.infrastructure.audio.AudioRecorder
 import com.autogram.app.ui.theme.AutogramTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -78,20 +77,34 @@ class QuickRepliesSettingsActivity : BaseLocaleActivity() {
 sealed class VoiceRecordState {
     data object Idle : VoiceRecordState()
     data class Recording(val startedAt: Long) : VoiceRecordState()
-    data class Recorded(val file: File, val durationMs: Long) : VoiceRecordState()
-    data class Playing(val file: File, val durationMs: Long) : VoiceRecordState()
+    /**
+     * [isEphemeral] = true when [file] points at a temporary take in
+     * cacheDir that should be deleted on reset. False when we're editing
+     * an existing persistent shortcut and the file lives in
+     * filesDir/voice_shortcuts — those must survive dialog dismissal.
+     */
+    data class Recorded(val file: File, val durationMs: Long, val isEphemeral: Boolean) : VoiceRecordState()
+    data class Playing(val file: File, val durationMs: Long, val isEphemeral: Boolean) : VoiceRecordState()
 }
 
 @HiltViewModel
 class QuickRepliesSettingsViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val repo: QuickReplyRepository,
-    private val recorder: AudioRecorder,
-    private val player: AudioPlayer
+    private val recorder: AudioRecorder
 ) : ViewModel() {
 
     val replies: StateFlow<List<QuickReply>> =
         repo.observeAll().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    // Standalone MediaPlayer for the in-editor preview. Bypasses the
+    // app's AudioPlayer abstraction on purpose: AudioPlayer prefers BT
+    // routing + requests audio focus for car playback, which meant the
+    // preview was routed to the car speakers (or silenced when focus
+    // was denied) while the user was staring at the phone. A plain
+    // MediaPlayer on the default output track is what the user actually
+    // expects here.
+    private var previewMediaPlayer: android.media.MediaPlayer? = null
 
     private val _voiceState = MutableStateFlow<VoiceRecordState>(VoiceRecordState.Idle)
     val voiceState: StateFlow<VoiceRecordState> = _voiceState.asStateFlow()
@@ -128,36 +141,45 @@ class QuickRepliesSettingsViewModel @Inject constructor(
             val durationMs: Long
             when (state) {
                 is VoiceRecordState.Recorded, is VoiceRecordState.Playing -> {
-                    val (src, dur) = when (state) {
-                        is VoiceRecordState.Recorded -> state.file to state.durationMs
-                        is VoiceRecordState.Playing -> state.file to state.durationMs
+                    val (src, dur, ephemeral) = when (state) {
+                        is VoiceRecordState.Recorded -> Triple(state.file, state.durationMs, state.isEphemeral)
+                        is VoiceRecordState.Playing -> Triple(state.file, state.durationMs, state.isEphemeral)
                         else -> return@launch
                     }
-                    // Atomic replace: copy to a staging file next to dst,
-                    // rename over dst, THEN delete src. If the copy throws,
-                    // the old shortcut survives intact and we bail out.
-                    val dir = File(context.filesDir, "voice_shortcuts").apply { mkdirs() }
-                    val dst = File(dir, "$id.ogg")
-                    val staging = File(dir, "$id.ogg.new")
-                    runCatching { if (staging.exists()) staging.delete() }
-                    val copyResult = runCatching { src.copyTo(staging, overwrite = true) }
-                    if (copyResult.isFailure) {
-                        Timber.w(copyResult.exceptionOrNull(), "voice shortcut save: copy failed; keeping previous file")
-                        runCatching { staging.delete() }
-                        return@launch
+                    // If the user opened the editor to edit an existing
+                    // shortcut and never re-recorded, the file is already
+                    // at filesDir/voice_shortcuts/$id.ogg and we're just
+                    // saving a (possibly new) label. Nothing to copy.
+                    if (!ephemeral) {
+                        audioPath = src.absolutePath
+                        durationMs = dur
+                    } else {
+                        // Atomic replace: copy to a staging file next to dst,
+                        // rename over dst, THEN delete src. If the copy throws,
+                        // the old shortcut survives intact and we bail out.
+                        val dir = File(context.filesDir, "voice_shortcuts").apply { mkdirs() }
+                        val dst = File(dir, "$id.ogg")
+                        val staging = File(dir, "$id.ogg.new")
+                        runCatching { if (staging.exists()) staging.delete() }
+                        val copyResult = runCatching { src.copyTo(staging, overwrite = true) }
+                        if (copyResult.isFailure) {
+                            Timber.w(copyResult.exceptionOrNull(), "voice shortcut save: copy failed; keeping previous file")
+                            runCatching { staging.delete() }
+                            return@launch
+                        }
+                        val renamed = runCatching {
+                            if (dst.exists()) dst.delete()
+                            staging.renameTo(dst)
+                        }.getOrDefault(false)
+                        if (!renamed) {
+                            Timber.w("voice shortcut save: rename staging→dst failed; keeping previous file")
+                            runCatching { staging.delete() }
+                            return@launch
+                        }
+                        runCatching { src.delete() }
+                        audioPath = dst.absolutePath
+                        durationMs = dur
                     }
-                    val renamed = runCatching {
-                        if (dst.exists()) dst.delete()
-                        staging.renameTo(dst)
-                    }.getOrDefault(false)
-                    if (!renamed) {
-                        Timber.w("voice shortcut save: rename staging→dst failed; keeping previous file")
-                        runCatching { staging.delete() }
-                        return@launch
-                    }
-                    runCatching { src.delete() }
-                    audioPath = dst.absolutePath
-                    durationMs = dur
                 }
                 else -> {
                     // Idle + editing existing: keep the old audio, relabel only.
@@ -223,42 +245,104 @@ class QuickRepliesSettingsViewModel @Inject constructor(
             val durationMs = System.currentTimeMillis() - state.startedAt
             val file = recorder.stop()
             if (file != null && file.exists() && file.length() > 0L) {
-                _voiceState.value = VoiceRecordState.Recorded(file, durationMs)
+                _voiceState.value = VoiceRecordState.Recorded(file, durationMs, isEphemeral = true)
             } else {
                 _voiceState.value = VoiceRecordState.Idle
             }
         }
     }
 
+    /**
+     * Pre-load an existing voice shortcut into the editor state so the
+     * user sees the saved recording (with Preview / Redo controls)
+     * instead of the "Record" button when re-entering the editor.
+     * The file lives in filesDir/voice_shortcuts so it's non-ephemeral
+     * and [resetVoiceState] must not delete it.
+     */
+    fun loadExisting(audioFilePath: String, durationMs: Long) {
+        val f = File(audioFilePath)
+        if (!f.exists() || f.length() == 0L) {
+            Timber.w("loadExisting: file missing or empty at $audioFilePath")
+            return
+        }
+        _voiceState.value = VoiceRecordState.Recorded(f, durationMs, isEphemeral = false)
+    }
+
     fun previewPlay() {
         val state = _voiceState.value
-        val (file, duration) = when (state) {
-            is VoiceRecordState.Recorded -> state.file to state.durationMs
+        val (file, duration, ephemeral) = when (state) {
+            is VoiceRecordState.Recorded -> Triple(state.file, state.durationMs, state.isEphemeral)
             is VoiceRecordState.Playing -> return  // already playing
             else -> return
         }
-        _voiceState.value = VoiceRecordState.Playing(file, duration)
-        player.play(file) {
-            _voiceState.value = VoiceRecordState.Recorded(file, duration)
+        // Release any leftover player from a previous preview.
+        runCatching { previewMediaPlayer?.release() }
+        previewMediaPlayer = null
+        _voiceState.value = VoiceRecordState.Playing(file, duration, ephemeral)
+        try {
+            val mp = android.media.MediaPlayer().apply {
+                setAudioAttributes(
+                    android.media.AudioAttributes.Builder()
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                        .build()
+                )
+                setDataSource(file.absolutePath)
+                setOnCompletionListener {
+                    _voiceState.value = VoiceRecordState.Recorded(file, duration, ephemeral)
+                    runCatching { release() }
+                    previewMediaPlayer = null
+                }
+                setOnErrorListener { _, what, extra ->
+                    Timber.w("Preview MediaPlayer error what=$what extra=$extra file=${file.absolutePath}")
+                    _voiceState.value = VoiceRecordState.Recorded(file, duration, ephemeral)
+                    runCatching { release() }
+                    previewMediaPlayer = null
+                    true
+                }
+                prepare()
+                start()
+            }
+            previewMediaPlayer = mp
+        } catch (e: Exception) {
+            Timber.w(e, "Preview play failed for ${file.absolutePath}")
+            _voiceState.value = VoiceRecordState.Recorded(file, duration, ephemeral)
+            previewMediaPlayer = null
         }
     }
 
     fun previewStop() {
         val state = _voiceState.value
         if (state is VoiceRecordState.Playing) {
-            player.stop()
-            _voiceState.value = VoiceRecordState.Recorded(state.file, state.durationMs)
+            runCatching { previewMediaPlayer?.stop() }
+            runCatching { previewMediaPlayer?.release() }
+            previewMediaPlayer = null
+            _voiceState.value = VoiceRecordState.Recorded(state.file, state.durationMs, state.isEphemeral)
         }
     }
 
+    /**
+     * Reset in-memory state without touching persistent files.
+     *
+     * Temp recordings in cacheDir ARE deleted here (they'd otherwise
+     * leak). Existing voice shortcuts loaded via [loadExisting] are
+     * NOT — they're the user's saved data and must survive dialog
+     * dismissal, rotation, and navigation away.
+     */
     fun resetVoiceState() {
+        runCatching { previewMediaPlayer?.stop() }
+        runCatching { previewMediaPlayer?.release() }
+        previewMediaPlayer = null
         val state = _voiceState.value
-        if (state is VoiceRecordState.Playing) player.stop()
         if (state is VoiceRecordState.Recording) {
             runCatching { recorder.stop()?.delete() }
         }
-        if (state is VoiceRecordState.Recorded) runCatching { state.file.delete() }
-        if (state is VoiceRecordState.Playing) runCatching { state.file.delete() }
+        if (state is VoiceRecordState.Recorded && state.isEphemeral) {
+            runCatching { state.file.delete() }
+        }
+        if (state is VoiceRecordState.Playing && state.isEphemeral) {
+            runCatching { state.file.delete() }
+        }
         _voiceState.value = VoiceRecordState.Idle
     }
 
@@ -616,10 +700,22 @@ private fun QuickReplyVoiceEditor(
         if (granted) viewModel.startRecording()
     }
 
+    // Pre-load the existing recording into VM state so the editor shows
+    // Preview / Redo controls instead of the Record button — users
+    // re-entering to edit the label expect to see what's already saved.
+    // Keyed on initial.id so switching between edit targets re-loads.
+    LaunchedEffect(initial?.id) {
+        val path = initial?.audioFilePath
+        if (initial?.kind == QuickReplyKind.VOICE && !path.isNullOrBlank()) {
+            viewModel.loadExisting(path, initial.audioDurationMs)
+        }
+    }
+
     // Guarantees the recorder/player is released when the dialog leaves
     // composition for any reason (save, cancel, back-press, rotation). The
     // VM's resetVoiceState is idempotent so calling it here and in the
-    // explicit dismiss paths is harmless.
+    // explicit dismiss paths is harmless. Importantly it only deletes
+    // ephemeral (cacheDir) files; persistent voice shortcuts survive.
     DisposableEffect(Unit) {
         onDispose { viewModel.resetVoiceState() }
     }

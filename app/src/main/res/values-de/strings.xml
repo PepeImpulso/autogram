@@ -46,6 +46,8 @@
     <string name="status_error_generic">Fehler: %s</string>
     <string name="status_pending_count">%d ausstehende Nachrichten</string>
     <string name="status_queued_offline">In Warteschlange · offline</string>
+    <string name="status_queued_offline_count">Offline in Warteschlange · %d</string>
+    <string name="status_sending_queue">Sende Warteschlange · %d</string>
     <string name="status_outbox_count">%d in Warteschlange · bei Verbindung gesendet</string>
     <string name="status_playing">Antwort wird abgespielt…</string>
 
@@ -301,6 +303,8 @@
     <string name="pinned_zoom_hint">Zum Zoomen kneifen · ziehen zum Verschieben</string>
     <string name="picker_add_shortcut_title">Kürzel hinzufügen</string>
     <string name="picker_choose_chat">Chat wählen</string>
+    <string name="picker_description_chat">Wähle den Telegram-Chat, an den Autogram deine Sprachnotizen senden soll. Dies ist das aktive Ziel, bis du es änderst.</string>
+    <string name="picker_description_topic">Dies ist eine Forum-Gruppe. Wähle das Thema, in dem die Nachrichten landen sollen.</string>
     <string name="picker_choose_topic">Thema wählen</string>
     <string name="picker_search_chat_placeholder">Chats suchen</string>
     <string name="picker_search_topic_placeholder">Themen suchen</string>

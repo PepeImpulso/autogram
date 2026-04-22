@@ -49,6 +49,8 @@
     <string name="status_error_generic">Error: %s</string>
     <string name="status_pending_count">%d mensajes pendientes</string>
     <string name="status_queued_offline">En cola · sin conexión</string>
+    <string name="status_queued_offline_count">En cola sin conexión · %d</string>
+    <string name="status_sending_queue">Enviando cola · %d</string>
     <string name="status_outbox_count">%d en cola · se enviarán al reconectar</string>
     <string name="status_playing">Reproduciendo respuesta…</string>
 
@@ -311,6 +313,8 @@
     <string name="pinned_zoom_hint">Pellizca para hacer zoom · arrastra para mover</string>
     <string name="picker_add_shortcut_title">Añadir acceso rápido</string>
     <string name="picker_choose_chat">Elige chat</string>
+    <string name="picker_description_chat">Elige el chat de Telegram al que Autogram enviará tus notas de voz. Será el destino activo hasta que lo cambies.</string>
+    <string name="picker_description_topic">Es un grupo con temas. Elige el tema donde aterrizarán los mensajes.</string>
     <string name="picker_choose_topic">Elige tema</string>
     <string name="picker_search_chat_placeholder">Buscar chats</string>
     <string name="picker_search_topic_placeholder">Buscar temas</string>
