@@ -3,11 +3,14 @@ package com.autogram.app.ui.auto
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
+import android.graphics.RectF
 import androidx.car.app.CarContext
+import androidx.core.content.ContextCompat
 import androidx.car.app.Screen
 import androidx.car.app.constraints.ConstraintManager
 import androidx.car.app.model.*
@@ -68,10 +71,19 @@ class MainScreen(
     private val cachedQuickReplies = MutableStateFlow<List<QuickReply>>(emptyList())
     private val cachedPinned = MutableStateFlow<List<Conversation>>(emptyList())
 
+    // Rendering 384×384 composite bitmaps on every `invalidate()` for 7-10
+    // tiles would be wasteful — AA may re-request the template several
+    // times per second during a state change. Cache the finished CarIcon
+    // keyed by a stable identity: for avatars `(id + photoPath + mtime)`
+    // invalidates the cache when the user changes the photo; for shortcut
+    // tiles `(id + kind)` is enough (background is fixed per kind).
+    private val iconCache: MutableMap<String, CarIcon> = HashMap()
+
     init {
         lifecycle.addObserver(object : androidx.lifecycle.DefaultLifecycleObserver {
             override fun onDestroy(owner: androidx.lifecycle.LifecycleOwner) {
                 screenJob.cancel()
+                iconCache.clear()
             }
         })
         screenScope.launch {
@@ -128,31 +140,38 @@ class MainScreen(
             .setHeaderAction(Action.APP_ICON)
             .setActionStrip(buildActionStrip())
 
+        // Tell AA to render every tile image inside a circle. Our avatar
+        // bitmaps already render a circular photo + gold ring on a
+        // transparent square; the shortcut bitmaps render a rounded-rect
+        // chip on a transparent square. AA's circular mask then clips the
+        // square to the tile's circular slot without affecting the chip
+        // because the chip sits inside the inscribed circle of the tile.
+        runCatching { builder.setItemImageShape(GridTemplate.ITEM_IMAGE_SHAPE_CIRCLE) }
+
         val items = ItemList.Builder()
 
         val constraintManager = carContext.getCarService(ConstraintManager::class.java)
         val maxItems = constraintManager.getContentLimit(ConstraintManager.CONTENT_LIMIT_TYPE_GRID)
         var itemCount = 0
 
-        // Pinned conversations first. The primary is always index 0 of the
-        // observePinned() flow (sortOrder=0 + isPrimary), matching the
-        // phone's home-screen ordering — a user glancing at the car screen
-        // should see the same visual prominence as on the phone.
+        // Pinned conversations first. Order matches observePinned()
+        // (primary at index 0, then sortOrder), so the car screen mirrors
+        // the phone home exactly.
         val pinned = cachedPinned.value
         for (conv in pinned) {
             if (itemCount >= maxItems) break
             items.addItem(
                 GridItem.Builder()
                     .setTitle(conv.targetTitle ?: carContext.getString(R.string.main_default_primary_name))
-                    .setImage(circleAvatarIcon(conv), GridItem.IMAGE_TYPE_LARGE)
+                    .setImage(avatarTileIcon(conv), GridItem.IMAGE_TYPE_LARGE)
                     .setOnClickListener { startRecording(conv.id) }
                     .build()
             )
             itemCount++
         }
 
-        // If nothing is pinned (fresh install / in-flight config), fall
-        // back to a single Record tile so the user isn't stuck.
+        // Fresh install with no pinned circles: give the user a single
+        // Record tile so they're not stuck on an empty screen.
         if (pinned.isEmpty() && itemCount < maxItems) {
             items.addItem(
                 GridItem.Builder()
@@ -164,22 +183,15 @@ class MainScreen(
             itemCount++
         }
 
-        // Quick-reply shortcuts — text (Bolt) and voice (Mic) mixed in the
-        // order the user configured in Settings → Shortcuts. Voice ones
-        // send the pre-recorded .ogg; text ones send the configured string.
+        // Quick-reply shortcuts — rendered as phone-chip-style tiles so
+        // they read as "tap to send" at a glance, visually distinct from
+        // the avatar tiles without needing to read the label.
         for (qr in cachedQuickReplies.value) {
             if (itemCount >= maxItems) break
-            val isVoice = qr.kind == QuickReplyKind.VOICE
             items.addItem(
                 GridItem.Builder()
                     .setTitle(qr.label)
-                    .setImage(
-                        carIcon(
-                            if (isVoice) R.drawable.ic_mic else R.drawable.ic_bolt,
-                            if (isVoice) CarColor.BLUE else CarColor.SECONDARY
-                        ),
-                        GridItem.IMAGE_TYPE_ICON
-                    )
+                    .setImage(shortcutTileIcon(qr), GridItem.IMAGE_TYPE_LARGE)
                     .setOnClickListener { sendShortcut(qr) }
                     .build()
             )
@@ -356,49 +368,224 @@ class MainScreen(
     }
 
     /**
-     * Circle-cropped photo as a [CarIcon] for conversation tiles. Falls
-     * back to a tinted person silhouette when the conversation has no
-     * photo or the file is missing. Size matches AA's preferred tile
-     * image dimensions (Google's docs recommend up to 200dp; we use
-     * 192px pre-scaled).
+     * Cached [CarIcon] for a conversation avatar tile. Composites at
+     * 384×384: circle-cropped photo (or silhouette fallback) + gold ring
+     * + peach mic badge with a white mic glyph, matching the phone's
+     * RecordCircle aesthetic.
      */
-    private fun circleAvatarIcon(conv: Conversation, sizePx: Int = 192): CarIcon {
+    private fun avatarTileIcon(conv: Conversation): CarIcon {
+        val key = "avatar:${conv.id}:${conv.photoLocalPath ?: ""}:${photoMtime(conv.photoLocalPath)}"
+        iconCache[key]?.let { return it }
+        val bitmap = renderAvatarTile(conv)
+        val icon = CarIcon.Builder(IconCompat.createWithBitmap(bitmap)).build()
+        iconCache[key] = icon
+        return icon
+    }
+
+    /**
+     * Cached [CarIcon] for a quick-reply shortcut tile. Composites a
+     * rounded-rectangle chip background + centered Bolt (text) or Mic
+     * (voice) icon so the tile reads as a phone chip, visually distinct
+     * from the circular avatars it shares the grid with.
+     */
+    private fun shortcutTileIcon(qr: QuickReply): CarIcon {
+        val key = "shortcut:${qr.id}:${qr.kind.name}"
+        iconCache[key]?.let { return it }
+        val bitmap = renderShortcutTile(qr)
+        val icon = CarIcon.Builder(IconCompat.createWithBitmap(bitmap)).build()
+        iconCache[key] = icon
+        return icon
+    }
+
+    private fun photoMtime(path: String?): Long {
+        if (path.isNullOrBlank()) return 0L
+        return runCatching { File(path).lastModified() }.getOrDefault(0L)
+    }
+
+    /**
+     * Avatar tile: photo cropped to a circle, wrapped in a gold ring,
+     * with a peach mic-badge disc at the bottom-right. 384×384 source so
+     * the tile stays sharp on 2-4x density car screens.
+     */
+    private fun renderAvatarTile(conv: Conversation, sizePx: Int = 384): Bitmap {
+        val output = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(output)
+        val center = sizePx / 2f
+
+        // Slight padding so the ring isn't flush against the tile edge
+        // (AA crops the tile to a circle — any pixel on the edge vanishes).
+        val outerPadding = sizePx * 0.04f
+        val ringStroke = sizePx * 0.03f
+        val photoRadius = center - outerPadding - ringStroke / 2f
+
+        // ── Photo (or person-silhouette fallback) ────────────────────
+        val photoSizePx = (photoRadius * 2).toInt()
+        val photoBitmap = loadPhotoBitmap(conv, photoSizePx)
+        val photoCircled = toCircleBitmap(photoBitmap, photoSizePx)
+        canvas.drawBitmap(
+            photoCircled,
+            center - photoRadius,
+            center - photoRadius,
+            null
+        )
+
+        // ── Gold ring ────────────────────────────────────────────────
+        val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = ringStroke
+            color = COLOR_GOLD_RING
+        }
+        canvas.drawCircle(center, center, photoRadius + ringStroke / 2f, ringPaint)
+
+        // ── Peach mic badge at bottom-right ──────────────────────────
+        val badgeRadius = sizePx * 0.11f
+        val badgeCx = sizePx * 0.78f
+        val badgeCy = sizePx * 0.78f
+        val badgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = COLOR_PEACH_BADGE
+        }
+        // White ring around the badge so it reads as a separate element
+        // from the photo behind it, matching the phone's recessed badge.
+        val badgeRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = sizePx * 0.015f
+            color = Color.WHITE
+        }
+        canvas.drawCircle(badgeCx, badgeCy, badgeRadius, badgePaint)
+        canvas.drawCircle(badgeCx, badgeCy, badgeRadius, badgeRingPaint)
+
+        // Mic glyph inside the badge. Drawable → bitmap → drawBitmap so
+        // we get antialiased vector rendering without handcoding the SVG.
+        drawDrawableCentered(
+            canvas = canvas,
+            resId = R.drawable.ic_mic,
+            tint = Color.WHITE,
+            cx = badgeCx,
+            cy = badgeCy,
+            sizePx = badgeRadius * 1.25f
+        )
+
+        return output
+    }
+
+    /**
+     * Shortcut chip tile: rounded-rectangle dark-brown background with a
+     * centered Bolt (text) or Mic (voice) icon tinted to match the phone
+     * chip accent (gold for text, peach for voice).
+     */
+    private fun renderShortcutTile(qr: QuickReply, sizePx: Int = 384): Bitmap {
+        val output = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(output)
+
+        // The chip sits inside the tile's inscribed circle so AA's
+        // circular mask doesn't clip its corners.
+        val center = sizePx / 2f
+        val inscribedRadius = center * 0.96f
+        // Square chip inside the inscribed circle: width = radius * sqrt(2).
+        val chipSide = (inscribedRadius * 1.41f).coerceAtMost(sizePx * 0.8f)
+        val chipLeft = center - chipSide / 2f
+        val chipTop = center - chipSide / 2f
+        val chipRect = RectF(chipLeft, chipTop, chipLeft + chipSide, chipTop + chipSide)
+        val chipRadius = sizePx * 0.08f
+
+        val chipPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = COLOR_CHIP_BG
+        }
+        canvas.drawRoundRect(chipRect, chipRadius, chipRadius, chipPaint)
+
+        val isVoice = qr.kind == QuickReplyKind.VOICE
+        drawDrawableCentered(
+            canvas = canvas,
+            resId = if (isVoice) R.drawable.ic_mic else R.drawable.ic_bolt,
+            tint = if (isVoice) COLOR_PEACH_BADGE else COLOR_GOLD_RING,
+            cx = center,
+            cy = center,
+            sizePx = chipSide * 0.42f
+        )
+
+        return output
+    }
+
+    /**
+     * Load the conversation's photo as a square bitmap of [sizePx],
+     * falling back to the tinted person silhouette when no file is set
+     * or the decode fails. Silhouette gets a muted dark background so
+     * it reads as an intentional empty-state, not a missing-image error.
+     */
+    private fun loadPhotoBitmap(conv: Conversation, sizePx: Int): Bitmap {
         val path = conv.photoLocalPath
         if (!path.isNullOrBlank()) {
             val file = File(path)
             if (file.exists() && file.length() > 0) {
-                val bitmap = runCatching { BitmapFactory.decodeFile(path) }.getOrNull()
-                if (bitmap != null) {
-                    val circled = toCircleBitmap(bitmap, sizePx)
-                    return CarIcon.Builder(IconCompat.createWithBitmap(circled)).build()
-                }
+                val decoded = runCatching { BitmapFactory.decodeFile(path) }.getOrNull()
+                if (decoded != null) return decoded
             }
         }
-        // Fallback: person silhouette in primary-container tint. No
-        // per-conversation color variation — too distracting in the car.
-        return carIcon(R.drawable.ic_person, CarColor.DEFAULT)
+        val fallback = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(fallback)
+        canvas.drawColor(COLOR_SILHOUETTE_BG)
+        drawDrawableCentered(
+            canvas = canvas,
+            resId = R.drawable.ic_person,
+            tint = Color.WHITE,
+            cx = sizePx / 2f,
+            cy = sizePx / 2f,
+            sizePx = sizePx * 0.55f
+        )
+        return fallback
     }
 
-    /**
-     * Scale [src] to `sizePx × sizePx` and mask to a centered circle so
-     * the AA tile shows a round avatar (Google's distraction-optimized
-     * UI masks tile images as rectangles by default).
-     */
     private fun toCircleBitmap(src: Bitmap, sizePx: Int): Bitmap {
         val output = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(output)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { isFilterBitmap = true }
-        // Cover-style crop: scale the short side of the source to fill,
-        // then center-crop to the square target.
         val srcShort = minOf(src.width, src.height)
         val srcLeft = (src.width - srcShort) / 2
         val srcTop = (src.height - srcShort) / 2
         val srcRect = Rect(srcLeft, srcTop, srcLeft + srcShort, srcTop + srcShort)
         val dstRect = Rect(0, 0, sizePx, sizePx)
-        canvas.drawARGB(0, 0, 0, 0)
         canvas.drawCircle(sizePx / 2f, sizePx / 2f, sizePx / 2f, paint)
         paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
         canvas.drawBitmap(src, srcRect, dstRect, paint)
         return output
+    }
+
+    /**
+     * Render a vector drawable into [canvas] centered at ([cx], [cy])
+     * with the requested tint and pixel size. Uses a throwaway bitmap
+     * because Drawable.draw + Canvas doesn't antialias vectors by default
+     * on all API levels.
+     */
+    private fun drawDrawableCentered(
+        canvas: Canvas,
+        resId: Int,
+        tint: Int,
+        cx: Float,
+        cy: Float,
+        sizePx: Float
+    ) {
+        val drawable = ContextCompat.getDrawable(carContext, resId)?.mutate() ?: return
+        val intSize = sizePx.toInt().coerceAtLeast(1)
+        val bitmap = Bitmap.createBitmap(intSize, intSize, Bitmap.Config.ARGB_8888)
+        val tmpCanvas = Canvas(bitmap)
+        drawable.setTint(tint)
+        drawable.setBounds(0, 0, intSize, intSize)
+        drawable.draw(tmpCanvas)
+        canvas.drawBitmap(bitmap, cx - intSize / 2f, cy - intSize / 2f, null)
+    }
+
+    companion object {
+        // Match the phone theme (see ui/theme/Color.kt extended colors).
+        // Gold ring around each avatar + on the Bolt shortcut icon.
+        private const val COLOR_GOLD_RING: Int = 0xFFD4A44C.toInt()
+        // Peach/coral mic badge + on the Mic shortcut icon.
+        private const val COLOR_PEACH_BADGE: Int = 0xFFFFA66A.toInt()
+        // Dark-brown shortcut chip background (tonalContainer dark).
+        private const val COLOR_CHIP_BG: Int = 0xFF3D2F26.toInt()
+        // Muted grey-blue behind the person-silhouette fallback so the
+        // empty avatar doesn't read as a missing-image error.
+        private const val COLOR_SILHOUETTE_BG: Int = 0xFF3E4A56.toInt()
     }
 }
