@@ -148,10 +148,11 @@
     <string name="backup_password_confirm_hint">Répéter le mot de passe</string>
     <string name="backup_password_mismatch">Les mots de passe ne correspondent pas</string>
     <string name="backup_password_empty">Le mot de passe ne peut pas être vide</string>
+    <string name="backup_password_too_short">Utilisez au moins 8 caractères</string>
     <string name="backup_password_import_hint">Mot de passe de sauvegarde</string>
     <string name="backup_export_ok">Sauvegarde enregistrée ✓</string>
     <string name="backup_export_fail">Impossible d\'enregistrer la sauvegarde : %s</string>
-    <string name="backup_import_ok">Sauvegarde restaurée ✓ — redémarrez l\'app</string>
+    <string name="backup_import_ok">Sauvegarde restaurée ✓</string>
     <string name="backup_import_wrong_password">Mot de passe incorrect</string>
     <string name="backup_import_corrupt">Le fichier ne semble pas être une sauvegarde Autogram</string>
     <string name="backup_import_fail">Échec de la restauration : %s</string>

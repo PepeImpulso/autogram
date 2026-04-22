@@ -96,8 +96,17 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 }
                 is SettingsViewModel.BackupEvent.ExportFailed ->
                     android.widget.Toast.makeText(context, context.getString(R.string.backup_export_fail, event.message), android.widget.Toast.LENGTH_LONG).show()
-                SettingsViewModel.BackupEvent.ImportSuccess ->
+                is SettingsViewModel.BackupEvent.ImportSuccess -> {
+                    // Apply restored language globally so every activity (Main,
+                    // History, ManagePinned) picks it up on next resume.
+                    val locales = if (event.languageTag.isBlank()) androidx.core.os.LocaleListCompat.getEmptyLocaleList()
+                                  else androidx.core.os.LocaleListCompat.forLanguageTags(event.languageTag)
+                    androidx.appcompat.app.AppCompatDelegate.setApplicationLocales(locales)
                     android.widget.Toast.makeText(context, context.getString(R.string.backup_import_ok), android.widget.Toast.LENGTH_LONG).show()
+                    // Recreate so the Settings screen itself reflects the
+                    // restored settings + language without going back to Main.
+                    (context as? android.app.Activity)?.recreate()
+                }
                 SettingsViewModel.BackupEvent.ImportWrongPassword ->
                     android.widget.Toast.makeText(context, context.getString(R.string.backup_import_wrong_password), android.widget.Toast.LENGTH_LONG).show()
                 SettingsViewModel.BackupEvent.ImportCorrupt ->
@@ -789,6 +798,7 @@ private fun ExportPasswordDialog(
     var error by remember { mutableStateOf<String?>(null) }
     val emptyMsg = stringResource(R.string.backup_password_empty)
     val mismatchMsg = stringResource(R.string.backup_password_mismatch)
+    val tooShortMsg = stringResource(R.string.backup_password_too_short)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.backup_password_title)) },
@@ -823,6 +833,7 @@ private fun ExportPasswordDialog(
             TextButton(onClick = {
                 when {
                     pwd.isEmpty() -> error = emptyMsg
+                    pwd.length < 8 -> error = tooShortMsg
                     pwd != confirm -> error = mismatchMsg
                     else -> onConfirm(pwd.toCharArray())
                 }

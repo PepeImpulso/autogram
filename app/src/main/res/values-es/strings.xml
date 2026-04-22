@@ -155,10 +155,11 @@
     <string name="backup_password_confirm_hint">Repite la contraseña</string>
     <string name="backup_password_mismatch">Las contraseñas no coinciden</string>
     <string name="backup_password_empty">La contraseña no puede estar vacía</string>
+    <string name="backup_password_too_short">Usa al menos 8 caracteres</string>
     <string name="backup_password_import_hint">Contraseña de la copia</string>
     <string name="backup_export_ok">Copia guardada ✓</string>
     <string name="backup_export_fail">No se pudo guardar la copia: %s</string>
-    <string name="backup_import_ok">Copia restaurada ✓ — reinicia la app</string>
+    <string name="backup_import_ok">Copia restaurada ✓</string>
     <string name="backup_import_wrong_password">Contraseña incorrecta</string>
     <string name="backup_import_corrupt">El fichero no parece una copia de Autogram</string>
     <string name="backup_import_fail">Restauración fallida: %s</string>

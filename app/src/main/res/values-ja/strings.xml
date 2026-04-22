@@ -147,10 +147,11 @@
     <string name="backup_password_confirm_hint">パスワードをもう一度</string>
     <string name="backup_password_mismatch">パスワードが一致しません</string>
     <string name="backup_password_empty">パスワードを入力してください</string>
+    <string name="backup_password_too_short">8 文字以上にしてください</string>
     <string name="backup_password_import_hint">バックアップのパスワード</string>
     <string name="backup_export_ok">バックアップを保存しました ✓</string>
     <string name="backup_export_fail">バックアップを保存できませんでした: %s</string>
-    <string name="backup_import_ok">バックアップを復元しました ✓ — アプリを再起動してください</string>
+    <string name="backup_import_ok">バックアップを復元しました ✓</string>
     <string name="backup_import_wrong_password">パスワードが違います</string>
     <string name="backup_import_corrupt">Autogram バックアップではないようです</string>
     <string name="backup_import_fail">復元に失敗しました: %s</string>

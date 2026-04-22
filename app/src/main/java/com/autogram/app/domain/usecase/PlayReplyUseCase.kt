@@ -181,9 +181,28 @@ class PlayReplyUseCase @Inject constructor(
      * in English plays back in an English voice regardless of the device
      * default. Marks the row PLAYED when the utterance finishes.
      */
-    suspend fun playTextMessage(message: Message) {
+    suspend fun playTextMessage(message: Message, isCallActive: Boolean = false) {
         val text = message.textContent ?: return
         if (text.isBlank()) return
+        // Same gates as playVoiceMessage: in a call, silent mode, or autoplay
+        // off — queue for later instead of speaking over other audio. Texts
+        // share the same pending queue since they're Messages too, so
+        // playAllPending()/playNext() already handle them via playVoiceMessage
+        // but text rows have no audioFilePath → fall through to TTS there.
+        val settings = settingsRepository.get()
+        if (isCallActive) {
+            enqueuePending(message, PendingReason.IN_CALL)
+            return
+        }
+        if (settings.silentMode) {
+            enqueuePending(message, PendingReason.SILENT_MODE)
+            return
+        }
+        if (!settings.autoPlayReplies) {
+            // User opted out of auto-play. Leave the row RECEIVED so the
+            // History screen shows it as unread; they'll tap play themselves.
+            return
+        }
         currentPlayingId = message.id
         messageRepository.update(message.copy(state = MessageState.PLAYING))
         _playbackStatus.value = PlaybackStatus.Playing(message.id)
@@ -299,7 +318,14 @@ class PlayReplyUseCase @Inject constructor(
         playbackScope.launch {
             try { pendingPlaybackDao.deleteByMessageId(next.id) } catch (_: Exception) {}
         }
-        playVoiceMessage(next)
+        // Text messages live in the same queue (see enqueuePending) but must
+        // be dispatched to the TTS path — playVoiceMessage would fail looking
+        // for an audio file that never existed.
+        if (next.audioFilePath != null) {
+            playVoiceMessage(next)
+        } else if (!next.textContent.isNullOrBlank()) {
+            playTextMessage(next)
+        }
     }
 
     /**

@@ -53,6 +53,28 @@ class IncomingMessageNotifier @Inject constructor(
      * to Autogram where the playback queue handles it.
      */
     fun postVoiceReceived(conversation: Conversation, timestampMs: Long) {
+        postIncoming(
+            conversation = conversation,
+            timestampMs = timestampMs,
+            bodyText = context.getString(R.string.notification_incoming_voice_body)
+        )
+    }
+
+    /**
+     * Incoming *text* reply variant. Same MessagingStyle + CarAppExtender
+     * wiring as voice, but shows the message preview (truncated) instead of
+     * a generic "voice message" label. Android Auto reads the body aloud.
+     */
+    fun postTextReceived(conversation: Conversation, preview: String, timestampMs: Long) {
+        val trimmed = preview.take(120)
+        postIncoming(
+            conversation = conversation,
+            timestampMs = timestampMs,
+            bodyText = trimmed
+        )
+    }
+
+    private fun postIncoming(conversation: Conversation, timestampMs: Long, bodyText: String) {
         ensureChannel()
 
         val senderName = conversation.targetTitle ?: context.getString(R.string.main_default_primary_name)
@@ -61,8 +83,6 @@ class IncomingMessageNotifier @Inject constructor(
             .setName(senderName)
             .setImportant(true)
             .build()
-
-        val bodyText = context.getString(R.string.notification_incoming_voice_body)
 
         val openAppIntent = PendingIntent.getActivity(
             context,

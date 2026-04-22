@@ -166,6 +166,7 @@ class MtprotoReceiverService : Service() {
                 val target = routing[msg.chatId to topicId] ?: return@collect
                 when (val content = msg.content) {
                     is TdApi.MessageVoiceNote -> handleVoiceNote(target, msg, content)
+                    is TdApi.MessageText -> handleText(target, msg, content)
                     else -> Timber.d("Ignored non-voice incoming: ${content.javaClass.simpleName}")
                 }
             }
@@ -200,6 +201,34 @@ class MtprotoReceiverService : Service() {
             timestampMs = message.createdAt
         )
         playReplyUseCase.playVoiceMessage(
+            message = message,
+            isCallActive = callStateMonitor.isInCall.value
+        )
+    }
+
+    private suspend fun handleText(
+        target: Conversation,
+        tdMsg: TdApi.Message,
+        content: TdApi.MessageText
+    ) {
+        val text = content.text.text.orEmpty()
+        if (text.isBlank()) return
+        val message = Message(
+            id = UUID.randomUUID().toString(),
+            conversationId = target.id,
+            direction = MessageDirection.INCOMING,
+            state = MessageState.RECEIVED,
+            telegramMessageId = tdMsg.id,
+            textContent = text,
+            createdAt = tdMsg.date.toLong() * 1000L
+        )
+        messageRepository.insert(message)
+        incomingMessageNotifier.postTextReceived(
+            conversation = target,
+            preview = text,
+            timestampMs = message.createdAt
+        )
+        playReplyUseCase.playTextMessage(
             message = message,
             isCallActive = callStateMonitor.isInCall.value
         )
