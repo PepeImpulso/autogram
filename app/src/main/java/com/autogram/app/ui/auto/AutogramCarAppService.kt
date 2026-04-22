@@ -4,6 +4,7 @@ import androidx.car.app.CarAppService
 import androidx.car.app.Screen
 import androidx.car.app.Session
 import androidx.car.app.validation.HostValidator
+import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.QuickReplyRepository
 import com.autogram.app.domain.usecase.ManageSettingsUseCase
 import com.autogram.app.domain.usecase.PlayReplyUseCase
@@ -63,6 +64,7 @@ interface AutogramCarSessionDeps {
     fun playReplyUseCase(): PlayReplyUseCase
     fun manageSettingsUseCase(): ManageSettingsUseCase
     fun quickReplyRepository(): QuickReplyRepository
+    fun conversationRepository(): ConversationRepository
     fun voiceCommandRecognizer(): VoiceCommandRecognizer
 }
 
@@ -79,6 +81,7 @@ class AutogramCarSession : Session() {
             deps.playReplyUseCase(),
             deps.manageSettingsUseCase(),
             deps.quickReplyRepository(),
+            deps.conversationRepository(),
             deps.voiceCommandRecognizer()
         )
     }
