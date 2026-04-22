@@ -142,5 +142,6 @@ data class SettingsEntity(
     val previewBeforeSend: Boolean = false,
     val biometricLockEnabled: Boolean = false,
     val onboardingCompleted: Boolean = false,
-    val transcribeIncomingVoice: Boolean = false
+    val transcribeIncomingVoice: Boolean = false,
+    val showPendingBadges: Boolean = false
 )

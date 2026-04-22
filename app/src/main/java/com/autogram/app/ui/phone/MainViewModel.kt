@@ -7,6 +7,7 @@ import com.autogram.app.domain.model.Conversation
 import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.domain.repository.QuickReplyRepository
+import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.domain.model.MessageDirection
 import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.domain.usecase.SendVoiceMtprotoUseCase
@@ -30,8 +31,14 @@ class MainViewModel @Inject constructor(
     private val quickReplyRepository: QuickReplyRepository,
     private val conversationRepository: ConversationRepository,
     private val messageRepository: MessageRepository,
+    private val settingsRepository: SettingsRepository,
     private val suggestQuickReplyUseCase: SuggestQuickReplyUseCase
 ) : AndroidViewModel(application) {
+
+    val showPendingBadges: StateFlow<Boolean> =
+        settingsRepository.observe()
+            .map { it.showPendingBadges }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     // Ephemeral suggestion chips. Recomputed whenever a new INCOMING message
     // (voice with transcription, or text) arrives on the active conversation.

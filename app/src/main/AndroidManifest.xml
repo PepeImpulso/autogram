@@ -122,6 +122,12 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- Handles Listen/Reply actions posted on incoming-message notifications.
+             Not exported — only our own PendingIntents trigger it. -->
+        <receiver
+            android:name=".infrastructure.platform.NotificationActionReceiver"
+            android:exported="false" />
+
         <!-- FileProvider para el APK descargado por el auto-actualizador -->
         <provider
             android:name="androidx.core.content.FileProvider"

@@ -23,6 +23,9 @@
     <string name="notification_channel_incoming_voice">Voz entrante</string>
     <string name="notification_channel_incoming_voice_desc">Ha llegado un audio. Necesario para que Android Auto lo muestre en el coche.</string>
     <string name="notification_incoming_voice_body">Nuevo mensaje de voz</string>
+    <string name="notification_action_listen">Escuchar</string>
+    <string name="notification_action_reply">Responder</string>
+    <string name="notification_action_reply_hint">Escribe una respuesta…</string>
     <string name="notification_polling_text">Escuchando mensajes…</string>
     <string name="notification_channel_pending_replies">Respuestas pendientes</string>
     <string name="notification_channel_pending_replies_desc">Avisa cuando llega una respuesta y no se puede reproducir (modo silencio, llamada, etc.).</string>
@@ -130,6 +133,11 @@
     <string name="settings_language_de">Deutsch</string>
     <string name="settings_language_zh">中文</string>
     <string name="settings_language_ja">日本語</string>
+    <string name="update_downloading_banner">Descargando actualización…</string>
+    <string name="update_error_banner">No se pudo instalar la actualización. Prueba desde Ajustes → Actualizaciones.</string>
+    <string name="update_error_action">Abrir Ajustes</string>
+    <string name="settings_show_pending_badges">Mostrar contador de pendientes</string>
+    <string name="settings_show_pending_badges_sub">Muestra un número en cada círculo con los mensajes entrantes que no has contestado. Desactivado por defecto — actívalo si esperas responder a todos los mensajes.</string>
     <string name="settings_transcribe">Transcribir mensajes de voz</string>
     <string name="settings_transcribe_sub">Transcribe automáticamente las notas de voz entrantes con reconocimiento en el dispositivo. Requiere Android 14+ y el paquete de voz de Google.</string>
     <string name="settings_transcribe_unsupported">Requiere Android 14+ en este dispositivo</string>

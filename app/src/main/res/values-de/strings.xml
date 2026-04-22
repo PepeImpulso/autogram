@@ -21,6 +21,9 @@
     <string name="notification_channel_incoming_voice">Eingehende Sprachnachricht</string>
     <string name="notification_channel_incoming_voice_desc">Eine Sprachnachricht ist eingegangen. Erforderlich damit Android Auto sie im Auto anzeigt.</string>
     <string name="notification_incoming_voice_body">Neue Sprachnachricht</string>
+    <string name="notification_action_listen">Anhören</string>
+    <string name="notification_action_reply">Antworten</string>
+    <string name="notification_action_reply_hint">Antwort eingeben…</string>
     <string name="notification_polling_text">Höre auf Nachrichten…</string>
     <string name="notification_channel_pending_replies">Ausstehende Antworten</string>
     <string name="notification_channel_pending_replies_desc">Benachrichtigt, wenn eine Antwort eintrifft und nicht abgespielt werden kann (Lautlos, Anruf usw.).</string>
@@ -123,6 +126,11 @@
     <string name="settings_language_de">Deutsch</string>
     <string name="settings_language_zh">中文</string>
     <string name="settings_language_ja">日本語</string>
+    <string name="update_downloading_banner">Update wird heruntergeladen…</string>
+    <string name="update_error_banner">Update konnte nicht installiert werden. Versuchen Sie es unter Einstellungen → Updates.</string>
+    <string name="update_error_action">Einstellungen öffnen</string>
+    <string name="settings_show_pending_badges">Badges für ausstehende Antworten anzeigen</string>
+    <string name="settings_show_pending_badges_sub">Zeigt eine Zahl auf jedem Kreis für unbeantwortete Nachrichten. Standardmäßig aus — aktivieren Sie es, wenn Sie jede Nachricht beantworten möchten.</string>
     <string name="settings_transcribe">Sprachnachrichten transkribieren</string>
     <string name="settings_transcribe_sub">Transkribiert eingehende Sprachnachrichten automatisch mit der On-Device-Spracherkennung. Erfordert Android 14+ und das Google-Sprachpaket.</string>
     <string name="settings_transcribe_unsupported">Erfordert Android 14+ auf diesem Gerät</string>

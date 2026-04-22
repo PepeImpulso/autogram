@@ -21,6 +21,9 @@
     <string name="notification_channel_incoming_voice">音声受信</string>
     <string name="notification_channel_incoming_voice_desc">音声メッセージが届いたとき。Android Auto で車内に表示するのに必要。</string>
     <string name="notification_incoming_voice_body">新しい音声メッセージ</string>
+    <string name="notification_action_listen">聞く</string>
+    <string name="notification_action_reply">返信</string>
+    <string name="notification_action_reply_hint">返信を入力…</string>
     <string name="notification_polling_text">メッセージを受信待機中…</string>
     <string name="notification_channel_pending_replies">保留中の返信</string>
     <string name="notification_channel_pending_replies_desc">返信が届いても再生できない場合に通知します(サイレント、通話中など)。</string>
@@ -122,6 +125,11 @@
     <string name="settings_language_de">Deutsch</string>
     <string name="settings_language_zh">中文</string>
     <string name="settings_language_ja">日本語</string>
+    <string name="update_downloading_banner">更新をダウンロード中…</string>
+    <string name="update_error_banner">更新をインストールできませんでした。「設定 → 更新」から試してください。</string>
+    <string name="update_error_action">設定を開く</string>
+    <string name="settings_show_pending_badges">未返信バッジを表示</string>
+    <string name="settings_show_pending_badges_sub">各サークルに未返信の受信メッセージ数を表示します。既定でオフ — すべてのメッセージに返信したい場合にオンにしてください。</string>
     <string name="settings_transcribe">音声メッセージを文字起こし</string>
     <string name="settings_transcribe_sub">オンデバイス音声認識で受信した音声メモを自動的に文字起こしします。Android 14+ と Google 音声言語パックが必要です。</string>
     <string name="settings_transcribe_unsupported">このデバイスでは Android 14+ が必要です</string>

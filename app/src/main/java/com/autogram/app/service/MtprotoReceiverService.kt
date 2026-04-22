@@ -214,7 +214,8 @@ class MtprotoReceiverService : Service() {
         // shows the message on the head unit and lets the user tap Listen/Reply.
         incomingMessageNotifier.postVoiceReceived(
             conversation = target,
-            timestampMs = message.createdAt
+            timestampMs = message.createdAt,
+            messageId = message.id
         )
         // Kick off transcription in the service's own scope so playback and
         // recognition run in parallel. The use case no-ops if the feature
@@ -246,7 +247,8 @@ class MtprotoReceiverService : Service() {
         incomingMessageNotifier.postTextReceived(
             conversation = target,
             preview = text,
-            timestampMs = message.createdAt
+            timestampMs = message.createdAt,
+            messageId = message.id
         )
         playReplyUseCase.playTextMessage(
             message = message,

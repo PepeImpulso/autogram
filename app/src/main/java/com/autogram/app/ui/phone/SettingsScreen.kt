@@ -272,6 +272,13 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                     checked = state.previewBeforeSend,
                     onCheckedChange = viewModel::updatePreviewBeforeSend
                 )
+                SettingsDivider()
+                SwitchRow(
+                    label = stringResource(R.string.settings_show_pending_badges),
+                    supporting = stringResource(R.string.settings_show_pending_badges_sub),
+                    checked = state.showPendingBadges,
+                    onCheckedChange = viewModel::updateShowPendingBadges
+                )
             }
 
             SectionCard(

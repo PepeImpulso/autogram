@@ -21,6 +21,9 @@
     <string name="notification_channel_incoming_voice">语音收到</string>
     <string name="notification_channel_incoming_voice_desc">收到语音消息。需要此通道以便 Android Auto 在车机上显示。</string>
     <string name="notification_incoming_voice_body">新语音消息</string>
+    <string name="notification_action_listen">收听</string>
+    <string name="notification_action_reply">回复</string>
+    <string name="notification_action_reply_hint">输入回复…</string>
     <string name="notification_polling_text">正在监听消息…</string>
     <string name="notification_channel_pending_replies">待播放回复</string>
     <string name="notification_channel_pending_replies_desc">当回复到达但无法播放时通知（静音、通话等）。</string>
@@ -122,6 +125,11 @@
     <string name="settings_language_de">Deutsch</string>
     <string name="settings_language_zh">中文</string>
     <string name="settings_language_ja">日本語</string>
+    <string name="update_downloading_banner">正在下载更新…</string>
+    <string name="update_error_banner">无法安装更新。请在「设置 → 更新」中重试。</string>
+    <string name="update_error_action">打开设置</string>
+    <string name="settings_show_pending_badges">显示待回复数字</string>
+    <string name="settings_show_pending_badges_sub">在每个圈子上显示未回复的收件数。默认关闭 — 如果您希望回复每条消息，可打开。</string>
     <string name="settings_transcribe">转写语音消息</string>
     <string name="settings_transcribe_sub">使用设备端语音识别自动转写收到的语音。需要 Android 14+ 并安装 Google 语音语言包。</string>
     <string name="settings_transcribe_unsupported">此设备需要 Android 14+</string>

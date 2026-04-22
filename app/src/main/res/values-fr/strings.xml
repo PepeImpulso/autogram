@@ -21,6 +21,9 @@
     <string name="notification_channel_incoming_voice">Voix entrante</string>
     <string name="notification_channel_incoming_voice_desc">Un audio vient d\'arriver. Nécessaire pour qu\'Android Auto l\'affiche.</string>
     <string name="notification_incoming_voice_body">Nouveau message vocal</string>
+    <string name="notification_action_listen">Écouter</string>
+    <string name="notification_action_reply">Répondre</string>
+    <string name="notification_action_reply_hint">Tapez une réponse…</string>
     <string name="notification_polling_text">À l\'écoute des messages…</string>
     <string name="notification_channel_pending_replies">Réponses en attente</string>
     <string name="notification_channel_pending_replies_desc">Avertit lorsqu\'une réponse arrive et ne peut pas être lue (mode silencieux, appel, etc.).</string>
@@ -123,6 +126,11 @@
     <string name="settings_language_de">Deutsch</string>
     <string name="settings_language_zh">中文</string>
     <string name="settings_language_ja">日本語</string>
+    <string name="update_downloading_banner">Téléchargement de la mise à jour…</string>
+    <string name="update_error_banner">Impossible d\'installer la mise à jour. Essayez depuis Réglages → Mises à jour.</string>
+    <string name="update_error_action">Ouvrir les réglages</string>
+    <string name="settings_show_pending_badges">Afficher les badges de réponses en attente</string>
+    <string name="settings_show_pending_badges_sub">Affiche un nombre sur chaque cercle pour les messages non répondus. Désactivé par défaut — utile si vous comptez répondre à tous les messages.</string>
     <string name="settings_transcribe">Transcrire les messages vocaux</string>
     <string name="settings_transcribe_sub">Transcrit automatiquement les notes vocales entrantes avec la reconnaissance vocale sur l\'appareil. Nécessite Android 14+ et le pack vocal Google.</string>
     <string name="settings_transcribe_unsupported">Nécessite Android 14+ sur cet appareil</string>

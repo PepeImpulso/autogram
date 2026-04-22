@@ -112,7 +112,11 @@ data class AppSettings(
     // Automatic on-device transcription of incoming voice notes. Default off
     // so users opt in consciously — the engine downloads language packs on
     // first run which can take a few minutes.
-    val transcribeIncomingVoice: Boolean = false
+    val transcribeIncomingVoice: Boolean = false,
+    // Per-circle pending-reply badges were too noisy for users who don't
+    // feel obligated to answer every incoming. Default OFF — turn on only
+    // if you want the visual nag.
+    val showPendingBadges: Boolean = false
 )
 
 data class DeliveryAttempt(

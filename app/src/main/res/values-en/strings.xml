@@ -103,6 +103,11 @@
     <string name="settings_language_de">Deutsch</string>
     <string name="settings_language_zh">中文</string>
     <string name="settings_language_ja">日本語</string>
+    <string name="update_downloading_banner">Downloading update…</string>
+    <string name="update_error_banner">Couldn\'t install the update. Try from Settings → Updates.</string>
+    <string name="update_error_action">Open Settings</string>
+    <string name="settings_show_pending_badges">Show pending-reply badges</string>
+    <string name="settings_show_pending_badges_sub">Show a number on each circle for incoming messages you haven\'t answered. Off by default — turning it on is useful when you expect every message to get a reply.</string>
     <string name="settings_transcribe">Transcribe voice messages</string>
     <string name="settings_transcribe_sub">Auto-transcribe incoming voice notes with on-device speech recognition. Requires Android 14+ and the Google speech language pack.</string>
     <string name="settings_transcribe_unsupported">Requires Android 14+ on this device</string>

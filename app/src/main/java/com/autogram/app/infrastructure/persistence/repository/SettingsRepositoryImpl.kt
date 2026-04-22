@@ -36,7 +36,8 @@ class SettingsRepositoryImpl @Inject constructor(
         hapticEnabled = hapticEnabled, previewBeforeSend = previewBeforeSend,
         biometricLockEnabled = biometricLockEnabled,
         onboardingCompleted = onboardingCompleted,
-        transcribeIncomingVoice = transcribeIncomingVoice
+        transcribeIncomingVoice = transcribeIncomingVoice,
+        showPendingBadges = showPendingBadges
     )
 
     private fun AppSettings.toEntity() = SettingsEntity(
@@ -49,6 +50,7 @@ class SettingsRepositoryImpl @Inject constructor(
         hapticEnabled = hapticEnabled, previewBeforeSend = previewBeforeSend,
         biometricLockEnabled = biometricLockEnabled,
         onboardingCompleted = onboardingCompleted,
-        transcribeIncomingVoice = transcribeIncomingVoice
+        transcribeIncomingVoice = transcribeIncomingVoice,
+        showPendingBadges = showPendingBadges
     )
 }

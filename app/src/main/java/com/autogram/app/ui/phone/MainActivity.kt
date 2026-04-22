@@ -160,6 +160,7 @@ private fun MainScreen(
     val outboxCount by viewModel.outboxCount.collectAsState()
     val updateState by updateViewModel.state.collectAsState()
     val suggestions by viewModel.suggestedChips.collectAsState()
+    val showPendingBadges by viewModel.showPendingBadges.collectAsState()
 
     LaunchedEffect(Unit) {
         // Silent update check throttled: the ViewModel check() is cheap but we
@@ -247,7 +248,7 @@ private fun MainScreen(
                     primary = primary,
                     isRecordingThis = activeTargetId == primary.id &&
                         sendStatus is SendVoiceMtprotoUseCase.SendStatus.Recording,
-                    pendingCount = pendingCounts[primary.id] ?: 0,
+                    pendingCount = if (showPendingBadges) (pendingCounts[primary.id] ?: 0) else 0,
                     hasPermission = hasMicPermission,
                     quickReplies = quickReplies,
                     onRequestPermission = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
@@ -266,7 +267,7 @@ private fun MainScreen(
                 circles = secondary,
                 activeTargetId = activeTargetId,
                 sendStatus = sendStatus,
-                pendingCounts = pendingCounts,
+                pendingCounts = if (showPendingBadges) pendingCounts else emptyMap(),
                 hasPermission = hasMicPermission,
                 onRequestPermission = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
                 onStart = { viewModel.startRecording(it.id) },
@@ -279,7 +280,11 @@ private fun MainScreen(
         }
     }
 
-    // Update dialog overlay
+    // Update dialog overlay: available → dialog (user picks "Install now"
+    // or "Later"); downloading → tiny progress banner; error → banner with
+    // "Open Settings" shortcut so the user can retry from the full Updates
+    // screen if auto-install fails (e.g. the install-packages permission
+    // prompt was denied).
     when (val s = updateState) {
         is UpdateViewModel.State.Available -> {
             UpdateDialog(
@@ -289,6 +294,21 @@ private fun MainScreen(
                 onDismiss = { updateViewModel.dismiss() }
             )
         }
+        is UpdateViewModel.State.Downloading -> UpdateBanner(
+            text = stringResource(R.string.update_downloading_banner),
+            showSpinner = true,
+            actionLabel = null,
+            onAction = {}
+        )
+        is UpdateViewModel.State.Error -> UpdateBanner(
+            text = stringResource(R.string.update_error_banner),
+            showSpinner = false,
+            actionLabel = stringResource(R.string.update_error_action),
+            onAction = {
+                updateViewModel.dismiss()
+                onOpenSettings()
+            }
+        )
         else -> Unit
     }
 
@@ -455,6 +475,47 @@ private fun SuggestionChipsRow(
                 modifier = Modifier.size(18.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+}
+
+/**
+ * Ephemeral banner above the bottom nav for the Downloading / Error update
+ * states. Available state uses the richer [UpdateDialog] instead.
+ */
+@Composable
+private fun UpdateBanner(
+    text: String,
+    showSpinner: Boolean,
+    actionLabel: String?,
+    onAction: () -> Unit
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        tonalElevation = 4.dp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (showSpinner) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp
+                )
+                Spacer(Modifier.width(10.dp))
+            }
+            Text(
+                text,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f)
+            )
+            if (!actionLabel.isNullOrBlank()) {
+                TextButton(onClick = onAction) { Text(actionLabel) }
+            }
         }
     }
 }
