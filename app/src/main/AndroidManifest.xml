@@ -146,6 +146,21 @@
             android:name=".infrastructure.platform.NotificationActionReceiver"
             android:exported="false" />
 
+        <!-- Quick Settings tile for instant "record voice to primary target".
+             Drag-and-drop into the QS panel from the edit screen on Android.
+             Tap: launches MainActivity with EXTRA_AUTO_RECORD so the user can
+             hold-to-record without finding the in-app button. -->
+        <service
+            android:name=".tiles.RecordVoiceTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_mic"
+            android:label="@string/tile_record_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <!-- FileProvider para el APK descargado por el auto-actualizador -->
         <provider
             android:name="androidx.core.content.FileProvider"

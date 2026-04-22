@@ -9,6 +9,8 @@
     <string name="common_back">Retour</string>
     <string name="common_dismiss">Fermer</string>
     <string name="main_play_last_original">Écouter l\'original</string>
+    <string name="tile_record_label">Vocal pour Merlin</string>
+    <string name="tile_no_primary">Choisissez d\'abord un destinataire principal dans les Réglages</string>
     <string name="common_cancel">Annuler</string>
     <string name="common_close">Fermer</string>
     <string name="common_save">Enregistrer</string>

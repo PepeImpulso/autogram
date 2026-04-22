@@ -9,6 +9,8 @@
     <string name="common_back">戻る</string>
     <string name="common_dismiss">閉じる</string>
     <string name="main_play_last_original">オリジナルを再生</string>
+    <string name="tile_record_label">Merlin に音声</string>
+    <string name="tile_no_primary">先に設定でメイン送信先を選んでください</string>
     <string name="common_cancel">キャンセル</string>
     <string name="common_close">閉じる</string>
     <string name="common_save">保存</string>

@@ -9,6 +9,8 @@
     <string name="common_back">Back</string>
     <string name="common_dismiss">Dismiss</string>
     <string name="main_play_last_original">Play last original</string>
+    <string name="tile_record_label">Voice to Merlin</string>
+    <string name="tile_no_primary">Pick a primary target first in Settings</string>
     <string name="common_cancel">Cancel</string>
     <string name="common_close">Close</string>
     <string name="common_save">Save</string>

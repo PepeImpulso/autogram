@@ -140,6 +140,18 @@ class MainActivity : BaseLocaleActivity() {
             }
         }
     }
+
+    /**
+     * Re-deliver the launch intent when the activity is brought to front
+     * (e.g. user taps the QS tile while MainActivity is already in the
+     * back-stack). Without this the second tap would never trigger
+     * EXTRA_AUTO_RECORD because [MainScreen]'s LaunchedEffect only reads
+     * the intent that was attached at activity-create time.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+    }
 }
 
 @Composable
@@ -184,6 +196,30 @@ private fun MainScreen(
             ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) ==
                 PackageManager.PERMISSION_GRANTED
         )
+    }
+
+    // QS-tile auto-record: if the activity was launched from the Quick
+    // Settings tile (or the corresponding deep-link), kick off recording
+    // to the primary target as soon as it's available + we have mic
+    // permission. The intent extra is consumed (set to false) so a
+    // configuration change or recomposition doesn't re-trigger.
+    val pinnedForAuto by viewModel.pinned.collectAsState()
+    LaunchedEffect(pinnedForAuto, hasMicPermission) {
+        val activity = ctx as? android.app.Activity ?: return@LaunchedEffect
+        val intent = activity.intent ?: return@LaunchedEffect
+        if (!intent.getBooleanExtra(
+                com.autogram.app.tiles.RecordVoiceTileService.EXTRA_AUTO_RECORD,
+                false
+            )
+        ) return@LaunchedEffect
+        val target = pinnedForAuto.firstOrNull { it.isActive } ?: return@LaunchedEffect
+        if (!hasMicPermission) {
+            // Wait for the user to grant; the LaunchedEffect re-runs when
+            // hasMicPermission flips to true.
+            return@LaunchedEffect
+        }
+        intent.removeExtra(com.autogram.app.tiles.RecordVoiceTileService.EXTRA_AUTO_RECORD)
+        viewModel.startRecording(target.id)
     }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()

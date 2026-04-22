@@ -9,6 +9,8 @@
     <string name="common_back">Back</string>
     <string name="common_dismiss">Dismiss</string>
     <string name="main_play_last_original">Play last original</string>
+    <string name="tile_record_label">Voice to Merlin</string>
+    <string name="tile_no_primary">Pick a primary target first in Settings</string>
     <string name="settings_biometric_missing_title">Set up a fingerprint or PIN first</string>
     <string name="settings_biometric_missing_body">This device has no biometric or screen lock configured yet, so enabling the lock would do nothing. Set up a fingerprint or PIN in system settings and come back.</string>
     <string name="settings_biometric_open_enrol">Open system settings</string>
