@@ -18,6 +18,8 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -157,6 +159,7 @@ private fun MainScreen(
     val pendingCounts by viewModel.pendingReplyCounts.collectAsState()
     val outboxCount by viewModel.outboxCount.collectAsState()
     val updateState by updateViewModel.state.collectAsState()
+    val suggestions by viewModel.suggestedChips.collectAsState()
 
     LaunchedEffect(Unit) {
         // Silent update check throttled: the ViewModel check() is cheap but we
@@ -227,6 +230,17 @@ private fun MainScreen(
         ) {
             HeroHeader(sendStatus = sendStatus, playback = playback, outboxCount = outboxCount)
             Spacer(Modifier.height(24.dp))
+
+            if (suggestions.isNotEmpty()) {
+                SuggestionChipsRow(
+                    suggestions = suggestions,
+                    onSuggestionTap = { text ->
+                        viewModel.sendQuickReply(text, primary?.id)
+                    },
+                    onDismiss = { viewModel.dismissSuggestions() }
+                )
+                Spacer(Modifier.height(16.dp))
+            }
 
             if (primary != null) {
                 PrimaryRow(
@@ -397,6 +411,51 @@ private fun StatusPill(
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Medium
         )
+    }
+}
+
+/**
+ * Ephemeral chips suggesting short replies to the last incoming message.
+ * Populated by [SuggestQuickReplyUseCase]; tap sends via the active target's
+ * quick-reply path. The user can dismiss the whole row with the × affordance
+ * if none of the suggestions match their intent.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun SuggestionChipsRow(
+    suggestions: List<com.autogram.app.domain.usecase.SuggestQuickReplyUseCase.Suggestion>,
+    onSuggestionTap: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        LazyRow(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(suggestions, key = { it.ruleId + "-" + it.text }) { suggestion ->
+                AssistChip(
+                    onClick = { onSuggestionTap(suggestion.text) },
+                    label = { Text(suggestion.text, maxLines = 1) }
+                )
+            }
+        }
+        IconButton(
+            onClick = onDismiss,
+            modifier = Modifier.size(32.dp)
+        ) {
+            Icon(
+                Icons.Filled.Close,
+                contentDescription = stringResource(R.string.common_dismiss),
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 

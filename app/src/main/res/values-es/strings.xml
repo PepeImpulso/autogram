@@ -8,6 +8,7 @@
 
     <!-- Common -->
     <string name="common_back">Volver</string>
+    <string name="common_dismiss">Cerrar</string>
     <string name="common_cancel">Cancelar</string>
     <string name="common_close">Cerrar</string>
     <string name="common_save">Guardar</string>
