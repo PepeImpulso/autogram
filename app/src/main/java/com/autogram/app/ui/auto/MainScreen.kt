@@ -158,14 +158,17 @@ class MainScreen(
         val primary = pinned.firstOrNull()
         val secondaries = pinned.drop(1)
 
-        // 1. Primary tile first — the biggest visual element we can
-        // render. Bitmap fills 96% of the canvas so the circle looks
-        // "bigger" than secondaries which render at 76%.
+        // 1. Primary tile first — bitmap fills the whole tile; AA's
+        // native Badge API overlays a peach mic dot at the corner.
         if (primary != null && itemCount < maxItems) {
             items.addItem(
                 GridItem.Builder()
                     .setTitle(tileTitle(primary))
-                    .setImage(avatarTileIcon(primary, isPrimary = true), GridItem.IMAGE_TYPE_LARGE)
+                    .setImage(
+                        avatarTileIcon(primary, isPrimary = true),
+                        GridItem.IMAGE_TYPE_LARGE,
+                        micBadge()
+                    )
                     .setOnClickListener { startRecording(primary.id) }
                     .build()
             )
@@ -201,15 +204,20 @@ class MainScreen(
             itemCount++
         }
 
-        // 3. Secondary pinned conversations. Smaller visual weight via
-        // bitmap padding (76% vs 96% for primary). Reachable by
-        // scrolling when the grid budget overflows.
+        // 3. Secondary pinned conversations. Bitmap draws a smaller
+        // circle inside the canvas so secondaries render visibly
+        // smaller than the primary tile. Native Badge adds the same
+        // peach mic dot for affordance consistency.
         for (conv in secondaries) {
             if (itemCount >= maxItems) break
             items.addItem(
                 GridItem.Builder()
                     .setTitle(tileTitle(conv))
-                    .setImage(avatarTileIcon(conv, isPrimary = false), GridItem.IMAGE_TYPE_LARGE)
+                    .setImage(
+                        avatarTileIcon(conv, isPrimary = false),
+                        GridItem.IMAGE_TYPE_LARGE,
+                        micBadge()
+                    )
                     .setOnClickListener { startRecording(conv.id) }
                     .build()
             )
@@ -397,6 +405,24 @@ class MainScreen(
     }
 
     /**
+     * Native AA Badge for the mic affordance. Unlike the painted-in
+     * badge we used before, this is rendered BY the car host on top of
+     * the tile icon, so it stays crisp at any car screen resolution and
+     * doesn't get crushed when AA downsamples our bitmap.
+     */
+    private fun micBadge(): androidx.car.app.model.Badge {
+        val peach = CarColor.createCustom(COLOR_PEACH_BADGE, COLOR_PEACH_BADGE)
+        return androidx.car.app.model.Badge.Builder()
+            .setBackgroundColor(peach)
+            .setIcon(
+                CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_mic))
+                    .setTint(CarColor.createCustom(android.graphics.Color.WHITE, android.graphics.Color.WHITE))
+                    .build()
+            )
+            .build()
+    }
+
+    /**
      * Cached [CarIcon] for a conversation avatar tile. Composites at
      * [AVATAR_TILE_SIZE] px: circle-cropped photo (or silhouette fallback)
      * + gold ring + peach mic badge with a white mic glyph, matching the
@@ -452,10 +478,19 @@ class MainScreen(
         val canvas = Canvas(output)
         val center = sizePx / 2f
 
+        // Anchor the canvas at near-zero alpha on all 4 corners. AA's
+        // host appears to trim bitmaps to their opaque bounding box
+        // before rendering, which was erasing the transparent padding
+        // we use to make secondaries look smaller. A ~1.5%-alpha black
+        // fill is functionally invisible against AA's dark tile bg but
+        // forces the bounding box to include the full canvas, so the
+        // size difference between primary and secondary actually
+        // survives to the rendered tile.
+        canvas.drawColor(0x04000000)
+
         // Fill ratios: primary fills the entire tile; secondaries
-        // shrink to ~55% so there's a dramatic (≈2×) size difference
-        // the user actually sees after AA downscales the bitmap. Ring
-        // + badge scale with the circle so proportions stay right.
+        // shrink to ~55% so the rendered tile shows a visible ≈2× size
+        // difference between primary and secondary circles.
         val circleFill = if (isPrimary) 1.00f else 0.55f
         val circleRadius = (sizePx / 2f) * circleFill
         val ringStroke = circleRadius * (if (isPrimary) 0.10f else 0.09f)
@@ -480,37 +515,10 @@ class MainScreen(
         }
         canvas.drawCircle(center, center, photoRadius + ringStroke / 2f, ringPaint)
 
-        // ── Peach mic badge at bottom-right (scaled with circle) ─────
-        // Primary badge is bigger for a stronger record-affordance cue;
-        // secondaries get a smaller badge so the primary keeps the
-        // visual lead.
-        val badgeRadius = circleRadius * (if (isPrimary) 0.40f else 0.32f)
-        // Place the badge's center where the circle's 45° edge meets a
-        // 15° tuck-in, so it sits half-on, half-off the ring — same feel
-        // as the phone's RecordCircle badge.
-        val angleRad = Math.toRadians(45.0)
-        val badgeCx = center + (circleRadius - badgeRadius * 0.25f) * Math.cos(angleRad).toFloat()
-        val badgeCy = center + (circleRadius - badgeRadius * 0.25f) * Math.sin(angleRad).toFloat()
-        val badgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            color = COLOR_PEACH_BADGE
-        }
-        val badgeRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = sizePx * 0.015f
-            color = Color.WHITE
-        }
-        canvas.drawCircle(badgeCx, badgeCy, badgeRadius, badgePaint)
-        canvas.drawCircle(badgeCx, badgeCy, badgeRadius, badgeRingPaint)
-
-        drawDrawableCentered(
-            canvas = canvas,
-            resId = R.drawable.ic_mic,
-            tint = Color.WHITE,
-            cx = badgeCx,
-            cy = badgeCy,
-            sizePx = badgeRadius * 1.25f
-        )
+        // Mic badge is no longer painted into the bitmap — AA renders
+        // it natively via `Badge` on the GridItem. That gives crisper
+        // results on high-DPI car screens and survives AA's bitmap
+        // downsampling intact.
 
         return output
     }
@@ -527,6 +535,12 @@ class MainScreen(
         val sizePx = AVATAR_TILE_SIZE
         val output = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(output)
+
+        // Same alpha-anchor trick as the avatar tiles: forces AA's
+        // renderer to honour the full canvas size rather than cropping
+        // to opaque content. Without this the chip was being scaled
+        // up to fill the whole tile, losing the intended padding.
+        canvas.drawColor(0x04000000)
 
         // Chip fills nearly the whole canvas so the tile reads as a
         // substantial button, not a tiny mark floating in empty space.
