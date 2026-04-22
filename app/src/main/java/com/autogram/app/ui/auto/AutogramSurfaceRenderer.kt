@@ -169,11 +169,14 @@ class AutogramSurfaceRenderer(
         val secondaries = localPinned.drop(1)
         val localShortcuts = quickReplies
 
-        // Primary Merlin circle — top-left, spans the upper half of the
-        // canvas, ~33% of the width. Taps → start recording to primary.
-        val primaryCx = sidePadding + w * 0.18f
-        val primaryCy = contentTop + (contentBottom - contentTop) * 0.32f
+        // Primary Merlin circle — flush with top + left margin. User
+        // asked to push it to the top-left corner so the secondaries
+        // row can breathe at the bottom. Centre = (sidePadding + r +
+        // tiny gutter, contentTop + r). Size unchanged — ~33% of width,
+        // capped by available vertical room above the secondaries.
         val primaryRadius = (w * 0.15f).coerceAtMost(h * 0.25f)
+        val primaryCx = sidePadding + primaryRadius + w * 0.015f
+        val primaryCy = contentTop + primaryRadius
 
         if (primary != null) {
             drawAvatar(
@@ -201,13 +204,13 @@ class AutogramSurfaceRenderer(
             newRegions += ClickRegion(hitBox) { onPrimaryTap(primary.id) }
         }
 
-        // Shortcut chips — right of Merlin, vertical stack. Chip height
-        // is a fraction of the primary's vertical span so three chips
-        // fit neatly alongside.
+        // Shortcut chips — right of Merlin, vertical stack aligned to
+        // Merlin's full top-to-bottom span so three chips slot neatly
+        // next to the big circle without leaving dead space above.
         val chipsX = primaryCx + primaryRadius + w * 0.04f
         val chipsRight = w - sidePadding
-        val chipAreaTop = contentTop
-        val chipAreaBottom = primaryCy + primaryRadius * 0.6f
+        val chipAreaTop = primaryCy - primaryRadius
+        val chipAreaBottom = primaryCy + primaryRadius
         val chipAreaHeight = chipAreaBottom - chipAreaTop
         val visibleShortcuts = localShortcuts.take(3)
         if (visibleShortcuts.isNotEmpty()) {
@@ -273,7 +276,10 @@ class AutogramSurfaceRenderer(
         radius: Float,
         isPrimary: Boolean
     ) {
-        val ringStroke = radius * (if (isPrimary) 0.07f else 0.08f)
+        // Ring stroke: thinner than v1.18.x. User said the gold band
+        // was too heavy; 4% on primary / 5% on secondaries reads as a
+        // clear accent without framing the photo into an icon.
+        val ringStroke = radius * (if (isPrimary) 0.04f else 0.05f)
         val photoRadius = radius - ringStroke
 
         // Photo layer — masked to a circle.
