@@ -73,7 +73,18 @@ data class ConversationEntity(
     // Timestamp of the last *outgoing* message we sent to this target. Used to
     // compute the "pending-to-reply" badge: count of INCOMING messages with
     // createdAt > lastRepliedAt. Null = user has never replied to this circle.
-    val lastRepliedAt: Long? = null
+    val lastRepliedAt: Long? = null,
+    // Optional grouping folder. Null = not in any folder — shown under the
+    // "All" tab on Main but not filtered into any specific folder tab.
+    val folderId: String? = null
+)
+
+@Entity(tableName = "circle_folders")
+data class CircleFolderEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val color: Int = 0,
+    val sortOrder: Int = 0
 )
 
 @Entity(

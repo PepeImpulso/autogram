@@ -32,6 +32,9 @@ abstract class AppModule {
     abstract fun bindQuickReplyRepository(impl: QuickReplyRepositoryImpl): QuickReplyRepository
 
     @Binds @Singleton
+    abstract fun bindCircleFolderRepository(impl: CircleFolderRepositoryImpl): CircleFolderRepository
+
+    @Binds @Singleton
     abstract fun bindTranscriptionEngine(impl: AndroidOnDeviceTranscriptionEngine): TranscriptionEngine
 
     companion object {

@@ -4,7 +4,9 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.autogram.app.domain.model.CircleFolder
 import com.autogram.app.domain.model.Conversation
+import com.autogram.app.domain.repository.CircleFolderRepository
 import com.autogram.app.domain.repository.ConversationRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -21,12 +23,51 @@ import javax.inject.Inject
 @HiltViewModel
 class ManagePinnedViewModel @Inject constructor(
     application: Application,
-    private val conversationRepository: ConversationRepository
+    private val conversationRepository: ConversationRepository,
+    private val folderRepository: CircleFolderRepository
 ) : AndroidViewModel(application) {
 
     val pinned: StateFlow<List<Conversation>> =
         conversationRepository.observePinned()
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val folders: StateFlow<List<CircleFolder>> =
+        folderRepository.observeAll()
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    fun createFolder(name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isBlank()) return
+        viewModelScope.launch {
+            val current = folderRepository.getAll()
+            folderRepository.upsert(
+                CircleFolder(
+                    id = UUID.randomUUID().toString(),
+                    name = trimmed,
+                    sortOrder = current.size
+                )
+            )
+        }
+    }
+
+    fun renameFolder(id: String, name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isBlank()) return
+        viewModelScope.launch {
+            val existing = folderRepository.getAll().firstOrNull { it.id == id } ?: return@launch
+            folderRepository.upsert(existing.copy(name = trimmed))
+        }
+    }
+
+    fun deleteFolder(id: String) {
+        viewModelScope.launch { folderRepository.delete(id) }
+    }
+
+    fun assignFolder(conversationId: String, folderId: String?) {
+        viewModelScope.launch {
+            conversationRepository.setFolder(conversationId, folderId)
+        }
+    }
 
     fun setPrimary(id: String) {
         viewModelScope.launch {

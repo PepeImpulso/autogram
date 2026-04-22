@@ -12,6 +12,7 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -24,19 +25,27 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FolderOff
 import androidx.compose.material.icons.filled.HideImage
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalIconButton
@@ -76,6 +85,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.autogram.app.R
+import com.autogram.app.domain.model.CircleFolder
 import com.autogram.app.domain.model.Conversation
 import com.autogram.app.ui.theme.AutogramTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -116,6 +126,9 @@ private fun ManagePinnedScreen(
     onAdd: () -> Unit
 ) {
     val pinned by viewModel.pinned.collectAsState()
+    val folders by viewModel.folders.collectAsState()
+    var showAddFolderDialog by remember { mutableStateOf(false) }
+    var folderPendingDelete by remember { mutableStateOf<CircleFolder?>(null) }
 
     // Target we are about to set a photo for (lifted out of the list item so
     // the photo picker's callback can still reach it after the item recomposes).
@@ -183,14 +196,21 @@ private fun ManagePinnedScreen(
                 .fillMaxSize()
                 .padding(padding),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-            // 96dp bottom padding keeps the last card above the FAB's shadow.
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            item(key = "folders_section") {
+                FoldersSection(
+                    folders = folders,
+                    onAdd = { showAddFolderDialog = true },
+                    onDeleteRequest = { folderPendingDelete = it }
+                )
+            }
             val secondary = pinned.filter { !it.isActive }
             items(pinned, key = { it.id }) { conv ->
                 val secondaryIdx = if (conv.isActive) -1 else secondary.indexOfFirst { it.id == conv.id }
                 PinnedRow(
                     conv = conv,
+                    folders = folders,
                     canMoveUp = secondaryIdx > 0,
                     canMoveDown = secondaryIdx in 0 until secondary.lastIndex,
                     onAvatarTap = {
@@ -206,12 +226,43 @@ private fun ManagePinnedScreen(
                     onClearPhoto = { viewModel.clearPhoto(conv.id) },
                     onRemove = { viewModel.remove(conv.id) },
                     onMoveUp = { viewModel.moveUp(conv.id) },
-                    onMoveDown = { viewModel.moveDown(conv.id) }
+                    onMoveDown = { viewModel.moveDown(conv.id) },
+                    onAssignFolder = { folderId -> viewModel.assignFolder(conv.id, folderId) }
                 )
             }
-            // Spacer so the bottom card isn't under the FAB.
             item { Spacer(Modifier.height(72.dp)) }
         }
+    }
+
+    if (showAddFolderDialog) {
+        FolderNameDialog(
+            initial = "",
+            title = stringResource(R.string.pinned_folder_add),
+            onConfirm = { name ->
+                showAddFolderDialog = false
+                viewModel.createFolder(name)
+            },
+            onDismiss = { showAddFolderDialog = false }
+        )
+    }
+    folderPendingDelete?.let { folder ->
+        AlertDialog(
+            onDismissRequest = { folderPendingDelete = null },
+            icon = { Icon(Icons.Filled.FolderOff, null) },
+            title = { Text(folder.name) },
+            text = { Text(stringResource(R.string.pinned_folder_delete_confirm_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteFolder(folder.id)
+                    folderPendingDelete = null
+                }) { Text(stringResource(R.string.pinned_folder_delete)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { folderPendingDelete = null }) {
+                    Text(stringResource(R.string.backup_cancel))
+                }
+            }
+        )
     }
 
     zoomPath?.let { path ->
@@ -222,6 +273,7 @@ private fun ManagePinnedScreen(
 @Composable
 private fun PinnedRow(
     conv: Conversation,
+    folders: List<CircleFolder>,
     canMoveUp: Boolean,
     canMoveDown: Boolean,
     onAvatarTap: () -> Unit,
@@ -230,7 +282,8 @@ private fun PinnedRow(
     onClearPhoto: () -> Unit,
     onRemove: () -> Unit,
     onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit
+    onMoveDown: () -> Unit,
+    onAssignFolder: (String?) -> Unit
 ) {
     val hasPhoto = conv.photoLocalPath != null
     val untitled = stringResource(R.string.common_untitled)
@@ -383,6 +436,38 @@ private fun PinnedRow(
                             )
                         }
                     )
+                    // Folder assignment — shown only when the user has at
+                    // least one folder. Radio-style sub-items including
+                    // "No folder" so unassigning stays one tap away.
+                    if (folders.isNotEmpty()) {
+                        androidx.compose.material3.HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.pinned_folder_none)) },
+                            onClick = { menuOpen = false; onAssignFolder(null) },
+                            leadingIcon = {
+                                Icon(
+                                    if (conv.folderId == null) Icons.Filled.Star else Icons.Filled.FolderOff,
+                                    null,
+                                    tint = if (conv.folderId == null) MaterialTheme.colorScheme.primary
+                                           else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        )
+                        folders.forEach { folder ->
+                            DropdownMenuItem(
+                                text = { Text(folder.name) },
+                                onClick = { menuOpen = false; onAssignFolder(folder.id) },
+                                leadingIcon = {
+                                    Icon(
+                                        if (conv.folderId == folder.id) Icons.Filled.Star else Icons.Filled.Folder,
+                                        null,
+                                        tint = if (conv.folderId == folder.id) MaterialTheme.colorScheme.primary
+                                               else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            )
+                        }
+                    }
                     if (!conv.isActive) {
                         DropdownMenuItem(
                             text = {
@@ -494,4 +579,140 @@ private fun ZoomablePhotoDialog(path: String, onDismiss: () -> Unit) {
             )
         }
     }
+}
+
+/**
+ * Horizontal folder chip row. One FilterChip per folder, plus a "New folder"
+ * outlined chip at the end. Long-press a folder to delete it (via callback
+ * that the parent hoists into an AlertDialog so the confirm lives outside
+ * this composable).
+ */
+@Composable
+private fun FoldersSection(
+    folders: List<CircleFolder>,
+    onAdd: () -> Unit,
+    onDeleteRequest: (CircleFolder) -> Unit
+) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(modifier = Modifier.padding(vertical = 10.dp)) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Filled.Folder,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.pinned_folder_section),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                    )
+                    Text(
+                        stringResource(R.string.pinned_folder_section_sub),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            androidx.compose.foundation.lazy.LazyRow(
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(folders, key = { it.id }) { folder ->
+                    FolderChip(folder = folder, onLongPress = { onDeleteRequest(folder) })
+                }
+                item(key = "__add") {
+                    FilterChip(
+                        selected = false,
+                        onClick = onAdd,
+                        label = { Text(stringResource(R.string.pinned_folder_add)) },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Filled.CreateNewFolder,
+                                contentDescription = null,
+                                modifier = Modifier.size(FilterChipDefaults.IconSize)
+                            )
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FolderChip(folder: CircleFolder, onLongPress: () -> Unit) {
+    // Long-press to delete; single tap is a no-op here (the folder tabs on
+    // MainActivity handle selection, this screen is CRUD only). Uses a
+    // combinedClickable so the AssistChip stays accessible.
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        modifier = Modifier.pointerInput(folder.id) {
+            detectTapGestures(onLongPress = { onLongPress() })
+        }
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Filled.Folder,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                folder.name,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+        }
+    }
+}
+
+@Composable
+private fun FolderNameDialog(
+    initial: String,
+    title: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var text by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Filled.CreateNewFolder, null) },
+        title = { Text(title) },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                label = { Text(stringResource(R.string.pinned_folder_name_hint)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (text.isNotBlank()) onConfirm(text) },
+                enabled = text.isNotBlank()
+            ) { Text(stringResource(R.string.common_add)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.backup_cancel)) }
+        }
+    )
 }

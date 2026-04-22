@@ -241,6 +241,16 @@
     <string name="pinned_clear_photo">写真を削除</string>
     <string name="pinned_mark_primary">メインにする</string>
     <string name="pinned_more_actions">その他のアクション</string>
+    <string name="pinned_folder_section">フォルダ</string>
+    <string name="pinned_folder_section_sub">メイン画面のタブにサークルをグループ化します。</string>
+    <string name="pinned_folder_add">新しいフォルダ</string>
+    <string name="pinned_folder_name_hint">フォルダ名</string>
+    <string name="pinned_folder_assign">フォルダ</string>
+    <string name="pinned_folder_none">フォルダなし</string>
+    <string name="pinned_folder_rename">名前を変更</string>
+    <string name="pinned_folder_delete">フォルダを削除</string>
+    <string name="pinned_folder_delete_confirm_body">中のサークルは削除されず、デフォルトのタブに戻ります。</string>
+    <string name="main_tab_all">すべて</string>
     <string name="pinned_zoom_hint">ピンチでズーム · ドラッグで移動</string>
     <string name="picker_add_shortcut_title">ショートカット追加</string>
     <string name="picker_choose_chat">チャット選択</string>

@@ -242,6 +242,16 @@
     <string name="pinned_clear_photo">Clear photo</string>
     <string name="pinned_mark_primary">Make primary</string>
     <string name="pinned_more_actions">More actions</string>
+    <string name="pinned_folder_section">Folders</string>
+    <string name="pinned_folder_section_sub">Group circles into tabs on the main screen.</string>
+    <string name="pinned_folder_add">New folder</string>
+    <string name="pinned_folder_name_hint">Folder name</string>
+    <string name="pinned_folder_assign">Folder</string>
+    <string name="pinned_folder_none">No folder</string>
+    <string name="pinned_folder_rename">Rename</string>
+    <string name="pinned_folder_delete">Delete folder</string>
+    <string name="pinned_folder_delete_confirm_body">The circles inside this folder won\'t be removed — they\'ll just return to the default tab.</string>
+    <string name="main_tab_all">All</string>
     <string name="pinned_zoom_hint">Pinch to zoom · drag to pan</string>
     <string name="picker_add_shortcut_title">Add shortcut</string>
     <string name="picker_choose_chat">Choose chat</string>

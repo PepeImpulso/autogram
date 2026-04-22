@@ -90,7 +90,24 @@ data class Conversation(
     val isPinned: Boolean = false,
     val photoLocalPath: String? = null,
     val sortOrder: Int = 0,
-    val lastRepliedAt: Long? = null
+    val lastRepliedAt: Long? = null,
+    // null = not in any folder (shown in the "All" tab, not in any specific folder tab).
+    val folderId: String? = null
+)
+
+/**
+ * Grouping of pinned circles. Purely a UX affordance — when the user has
+ * many circles, folders let them filter the Main grid by a tab. Deleting a
+ * folder nulls out `Conversation.folderId` for its members (they're not
+ * removed), so a delete is non-destructive.
+ */
+data class CircleFolder(
+    val id: String,
+    val name: String,
+    // Color tint for the tab label / chip. Stored as ARGB int so the
+    // converter doesn't need a separate type; 0 means "use default theme".
+    val color: Int = 0,
+    val sortOrder: Int = 0
 )
 
 data class QuickReply(

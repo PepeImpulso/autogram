@@ -120,6 +120,12 @@ interface ConversationDao {
     @Query("UPDATE conversations SET lastRepliedAt = :ts WHERE id = :id")
     suspend fun setLastRepliedAt(id: String, ts: Long)
 
+    @Query("UPDATE conversations SET folderId = :folderId WHERE id = :id")
+    suspend fun setFolder(id: String, folderId: String?)
+
+    @Query("UPDATE conversations SET folderId = NULL WHERE folderId = :folderId")
+    suspend fun detachFolder(folderId: String)
+
     @Query("DELETE FROM conversations WHERE id = :id")
     suspend fun deleteById(id: String)
 
@@ -184,4 +190,19 @@ interface PendingPlaybackDao {
 
     @Query("DELETE FROM pending_playbacks")
     suspend fun deleteAll()
+}
+
+@Dao
+interface CircleFolderDao {
+    @Query("SELECT * FROM circle_folders ORDER BY sortOrder ASC, name ASC")
+    fun observeAll(): Flow<List<com.autogram.app.infrastructure.persistence.entity.CircleFolderEntity>>
+
+    @Query("SELECT * FROM circle_folders ORDER BY sortOrder ASC, name ASC")
+    suspend fun getAll(): List<com.autogram.app.infrastructure.persistence.entity.CircleFolderEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(folder: com.autogram.app.infrastructure.persistence.entity.CircleFolderEntity)
+
+    @Query("DELETE FROM circle_folders WHERE id = :id")
+    suspend fun delete(id: String)
 }

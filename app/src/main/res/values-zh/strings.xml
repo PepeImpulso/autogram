@@ -241,6 +241,16 @@
     <string name="pinned_clear_photo">清除照片</string>
     <string name="pinned_mark_primary">设为主要</string>
     <string name="pinned_more_actions">更多操作</string>
+    <string name="pinned_folder_section">文件夹</string>
+    <string name="pinned_folder_section_sub">将圈子分组到主屏幕的选项卡中。</string>
+    <string name="pinned_folder_add">新建文件夹</string>
+    <string name="pinned_folder_name_hint">文件夹名称</string>
+    <string name="pinned_folder_assign">文件夹</string>
+    <string name="pinned_folder_none">无文件夹</string>
+    <string name="pinned_folder_rename">重命名</string>
+    <string name="pinned_folder_delete">删除文件夹</string>
+    <string name="pinned_folder_delete_confirm_body">里面的圈子不会被删除 — 只会回到默认选项卡。</string>
+    <string name="main_tab_all">全部</string>
     <string name="pinned_zoom_hint">双指缩放 · 拖动平移</string>
     <string name="picker_add_shortcut_title">添加快捷</string>
     <string name="picker_choose_chat">选择聊天</string>

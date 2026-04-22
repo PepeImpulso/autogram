@@ -29,6 +29,14 @@ interface ConversationRepository {
     suspend fun setPhotoPath(id: String, path: String?)
     suspend fun setSortOrder(id: String, order: Int)
     suspend fun setLastRepliedAt(id: String, timestampMs: Long)
+    suspend fun setFolder(id: String, folderId: String?)
+    suspend fun delete(id: String)
+}
+
+interface CircleFolderRepository {
+    fun observeAll(): Flow<List<CircleFolder>>
+    suspend fun getAll(): List<CircleFolder>
+    suspend fun upsert(folder: CircleFolder)
     suspend fun delete(id: String)
 }
 

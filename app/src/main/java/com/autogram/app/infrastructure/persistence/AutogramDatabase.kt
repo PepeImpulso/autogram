@@ -24,9 +24,10 @@ import javax.inject.Singleton
         DeliveryAttemptEntity::class,
         PendingPlaybackEntity::class,
         QuickReplyEntity::class,
-        SettingsEntity::class
+        SettingsEntity::class,
+        CircleFolderEntity::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -37,6 +38,7 @@ abstract class AutogramDatabase : RoomDatabase() {
     abstract fun quickReplyDao(): QuickReplyDao
     abstract fun deliveryAttemptDao(): DeliveryAttemptDao
     abstract fun pendingPlaybackDao(): PendingPlaybackDao
+    abstract fun circleFolderDao(): CircleFolderDao
 }
 
 @Module
@@ -118,6 +120,24 @@ object DatabaseModule {
         }
     }
 
+    // v12 → v13: circle_folders table + conversations.folderId. Folders are
+    // a pure-UX grouping (tabs on Main). Null folderId keeps existing circles
+    // in the "All" tab without any visible change until the user creates
+    // folders manually.
+    private val MIGRATION_12_13 = object : Migration(12, 13) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE conversations ADD COLUMN folderId TEXT DEFAULT NULL")
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS circle_folders (
+                    id TEXT NOT NULL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    color INTEGER NOT NULL DEFAULT 0,
+                    sortOrder INTEGER NOT NULL DEFAULT 0
+                )
+            """.trimIndent())
+        }
+    }
+
     // v11 → v12: summary fields on messages + summary engine config in settings.
     // Feature is off by default (summaryEngine=NONE); turning it on requires
     // the user to pick an engine in Settings → Summary.
@@ -141,7 +161,7 @@ object DatabaseModule {
             AutogramDatabase::class.java,
             "autogram.db"
         )
-            .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+            .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
             // Fallback for any earlier schema (v1 / v2) that has no proper path
             // forward — those versions predate the stable 1.2 line and already
             // wiped once, so destroying from them is acceptable.
@@ -155,4 +175,5 @@ object DatabaseModule {
     @Provides fun provideQuickReplyDao(db: AutogramDatabase) = db.quickReplyDao()
     @Provides fun provideDeliveryAttemptDao(db: AutogramDatabase) = db.deliveryAttemptDao()
     @Provides fun providePendingPlaybackDao(db: AutogramDatabase) = db.pendingPlaybackDao()
+    @Provides fun provideCircleFolderDao(db: AutogramDatabase) = db.circleFolderDao()
 }

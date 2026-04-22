@@ -242,6 +242,16 @@
     <string name="pinned_clear_photo">Supprimer la photo</string>
     <string name="pinned_mark_primary">Rendre principal</string>
     <string name="pinned_more_actions">Autres actions</string>
+    <string name="pinned_folder_section">Dossiers</string>
+    <string name="pinned_folder_section_sub">Regroupez les cercles en onglets sur l\'écran principal.</string>
+    <string name="pinned_folder_add">Nouveau dossier</string>
+    <string name="pinned_folder_name_hint">Nom du dossier</string>
+    <string name="pinned_folder_assign">Dossier</string>
+    <string name="pinned_folder_none">Aucun dossier</string>
+    <string name="pinned_folder_rename">Renommer</string>
+    <string name="pinned_folder_delete">Supprimer le dossier</string>
+    <string name="pinned_folder_delete_confirm_body">Les cercles à l\'intérieur ne seront pas supprimés — ils reviennent dans l\'onglet principal.</string>
+    <string name="main_tab_all">Tous</string>
     <string name="pinned_zoom_hint">Pincez pour zoomer · glissez pour déplacer</string>
     <string name="picker_add_shortcut_title">Ajouter un raccourci</string>
     <string name="picker_choose_chat">Choisir un chat</string>

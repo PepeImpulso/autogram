@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.*
@@ -163,6 +164,8 @@ private fun MainScreen(
     val suggestions by viewModel.suggestedChips.collectAsState()
     val showPendingBadges by viewModel.showPendingBadges.collectAsState()
     val lastIncomingAudio by viewModel.lastIncomingWithAudio.collectAsState()
+    val folders by viewModel.folders.collectAsState()
+    val selectedFolderId by viewModel.selectedFolderId.collectAsState()
 
     LaunchedEffect(Unit) {
         // Silent update check throttled: the ViewModel check() is cheap but we
@@ -187,7 +190,14 @@ private fun MainScreen(
     ) { granted -> hasMicPermission = granted }
 
     val primary = pinned.firstOrNull { it.isActive }
+    // When a folder is selected, only its members (non-primary) appear in
+    // the secondary row. Primary stays visible always — it's the user's
+    // main target regardless of folder.
     val secondary = pinned.filter { !it.isActive }
+        .let { all ->
+            if (selectedFolderId == null) all
+            else all.filter { it.folderId == selectedFolderId }
+        }
 
     Scaffold(
         bottomBar = {
@@ -232,6 +242,15 @@ private fun MainScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             HeroHeader(sendStatus = sendStatus, playback = playback, outboxCount = outboxCount)
+
+            if (folders.isNotEmpty()) {
+                FolderTabRow(
+                    folders = folders,
+                    selectedFolderId = selectedFolderId,
+                    onSelect = viewModel::selectFolder
+                )
+            }
+
             Spacer(Modifier.height(24.dp))
 
             if (suggestions.isNotEmpty()) {
@@ -441,6 +460,49 @@ private fun StatusPill(
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Medium
         )
+    }
+}
+
+/**
+ * Horizontal scrollable tab row above the grid when the user has at least
+ * one folder. First tab is always "All" (selectedFolderId = null), rest are
+ * per-folder filters. Uses LazyRow of FilterChips rather than ScrollableTabRow
+ * so the visual weight is lighter — these are soft filters, not navigation.
+ */
+@Composable
+private fun FolderTabRow(
+    folders: List<com.autogram.app.domain.model.CircleFolder>,
+    selectedFolderId: String?,
+    onSelect: (String?) -> Unit
+) {
+    LazyRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item(key = "__all") {
+            androidx.compose.material3.FilterChip(
+                selected = selectedFolderId == null,
+                onClick = { onSelect(null) },
+                label = { Text(stringResource(R.string.main_tab_all)) }
+            )
+        }
+        items(folders, key = { it.id }) { folder ->
+            androidx.compose.material3.FilterChip(
+                selected = selectedFolderId == folder.id,
+                onClick = { onSelect(folder.id) },
+                label = { Text(folder.name) },
+                leadingIcon = {
+                    Icon(
+                        Icons.Filled.Folder,
+                        contentDescription = null,
+                        modifier = Modifier.size(androidx.compose.material3.FilterChipDefaults.IconSize)
+                    )
+                }
+            )
+        }
     }
 }
 

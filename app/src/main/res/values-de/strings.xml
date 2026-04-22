@@ -242,6 +242,16 @@
     <string name="pinned_clear_photo">Foto entfernen</string>
     <string name="pinned_mark_primary">Als primär festlegen</string>
     <string name="pinned_more_actions">Weitere Aktionen</string>
+    <string name="pinned_folder_section">Ordner</string>
+    <string name="pinned_folder_section_sub">Kreise in Tabs auf dem Hauptbildschirm gruppieren.</string>
+    <string name="pinned_folder_add">Neuer Ordner</string>
+    <string name="pinned_folder_name_hint">Ordnername</string>
+    <string name="pinned_folder_assign">Ordner</string>
+    <string name="pinned_folder_none">Kein Ordner</string>
+    <string name="pinned_folder_rename">Umbenennen</string>
+    <string name="pinned_folder_delete">Ordner löschen</string>
+    <string name="pinned_folder_delete_confirm_body">Die Kreise werden nicht gelöscht — sie kehren zum Standard-Tab zurück.</string>
+    <string name="main_tab_all">Alle</string>
     <string name="pinned_zoom_hint">Zum Zoomen kneifen · ziehen zum Verschieben</string>
     <string name="picker_add_shortcut_title">Kürzel hinzufügen</string>
     <string name="picker_choose_chat">Chat wählen</string>

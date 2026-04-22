@@ -57,6 +57,10 @@ class ConversationRepositoryImpl @Inject constructor(
         conversationDao.setLastRepliedAt(id, timestampMs)
     }
 
+    override suspend fun setFolder(id: String, folderId: String?) {
+        conversationDao.setFolder(id, folderId)
+    }
+
     override suspend fun delete(id: String) {
         conversationDao.deleteById(id)
     }
@@ -66,7 +70,7 @@ class ConversationRepositoryImpl @Inject constructor(
         botToken = botToken, isActive = isActive, createdAt = createdAt,
         lastMessageAt = lastMessageAt, topicId = topicId, topicName = topicName,
         isPinned = isPinned, photoLocalPath = photoLocalPath, sortOrder = sortOrder,
-        lastRepliedAt = lastRepliedAt
+        lastRepliedAt = lastRepliedAt, folderId = folderId
     )
 
     private fun Conversation.toEntity() = ConversationEntity(
@@ -74,6 +78,6 @@ class ConversationRepositoryImpl @Inject constructor(
         botToken = botToken, isActive = isActive, createdAt = createdAt,
         lastMessageAt = lastMessageAt, topicId = topicId, topicName = topicName,
         isPinned = isPinned, photoLocalPath = photoLocalPath, sortOrder = sortOrder,
-        lastRepliedAt = lastRepliedAt
+        lastRepliedAt = lastRepliedAt, folderId = folderId
     )
 }

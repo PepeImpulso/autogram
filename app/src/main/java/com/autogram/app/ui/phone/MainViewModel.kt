@@ -8,8 +8,10 @@ import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.domain.repository.QuickReplyRepository
 import com.autogram.app.domain.repository.SettingsRepository
+import com.autogram.app.domain.model.CircleFolder
 import com.autogram.app.domain.model.Message
 import com.autogram.app.domain.model.MessageDirection
+import com.autogram.app.domain.repository.CircleFolderRepository
 import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.domain.usecase.SendVoiceMtprotoUseCase
 import com.autogram.app.domain.usecase.SuggestQuickReplyUseCase
@@ -33,8 +35,23 @@ class MainViewModel @Inject constructor(
     private val conversationRepository: ConversationRepository,
     private val messageRepository: MessageRepository,
     private val settingsRepository: SettingsRepository,
+    private val folderRepository: CircleFolderRepository,
     private val suggestQuickReplyUseCase: SuggestQuickReplyUseCase
 ) : AndroidViewModel(application) {
+
+    val folders: StateFlow<List<CircleFolder>> =
+        folderRepository.observeAll()
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    // null = "All" tab — show every pinned circle. Non-null = filter to
+    // circles whose folderId matches. Kept in the VM so the selection
+    // survives bottom-nav round-trips within MainActivity.
+    private val _selectedFolderId = MutableStateFlow<String?>(null)
+    val selectedFolderId: StateFlow<String?> = _selectedFolderId.asStateFlow()
+
+    fun selectFolder(folderId: String?) {
+        _selectedFolderId.value = folderId
+    }
 
     val showPendingBadges: StateFlow<Boolean> =
         settingsRepository.observe()

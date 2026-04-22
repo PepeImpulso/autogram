@@ -252,6 +252,16 @@
     <string name="pinned_clear_photo">Quitar foto</string>
     <string name="pinned_mark_primary">Convertir en principal</string>
     <string name="pinned_more_actions">Más acciones</string>
+    <string name="pinned_folder_section">Carpetas</string>
+    <string name="pinned_folder_section_sub">Agrupa círculos en pestañas de la pantalla principal.</string>
+    <string name="pinned_folder_add">Nueva carpeta</string>
+    <string name="pinned_folder_name_hint">Nombre de la carpeta</string>
+    <string name="pinned_folder_assign">Carpeta</string>
+    <string name="pinned_folder_none">Sin carpeta</string>
+    <string name="pinned_folder_rename">Renombrar</string>
+    <string name="pinned_folder_delete">Eliminar carpeta</string>
+    <string name="pinned_folder_delete_confirm_body">Los círculos dentro no se eliminan — solo vuelven a la pestaña principal.</string>
+    <string name="main_tab_all">Todos</string>
     <string name="pinned_zoom_hint">Pellizca para hacer zoom · arrastra para mover</string>
     <string name="picker_add_shortcut_title">Añadir acceso rápido</string>
     <string name="picker_choose_chat">Elige chat</string>
