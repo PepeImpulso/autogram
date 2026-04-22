@@ -131,6 +131,23 @@
     <string name="update_error_action">Ouvrir les réglages</string>
     <string name="settings_show_pending_badges">Afficher les badges de réponses en attente</string>
     <string name="settings_show_pending_badges_sub">Affiche un nombre sur chaque cercle pour les messages non répondus. Désactivé par défaut — utile si vous comptez répondre à tous les messages.</string>
+    <string name="settings_section_summary">Résumé</string>
+    <string name="settings_section_summary_sub">Condense les longs messages entrants en un résumé de 1-2 phrases.</string>
+    <string name="settings_summarize">Résumer les messages longs</string>
+    <string name="settings_summary_engine">Moteur</string>
+    <string name="settings_summary_engine_none">Désactivé</string>
+    <string name="settings_summary_engine_gemini">Gemini Nano (sur l\'appareil)</string>
+    <string name="settings_summary_engine_llm">Endpoint LLM</string>
+    <string name="settings_summary_llm_endpoint">URL de l\'endpoint</string>
+    <string name="settings_summary_llm_endpoint_hint">https://api.openai.com/v1</string>
+    <string name="settings_summary_llm_api_key">Clé API</string>
+    <string name="settings_summary_llm_model">Modèle</string>
+    <string name="settings_summary_llm_model_hint">gpt-4o-mini</string>
+    <string name="history_summary_label">Résumé</string>
+    <string name="history_summary_in_progress">Résumé en cours…</string>
+    <string name="history_summary_unavailable">Moteur de résumé non configuré</string>
+    <string name="history_summary_failed">Impossible de résumer</string>
+
     <string name="settings_transcribe">Transcrire les messages vocaux</string>
     <string name="settings_transcribe_sub">Transcrit automatiquement les notes vocales entrantes avec la reconnaissance vocale sur l\'appareil. Nécessite Android 14+ et le pack vocal Google.</string>
     <string name="settings_transcribe_unsupported">Nécessite Android 14+ sur cet appareil</string>

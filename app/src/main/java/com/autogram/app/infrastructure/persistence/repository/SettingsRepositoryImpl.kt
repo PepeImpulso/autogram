@@ -37,7 +37,12 @@ class SettingsRepositoryImpl @Inject constructor(
         biometricLockEnabled = biometricLockEnabled,
         onboardingCompleted = onboardingCompleted,
         transcribeIncomingVoice = transcribeIncomingVoice,
-        showPendingBadges = showPendingBadges
+        showPendingBadges = showPendingBadges,
+        summarizeLongMessages = summarizeLongMessages,
+        summaryEngine = summaryEngine,
+        summaryLlmEndpoint = summaryLlmEndpoint,
+        summaryLlmApiKey = summaryLlmApiKey,
+        summaryLlmModel = summaryLlmModel
     )
 
     private fun AppSettings.toEntity() = SettingsEntity(
@@ -51,6 +56,11 @@ class SettingsRepositoryImpl @Inject constructor(
         biometricLockEnabled = biometricLockEnabled,
         onboardingCompleted = onboardingCompleted,
         transcribeIncomingVoice = transcribeIncomingVoice,
-        showPendingBadges = showPendingBadges
+        showPendingBadges = showPendingBadges,
+        summarizeLongMessages = summarizeLongMessages,
+        summaryEngine = summaryEngine,
+        summaryLlmEndpoint = summaryLlmEndpoint,
+        summaryLlmApiKey = summaryLlmApiKey,
+        summaryLlmModel = summaryLlmModel
     )
 }

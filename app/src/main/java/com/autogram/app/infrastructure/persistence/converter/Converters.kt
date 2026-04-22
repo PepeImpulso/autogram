@@ -4,6 +4,8 @@ import androidx.room.TypeConverter
 import com.autogram.app.domain.model.MessageDirection
 import com.autogram.app.domain.model.MessageState
 import com.autogram.app.domain.model.PendingReason
+import com.autogram.app.domain.model.SummaryEngineType
+import com.autogram.app.domain.model.SummaryState
 import com.autogram.app.domain.model.TranscriptionState
 
 /**
@@ -33,4 +35,16 @@ class Converters {
 
     @TypeConverter
     fun toTranscriptionState(value: String): TranscriptionState = TranscriptionState.valueOf(value)
+
+    @TypeConverter
+    fun fromSummaryState(value: SummaryState): String = value.name
+
+    @TypeConverter
+    fun toSummaryState(value: String): SummaryState = SummaryState.valueOf(value)
+
+    @TypeConverter
+    fun fromSummaryEngineType(value: SummaryEngineType): String = value.name
+
+    @TypeConverter
+    fun toSummaryEngineType(value: String): SummaryEngineType = SummaryEngineType.valueOf(value)
 }

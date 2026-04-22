@@ -131,6 +131,23 @@
     <string name="update_error_action">Einstellungen öffnen</string>
     <string name="settings_show_pending_badges">Badges für ausstehende Antworten anzeigen</string>
     <string name="settings_show_pending_badges_sub">Zeigt eine Zahl auf jedem Kreis für unbeantwortete Nachrichten. Standardmäßig aus — aktivieren Sie es, wenn Sie jede Nachricht beantworten möchten.</string>
+    <string name="settings_section_summary">Zusammenfassung</string>
+    <string name="settings_section_summary_sub">Lange eingehende Nachrichten auf 1-2 Sätze verdichten.</string>
+    <string name="settings_summarize">Lange Nachrichten zusammenfassen</string>
+    <string name="settings_summary_engine">Engine</string>
+    <string name="settings_summary_engine_none">Aus</string>
+    <string name="settings_summary_engine_gemini">Gemini Nano (auf dem Gerät)</string>
+    <string name="settings_summary_engine_llm">LLM-Endpoint</string>
+    <string name="settings_summary_llm_endpoint">Endpoint-URL</string>
+    <string name="settings_summary_llm_endpoint_hint">https://api.openai.com/v1</string>
+    <string name="settings_summary_llm_api_key">API-Schlüssel</string>
+    <string name="settings_summary_llm_model">Modell</string>
+    <string name="settings_summary_llm_model_hint">gpt-4o-mini</string>
+    <string name="history_summary_label">Zusammenfassung</string>
+    <string name="history_summary_in_progress">Wird zusammengefasst…</string>
+    <string name="history_summary_unavailable">Engine nicht konfiguriert</string>
+    <string name="history_summary_failed">Konnte nicht zusammengefasst werden</string>
+
     <string name="settings_transcribe">Sprachnachrichten transkribieren</string>
     <string name="settings_transcribe_sub">Transkribiert eingehende Sprachnachrichten automatisch mit der On-Device-Spracherkennung. Erfordert Android 14+ und das Google-Sprachpaket.</string>
     <string name="settings_transcribe_unsupported">Erfordert Android 14+ auf diesem Gerät</string>

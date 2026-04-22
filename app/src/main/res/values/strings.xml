@@ -131,6 +131,23 @@
     <string name="update_error_action">Open Settings</string>
     <string name="settings_show_pending_badges">Show pending-reply badges</string>
     <string name="settings_show_pending_badges_sub">Show a number on each circle for incoming messages you haven\'t answered. Off by default — turning it on is useful when you expect every message to get a reply.</string>
+    <string name="settings_section_summary">Summary</string>
+    <string name="settings_section_summary_sub">Condense long incoming messages into a 1-2 sentence summary.</string>
+    <string name="settings_summarize">Summarize long messages</string>
+    <string name="settings_summary_engine">Engine</string>
+    <string name="settings_summary_engine_none">Off</string>
+    <string name="settings_summary_engine_gemini">Gemini Nano (on-device)</string>
+    <string name="settings_summary_engine_llm">LLM endpoint</string>
+    <string name="settings_summary_llm_endpoint">Endpoint URL</string>
+    <string name="settings_summary_llm_endpoint_hint">https://api.openai.com/v1</string>
+    <string name="settings_summary_llm_api_key">API key</string>
+    <string name="settings_summary_llm_model">Model</string>
+    <string name="settings_summary_llm_model_hint">gpt-4o-mini</string>
+    <string name="history_summary_label">Summary</string>
+    <string name="history_summary_in_progress">Summarizing…</string>
+    <string name="history_summary_unavailable">Summary engine not configured</string>
+    <string name="history_summary_failed">Couldn\'t summarize</string>
+
     <string name="settings_transcribe">Transcribe voice messages</string>
     <string name="settings_transcribe_sub">Auto-transcribe incoming voice notes with on-device speech recognition. Requires Android 14+ and the Google speech language pack.</string>
     <string name="settings_transcribe_unsupported">Requires Android 14+ on this device</string>

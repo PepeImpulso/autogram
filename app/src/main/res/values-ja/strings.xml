@@ -130,6 +130,23 @@
     <string name="update_error_action">設定を開く</string>
     <string name="settings_show_pending_badges">未返信バッジを表示</string>
     <string name="settings_show_pending_badges_sub">各サークルに未返信の受信メッセージ数を表示します。既定でオフ — すべてのメッセージに返信したい場合にオンにしてください。</string>
+    <string name="settings_section_summary">要約</string>
+    <string name="settings_section_summary_sub">長い受信メッセージを 1〜2 文の要約にまとめます。</string>
+    <string name="settings_summarize">長いメッセージを要約</string>
+    <string name="settings_summary_engine">エンジン</string>
+    <string name="settings_summary_engine_none">オフ</string>
+    <string name="settings_summary_engine_gemini">Gemini Nano（端末上）</string>
+    <string name="settings_summary_engine_llm">LLM エンドポイント</string>
+    <string name="settings_summary_llm_endpoint">エンドポイント URL</string>
+    <string name="settings_summary_llm_endpoint_hint">https://api.openai.com/v1</string>
+    <string name="settings_summary_llm_api_key">API キー</string>
+    <string name="settings_summary_llm_model">モデル</string>
+    <string name="settings_summary_llm_model_hint">gpt-4o-mini</string>
+    <string name="history_summary_label">要約</string>
+    <string name="history_summary_in_progress">要約中…</string>
+    <string name="history_summary_unavailable">要約エンジンが未設定</string>
+    <string name="history_summary_failed">要約できませんでした</string>
+
     <string name="settings_transcribe">音声メッセージを文字起こし</string>
     <string name="settings_transcribe_sub">オンデバイス音声認識で受信した音声メモを自動的に文字起こしします。Android 14+ と Google 音声言語パックが必要です。</string>
     <string name="settings_transcribe_unsupported">このデバイスでは Android 14+ が必要です</string>

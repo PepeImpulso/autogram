@@ -34,6 +34,21 @@ enum class TranscriptionState {
     UNAVAILABLE    // on-device engine not installed (e.g. user hasn't downloaded the language pack)
 }
 
+enum class SummaryState {
+    NONE,
+    PENDING,
+    IN_PROGRESS,
+    DONE,
+    FAILED,
+    UNAVAILABLE    // engine misconfigured or not present on device
+}
+
+enum class SummaryEngineType {
+    NONE,           // feature off
+    GEMINI_NANO,    // on-device via Google AI Edge (S25+, Pixel 8+)
+    LLM_ENDPOINT    // user-configured OpenAI-compatible HTTP endpoint
+}
+
 data class Message(
     val id: String,
     val conversationId: String,
@@ -53,7 +68,13 @@ data class Message(
     // any human) sent as a voice message — filled in by TranscribeVoiceUseCase
     // when settings.transcribeIncomingVoice is on.
     val transcription: String? = null,
-    val transcriptionState: TranscriptionState = TranscriptionState.NONE
+    val transcriptionState: TranscriptionState = TranscriptionState.NONE,
+    // Automatic 1-2 sentence summary of a long transcription or text message.
+    // Produced by SummarizeMessageUseCase when the user has configured an
+    // engine (Gemini Nano on-device or an OpenAI-compatible endpoint) and
+    // the content is long enough to benefit.
+    val summary: String? = null,
+    val summaryState: SummaryState = SummaryState.NONE
 )
 
 data class Conversation(
@@ -116,7 +137,16 @@ data class AppSettings(
     // Per-circle pending-reply badges were too noisy for users who don't
     // feel obligated to answer every incoming. Default OFF — turn on only
     // if you want the visual nag.
-    val showPendingBadges: Boolean = false
+    val showPendingBadges: Boolean = false,
+    // Summarize long incoming messages with a short 1-2 sentence summary.
+    // Requires a configured engine (see summaryEngine below). Default OFF.
+    val summarizeLongMessages: Boolean = false,
+    val summaryEngine: SummaryEngineType = SummaryEngineType.NONE,
+    // User-provided OpenAI-compatible endpoint config. Only used when
+    // summaryEngine == LLM_ENDPOINT. Never logged; scrubbed from Sentry.
+    val summaryLlmEndpoint: String = "",
+    val summaryLlmApiKey: String = "",
+    val summaryLlmModel: String = "gpt-4o-mini"
 )
 
 data class DeliveryAttempt(

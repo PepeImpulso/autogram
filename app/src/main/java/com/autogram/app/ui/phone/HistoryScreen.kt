@@ -18,6 +18,7 @@ import com.autogram.app.R
 import com.autogram.app.domain.model.Message
 import com.autogram.app.domain.model.MessageDirection
 import com.autogram.app.domain.model.MessageState
+import com.autogram.app.domain.model.SummaryState
 import com.autogram.app.domain.model.TranscriptionState
 import com.autogram.app.domain.usecase.PlayReplyUseCase
 import java.text.SimpleDateFormat
@@ -124,6 +125,7 @@ fun MessageCard(
                     style = MaterialTheme.typography.labelSmall,
                     color = stateColor(message.state)
                 )
+                SummaryRow(message)
                 TranscriptionRow(message)
             }
             if (hasAudio && !isOutgoing) {
@@ -188,6 +190,54 @@ private fun stateColor(state: MessageState) = when (state) {
     MessageState.SENT, MessageState.PLAYED -> MaterialTheme.colorScheme.primary
     MessageState.FAILED, MessageState.PERMANENTLY_FAILED -> MaterialTheme.colorScheme.error
     else -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
+@Composable
+private fun SummaryRow(message: Message) {
+    // Summary reads across both text and transcribed voice messages.
+    when (message.summaryState) {
+        SummaryState.NONE -> Unit
+        SummaryState.PENDING,
+        SummaryState.IN_PROGRESS -> {
+            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(10.dp),
+                    strokeWidth = 1.5.dp
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    stringResource(R.string.history_summary_in_progress),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        SummaryState.DONE -> message.summary?.let { text ->
+            Spacer(Modifier.height(6.dp))
+            Column {
+                Text(
+                    stringResource(R.string.history_summary_label),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                )
+                Text(
+                    text,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+        SummaryState.UNAVAILABLE -> Unit  // quiet — matches the "off" state
+        SummaryState.FAILED -> {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                stringResource(R.string.history_summary_failed),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+    }
 }
 
 @Composable

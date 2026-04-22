@@ -22,7 +22,8 @@ import javax.inject.Singleton
 class TranscribeVoiceUseCase @Inject constructor(
     private val engine: TranscriptionEngine,
     private val messageRepository: MessageRepository,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val summarizeMessageUseCase: SummarizeMessageUseCase
 ) {
 
     suspend fun transcribe(messageId: String) {
@@ -53,6 +54,11 @@ class TranscribeVoiceUseCase @Inject constructor(
                     )
                 )
                 Timber.d("Transcribed ${msg.id} (${result.text.length} chars)")
+                // Kick off summarization right after. The use case itself
+                // checks the settings toggle + word-count threshold, so this
+                // is cheap to always invoke.
+                runCatching { summarizeMessageUseCase.summarize(msg.id) }
+                    .onFailure { Timber.w(it, "Chained summarize threw") }
             }
             TranscriptionEngine.Result.NotInstalled ->
                 messageRepository.update(msg.copy(transcriptionState = TranscriptionState.UNAVAILABLE))

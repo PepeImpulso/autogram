@@ -130,6 +130,23 @@
     <string name="update_error_action">打开设置</string>
     <string name="settings_show_pending_badges">显示待回复数字</string>
     <string name="settings_show_pending_badges_sub">在每个圈子上显示未回复的收件数。默认关闭 — 如果您希望回复每条消息，可打开。</string>
+    <string name="settings_section_summary">摘要</string>
+    <string name="settings_section_summary_sub">将较长的收到消息浓缩为 1-2 句的摘要。</string>
+    <string name="settings_summarize">摘要长消息</string>
+    <string name="settings_summary_engine">引擎</string>
+    <string name="settings_summary_engine_none">关闭</string>
+    <string name="settings_summary_engine_gemini">Gemini Nano（设备端）</string>
+    <string name="settings_summary_engine_llm">LLM 端点</string>
+    <string name="settings_summary_llm_endpoint">端点 URL</string>
+    <string name="settings_summary_llm_endpoint_hint">https://api.openai.com/v1</string>
+    <string name="settings_summary_llm_api_key">API 密钥</string>
+    <string name="settings_summary_llm_model">模型</string>
+    <string name="settings_summary_llm_model_hint">gpt-4o-mini</string>
+    <string name="history_summary_label">摘要</string>
+    <string name="history_summary_in_progress">生成摘要中…</string>
+    <string name="history_summary_unavailable">未配置摘要引擎</string>
+    <string name="history_summary_failed">无法生成摘要</string>
+
     <string name="settings_transcribe">转写语音消息</string>
     <string name="settings_transcribe_sub">使用设备端语音识别自动转写收到的语音。需要 Android 14+ 并安装 Google 语音语言包。</string>
     <string name="settings_transcribe_unsupported">此设备需要 Android 14+</string>

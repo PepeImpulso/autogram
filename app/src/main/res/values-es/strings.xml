@@ -138,6 +138,23 @@
     <string name="update_error_action">Abrir Ajustes</string>
     <string name="settings_show_pending_badges">Mostrar contador de pendientes</string>
     <string name="settings_show_pending_badges_sub">Muestra un número en cada círculo con los mensajes entrantes que no has contestado. Desactivado por defecto — actívalo si esperas responder a todos los mensajes.</string>
+    <string name="settings_section_summary">Resumen</string>
+    <string name="settings_section_summary_sub">Condensa mensajes entrantes largos en un resumen de 1-2 frases.</string>
+    <string name="settings_summarize">Resumir mensajes largos</string>
+    <string name="settings_summary_engine">Motor</string>
+    <string name="settings_summary_engine_none">Desactivado</string>
+    <string name="settings_summary_engine_gemini">Gemini Nano (en el dispositivo)</string>
+    <string name="settings_summary_engine_llm">Endpoint LLM</string>
+    <string name="settings_summary_llm_endpoint">URL del endpoint</string>
+    <string name="settings_summary_llm_endpoint_hint">https://api.openai.com/v1</string>
+    <string name="settings_summary_llm_api_key">Clave API</string>
+    <string name="settings_summary_llm_model">Modelo</string>
+    <string name="settings_summary_llm_model_hint">gpt-4o-mini</string>
+    <string name="history_summary_label">Resumen</string>
+    <string name="history_summary_in_progress">Resumiendo…</string>
+    <string name="history_summary_unavailable">Motor de resumen no configurado</string>
+    <string name="history_summary_failed">No se pudo resumir</string>
+
     <string name="settings_transcribe">Transcribir mensajes de voz</string>
     <string name="settings_transcribe_sub">Transcribe automáticamente las notas de voz entrantes con reconocimiento en el dispositivo. Requiere Android 14+ y el paquete de voz de Google.</string>
     <string name="settings_transcribe_unsupported">Requiere Android 14+ en este dispositivo</string>

@@ -7,6 +7,8 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.autogram.app.domain.model.MessageDirection
 import com.autogram.app.domain.model.MessageState
+import com.autogram.app.domain.model.SummaryEngineType
+import com.autogram.app.domain.model.SummaryState
 import com.autogram.app.domain.model.TranscriptionState
 
 /**
@@ -44,7 +46,9 @@ data class MessageEntity(
     val retryCount: Int = 0,
     val quickReplyId: String? = null,
     val transcription: String? = null,
-    val transcriptionState: TranscriptionState = TranscriptionState.NONE
+    val transcriptionState: TranscriptionState = TranscriptionState.NONE,
+    val summary: String? = null,
+    val summaryState: SummaryState = SummaryState.NONE
 )
 
 @Entity(tableName = "conversations")
@@ -143,5 +147,10 @@ data class SettingsEntity(
     val biometricLockEnabled: Boolean = false,
     val onboardingCompleted: Boolean = false,
     val transcribeIncomingVoice: Boolean = false,
-    val showPendingBadges: Boolean = false
+    val showPendingBadges: Boolean = false,
+    val summarizeLongMessages: Boolean = false,
+    val summaryEngine: SummaryEngineType = SummaryEngineType.NONE,
+    val summaryLlmEndpoint: String = "",
+    val summaryLlmApiKey: String = "",
+    val summaryLlmModel: String = "gpt-4o-mini"
 )

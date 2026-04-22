@@ -16,6 +16,7 @@ import com.autogram.app.domain.model.MessageState
 import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.domain.usecase.PlayReplyUseCase
+import com.autogram.app.domain.usecase.SummarizeMessageUseCase
 import com.autogram.app.domain.usecase.TranscribeVoiceUseCase
 import com.autogram.app.infrastructure.platform.CallStateMonitor
 import com.autogram.app.infrastructure.platform.IncomingMessageNotifier
@@ -67,6 +68,7 @@ class MtprotoReceiverService : Service() {
     @Inject lateinit var callStateMonitor: CallStateMonitor
     @Inject lateinit var incomingMessageNotifier: IncomingMessageNotifier
     @Inject lateinit var transcribeVoiceUseCase: TranscribeVoiceUseCase
+    @Inject lateinit var summarizeMessageUseCase: SummarizeMessageUseCase
 
     private var scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var supervisorJob: Job? = null
@@ -250,6 +252,7 @@ class MtprotoReceiverService : Service() {
             timestampMs = message.createdAt,
             messageId = message.id
         )
+        scope.launch { summarizeMessageUseCase.summarize(message.id) }
         playReplyUseCase.playTextMessage(
             message = message,
             isCallActive = callStateMonitor.isInCall.value

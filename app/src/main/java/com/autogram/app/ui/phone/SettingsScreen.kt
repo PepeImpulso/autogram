@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material.icons.filled.Summarize
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -296,6 +297,25 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                     onCheckedChange = { enabled ->
                         if (transcribeSupported) viewModel.updateTranscribe(enabled)
                     }
+                )
+            }
+
+            SectionCard(
+                icon = Icons.Filled.Summarize,
+                title = stringResource(R.string.settings_section_summary),
+                subtitle = stringResource(R.string.settings_section_summary_sub)
+            ) {
+                SummarySection(
+                    enabled = state.summarizeLongMessages,
+                    engine = state.summaryEngine,
+                    endpoint = state.summaryLlmEndpoint,
+                    apiKey = state.summaryLlmApiKey,
+                    model = state.summaryLlmModel,
+                    onEnabledChange = viewModel::updateSummarize,
+                    onEngineChange = viewModel::updateSummaryEngine,
+                    onEndpointChange = viewModel::updateSummaryLlmEndpoint,
+                    onApiKeyChange = viewModel::updateSummaryLlmApiKey,
+                    onModelChange = viewModel::updateSummaryLlmModel
                 )
             }
 
@@ -930,5 +950,110 @@ private fun ImportPasswordDialog(
         dismissButton = {
             TextButton(onClick = handleDismiss) { Text(stringResource(R.string.backup_cancel)) }
         }
+    )
+}
+
+@Composable
+private fun SummarySection(
+    enabled: Boolean,
+    engine: com.autogram.app.domain.model.SummaryEngineType,
+    endpoint: String,
+    apiKey: String,
+    model: String,
+    onEnabledChange: (Boolean) -> Unit,
+    onEngineChange: (com.autogram.app.domain.model.SummaryEngineType) -> Unit,
+    onEndpointChange: (String) -> Unit,
+    onApiKeyChange: (String) -> Unit,
+    onModelChange: (String) -> Unit
+) {
+    SwitchRow(
+        label = stringResource(R.string.settings_summarize),
+        checked = enabled,
+        onCheckedChange = onEnabledChange
+    )
+    if (!enabled) return
+    SettingsDivider()
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text(
+            stringResource(R.string.settings_summary_engine),
+            style = MaterialTheme.typography.labelLarge
+        )
+        val options = listOf(
+            com.autogram.app.domain.model.SummaryEngineType.NONE to R.string.settings_summary_engine_none,
+            com.autogram.app.domain.model.SummaryEngineType.GEMINI_NANO to R.string.settings_summary_engine_gemini,
+            com.autogram.app.domain.model.SummaryEngineType.LLM_ENDPOINT to R.string.settings_summary_engine_llm
+        )
+        options.forEach { (type, stringRes) ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onEngineChange(type) }
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = engine == type,
+                    onClick = { onEngineChange(type) }
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(stringRes))
+            }
+        }
+    }
+    if (engine == com.autogram.app.domain.model.SummaryEngineType.LLM_ENDPOINT) {
+        SettingsDivider()
+        DebouncedTextField(
+            initial = endpoint,
+            onCommit = onEndpointChange,
+            label = stringResource(R.string.settings_summary_llm_endpoint),
+            placeholder = stringResource(R.string.settings_summary_llm_endpoint_hint),
+            masked = false
+        )
+        DebouncedTextField(
+            initial = apiKey,
+            onCommit = onApiKeyChange,
+            label = stringResource(R.string.settings_summary_llm_api_key),
+            placeholder = "",
+            masked = true
+        )
+        DebouncedTextField(
+            initial = model,
+            onCommit = onModelChange,
+            label = stringResource(R.string.settings_summary_llm_model),
+            placeholder = stringResource(R.string.settings_summary_llm_model_hint),
+            masked = false
+        )
+    }
+}
+
+@Composable
+private fun DebouncedTextField(
+    initial: String,
+    onCommit: (String) -> Unit,
+    label: String,
+    placeholder: String,
+    masked: Boolean
+) {
+    var text by remember(initial) { mutableStateOf(initial) }
+    var job by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    val scope = rememberCoroutineScope()
+    OutlinedTextField(
+        value = text,
+        onValueChange = {
+            text = it
+            job?.cancel()
+            job = scope.launch {
+                kotlinx.coroutines.delay(500)
+                onCommit(it)
+            }
+        },
+        label = { Text(label) },
+        placeholder = { if (placeholder.isNotBlank()) Text(placeholder) },
+        singleLine = true,
+        visualTransformation = if (masked) androidx.compose.ui.text.input.PasswordVisualTransformation()
+                              else androidx.compose.ui.text.input.VisualTransformation.None,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
     )
 }
