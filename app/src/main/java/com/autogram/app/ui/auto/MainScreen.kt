@@ -136,17 +136,17 @@ class MainScreen(
 
     private fun buildMainGrid(): GridTemplate {
         val builder = GridTemplate.Builder()
-            .setTitle(carContext.getString(R.string.app_name))
-            .setHeaderAction(Action.APP_ICON)
+            // Empty title + no header action so AA renders the grid
+            // without the "Autogram" wordmark bar. Reclaims ~60dp of
+            // vertical space for larger tiles. A single space is safer
+            // than null across host versions.
+            .setTitle(" ")
             .setActionStrip(buildActionStrip())
 
-        // Tell AA to render every tile image inside a circle. Our avatar
-        // bitmaps already render a circular photo + gold ring on a
-        // transparent square; the shortcut bitmaps render a rounded-rect
-        // chip on a transparent square. AA's circular mask then clips the
-        // square to the tile's circular slot without affecting the chip
-        // because the chip sits inside the inscribed circle of the tile.
-        runCatching { builder.setItemImageShape(GridTemplate.ITEM_IMAGE_SHAPE_CIRCLE) }
+        // ITEM_SIZE_LARGE = 4 — biggest tile size AA supports. Uniform
+        // across the whole grid (per-item size isn't allowed) so we
+        // convey "primary" via ordering + bitmap content, not size.
+        runCatching { builder.setItemSize(GridTemplate.ITEM_SIZE_LARGE) }
 
         val items = ItemList.Builder()
 
@@ -154,24 +154,26 @@ class MainScreen(
         val maxItems = constraintManager.getContentLimit(ConstraintManager.CONTENT_LIMIT_TYPE_GRID)
         var itemCount = 0
 
-        // Pinned conversations first. Order matches observePinned()
-        // (primary at index 0, then sortOrder), so the car screen mirrors
-        // the phone home exactly.
         val pinned = cachedPinned.value
-        for (conv in pinned) {
-            if (itemCount >= maxItems) break
+        val primary = pinned.firstOrNull()
+        val secondaries = pinned.drop(1)
+
+        // 1. Primary tile first — the biggest visual element we can
+        // render. Bitmap fills 96% of the canvas so the circle looks
+        // "bigger" than secondaries which render at 76%.
+        if (primary != null && itemCount < maxItems) {
             items.addItem(
                 GridItem.Builder()
-                    .setTitle(conv.targetTitle ?: carContext.getString(R.string.main_default_primary_name))
-                    .setImage(avatarTileIcon(conv), GridItem.IMAGE_TYPE_LARGE)
-                    .setOnClickListener { startRecording(conv.id) }
+                    .setTitle(tileTitle(primary))
+                    .setImage(avatarTileIcon(primary, isPrimary = true), GridItem.IMAGE_TYPE_LARGE)
+                    .setOnClickListener { startRecording(primary.id) }
                     .build()
             )
             itemCount++
         }
 
-        // Fresh install with no pinned circles: give the user a single
-        // Record tile so they're not stuck on an empty screen.
+        // Fresh install with no pinned circles: single Record tile so
+        // the user isn't stuck on an empty screen.
         if (pinned.isEmpty() && itemCount < maxItems) {
             items.addItem(
                 GridItem.Builder()
@@ -183,9 +185,10 @@ class MainScreen(
             itemCount++
         }
 
-        // Quick-reply shortcuts — rendered as phone-chip-style tiles so
-        // they read as "tap to send" at a glance, visually distinct from
-        // the avatar tiles without needing to read the label.
+        // 2. Quick-reply shortcuts next. In the car, one-tap shortcuts
+        // are more urgent than the 7th pinned contact — a driver's
+        // glance sees primary-target + canned replies before having
+        // to scroll. Also matches the phone's "chips next to Merlin".
         for (qr in cachedQuickReplies.value) {
             if (itemCount >= maxItems) break
             items.addItem(
@@ -198,8 +201,22 @@ class MainScreen(
             itemCount++
         }
 
-        // Pending-count tile at the end (only when there are unheard
-        // incoming messages). Tap → play all pending.
+        // 3. Secondary pinned conversations. Smaller visual weight via
+        // bitmap padding (76% vs 96% for primary). Reachable by
+        // scrolling when the grid budget overflows.
+        for (conv in secondaries) {
+            if (itemCount >= maxItems) break
+            items.addItem(
+                GridItem.Builder()
+                    .setTitle(tileTitle(conv))
+                    .setImage(avatarTileIcon(conv, isPrimary = false), GridItem.IMAGE_TYPE_LARGE)
+                    .setOnClickListener { startRecording(conv.id) }
+                    .build()
+            )
+            itemCount++
+        }
+
+        // Pending-count tile at the very end when relevant.
         val pendingCount = playReplyUseCase.pendingCount()
         if (pendingCount > 0 && itemCount < maxItems) {
             items.addItem(
@@ -216,6 +233,18 @@ class MainScreen(
 
         builder.setSingleList(items.build())
         return builder.build()
+    }
+
+    /**
+     * Tile title that matches the phone home: forum-topic name when the
+     * conversation is a topic inside a group (otherwise every secondary
+     * would just read as the group's name), falling back to the chat
+     * title, then to a hard-coded "Merlin" default for the primary.
+     */
+    private fun tileTitle(conv: Conversation): String {
+        return conv.topicName?.takeIf { it.isNotBlank() }
+            ?: conv.targetTitle?.takeIf { it.isNotBlank() }
+            ?: carContext.getString(R.string.main_default_primary_name)
     }
 
     private fun buildActionStrip(): ActionStrip {
@@ -369,14 +398,19 @@ class MainScreen(
 
     /**
      * Cached [CarIcon] for a conversation avatar tile. Composites at
-     * 384×384: circle-cropped photo (or silhouette fallback) + gold ring
-     * + peach mic badge with a white mic glyph, matching the phone's
-     * RecordCircle aesthetic.
+     * [AVATAR_TILE_SIZE] px: circle-cropped photo (or silhouette fallback)
+     * + gold ring + peach mic badge with a white mic glyph, matching the
+     * phone's RecordCircle aesthetic.
+     *
+     * When [isPrimary] is true the drawn circle fills ~96% of the canvas
+     * so Merlin looks visually larger than secondaries (which render at
+     * ~76%). AA forces uniform tile container sizes so this is the only
+     * way to convey "primary > secondary" at the bitmap level.
      */
-    private fun avatarTileIcon(conv: Conversation): CarIcon {
-        val key = "avatar:${conv.id}:${conv.photoLocalPath ?: ""}:${photoMtime(conv.photoLocalPath)}"
+    private fun avatarTileIcon(conv: Conversation, isPrimary: Boolean): CarIcon {
+        val key = "avatar:${if (isPrimary) "P" else "S"}:${conv.id}:${conv.photoLocalPath ?: ""}:${photoMtime(conv.photoLocalPath)}"
         iconCache[key]?.let { return it }
-        val bitmap = renderAvatarTile(conv)
+        val bitmap = renderAvatarTile(conv, isPrimary = isPrimary)
         val icon = CarIcon.Builder(IconCompat.createWithBitmap(bitmap)).build()
         iconCache[key] = icon
         return icon
@@ -403,20 +437,28 @@ class MainScreen(
     }
 
     /**
-     * Avatar tile: photo cropped to a circle, wrapped in a gold ring,
-     * with a peach mic-badge disc at the bottom-right. 384×384 source so
-     * the tile stays sharp on 2-4x density car screens.
+     * Avatar tile at [AVATAR_TILE_SIZE]px. Primary ([isPrimary]=true)
+     * fills ~96% of the canvas; secondaries fill ~76% so Merlin reads
+     * as visually bigger even though AA forces uniform tile containers.
+     *
+     * Output canvas is padded with transparent pixels where the circle
+     * doesn't reach, so the AA tile shows blank space around smaller
+     * secondaries — mimicking the phone's 176dp primary vs 88dp
+     * secondary size difference.
      */
-    private fun renderAvatarTile(conv: Conversation, sizePx: Int = 384): Bitmap {
+    private fun renderAvatarTile(conv: Conversation, isPrimary: Boolean): Bitmap {
+        val sizePx = AVATAR_TILE_SIZE
         val output = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(output)
         val center = sizePx / 2f
 
-        // Slight padding so the ring isn't flush against the tile edge
-        // (AA crops the tile to a circle — any pixel on the edge vanishes).
-        val outerPadding = sizePx * 0.04f
-        val ringStroke = sizePx * 0.03f
-        val photoRadius = center - outerPadding - ringStroke / 2f
+        // Fill ratios: primary uses the full tile; secondaries shrink
+        // to ~76% so the tile reads as smaller. Ring + badge scale with
+        // the circle so proportions stay right.
+        val circleFill = if (isPrimary) 0.96f else 0.76f
+        val circleRadius = (sizePx / 2f) * circleFill
+        val ringStroke = circleRadius * (if (isPrimary) 0.08f else 0.07f)
+        val photoRadius = circleRadius - ringStroke / 2f
 
         // ── Photo (or person-silhouette fallback) ────────────────────
         val photoSizePx = (photoRadius * 2).toInt()
@@ -437,16 +479,21 @@ class MainScreen(
         }
         canvas.drawCircle(center, center, photoRadius + ringStroke / 2f, ringPaint)
 
-        // ── Peach mic badge at bottom-right ──────────────────────────
-        val badgeRadius = sizePx * 0.11f
-        val badgeCx = sizePx * 0.78f
-        val badgeCy = sizePx * 0.78f
+        // ── Peach mic badge at bottom-right (scaled with circle) ─────
+        // Primary badge is bigger for a stronger record-affordance cue;
+        // secondaries get a slightly smaller badge so the primary keeps
+        // the visual lead.
+        val badgeRadius = circleRadius * (if (isPrimary) 0.32f else 0.30f)
+        // Place the badge's center where the circle's 45° edge meets a
+        // 15° tuck-in, so it sits half-on, half-off the ring — same feel
+        // as the phone's RecordCircle badge.
+        val angleRad = Math.toRadians(45.0)
+        val badgeCx = center + (circleRadius - badgeRadius * 0.25f) * Math.cos(angleRad).toFloat()
+        val badgeCy = center + (circleRadius - badgeRadius * 0.25f) * Math.sin(angleRad).toFloat()
         val badgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
             color = COLOR_PEACH_BADGE
         }
-        // White ring around the badge so it reads as a separate element
-        // from the photo behind it, matching the phone's recessed badge.
         val badgeRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeWidth = sizePx * 0.015f
@@ -455,8 +502,6 @@ class MainScreen(
         canvas.drawCircle(badgeCx, badgeCy, badgeRadius, badgePaint)
         canvas.drawCircle(badgeCx, badgeCy, badgeRadius, badgeRingPaint)
 
-        // Mic glyph inside the badge. Drawable → bitmap → drawBitmap so
-        // we get antialiased vector rendering without handcoding the SVG.
         drawDrawableCentered(
             canvas = canvas,
             resId = R.drawable.ic_mic,
@@ -472,22 +517,22 @@ class MainScreen(
     /**
      * Shortcut chip tile: rounded-rectangle dark-brown background with a
      * centered Bolt (text) or Mic (voice) icon tinted to match the phone
-     * chip accent (gold for text, peach for voice).
+     * chip accent (gold for text, peach for voice). Sized to feel like
+     * a secondary avatar tile (~76% of the canvas) so the user gets the
+     * same visual weight whether they're looking at a contact or a
+     * shortcut.
      */
-    private fun renderShortcutTile(qr: QuickReply, sizePx: Int = 384): Bitmap {
+    private fun renderShortcutTile(qr: QuickReply): Bitmap {
+        val sizePx = AVATAR_TILE_SIZE
         val output = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(output)
 
-        // The chip sits inside the tile's inscribed circle so AA's
-        // circular mask doesn't clip its corners.
         val center = sizePx / 2f
-        val inscribedRadius = center * 0.96f
-        // Square chip inside the inscribed circle: width = radius * sqrt(2).
-        val chipSide = (inscribedRadius * 1.41f).coerceAtMost(sizePx * 0.8f)
+        val chipSide = sizePx * 0.76f
         val chipLeft = center - chipSide / 2f
         val chipTop = center - chipSide / 2f
         val chipRect = RectF(chipLeft, chipTop, chipLeft + chipSide, chipTop + chipSide)
-        val chipRadius = sizePx * 0.08f
+        val chipRadius = sizePx * 0.12f
 
         val chipPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
@@ -502,7 +547,7 @@ class MainScreen(
             tint = if (isVoice) COLOR_PEACH_BADGE else COLOR_GOLD_RING,
             cx = center,
             cy = center,
-            sizePx = chipSide * 0.42f
+            sizePx = chipSide * 0.50f
         )
 
         return output
@@ -577,6 +622,14 @@ class MainScreen(
     }
 
     companion object {
+        // Source bitmap size for every tile. AA downscales to whatever
+        // the head unit's tile slot is (varies by car). The 2024 Seat
+        // Ateca's MIB3 screen is 1280×720 → projected AA tiles land
+        // around 280-320px wide at ITEM_SIZE_LARGE, so a 512px source
+        // gives ~1.7× headroom for crisp downsampling without wasting
+        // memory on bitmaps larger than the largest realistic tile.
+        private const val AVATAR_TILE_SIZE: Int = 512
+
         // Match the phone theme (see ui/theme/Color.kt extended colors).
         // Gold ring around each avatar + on the Bolt shortcut icon.
         private const val COLOR_GOLD_RING: Int = 0xFFD4A44C.toInt()
