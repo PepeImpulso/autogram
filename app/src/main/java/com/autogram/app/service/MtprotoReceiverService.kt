@@ -222,6 +222,12 @@ class MtprotoReceiverService : Service() {
             messageId = message.id
         )
         val settings = settingsRepository.get()
+        val inCall = callStateMonitor.isInCall.value
+        Timber.i(
+            "Incoming voice ${message.id} — autoPlay=${settings.autoPlayReplies} " +
+            "silent=${settings.silentMode} inCall=$inCall " +
+            "summarize=${settings.summarizeLongMessages} engine=${settings.summaryEngine}"
+        )
         if (settings.summarizeLongMessages && settings.summaryEngine != com.autogram.app.domain.model.SummaryEngineType.NONE) {
             // Summary mode — skip the original audio. Transcribe (which
             // chains summarize internally), then TTS the summary or, for

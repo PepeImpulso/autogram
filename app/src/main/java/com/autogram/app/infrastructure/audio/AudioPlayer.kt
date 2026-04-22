@@ -40,10 +40,17 @@ class AudioPlayer @Inject constructor(
             stop()
             completionHandler = onComplete
 
-            // Solicitar audio focus
-            if (!requestAudioFocus()) {
-                Timber.w("Audio focus denegado")
-                return Result.failure(Exception("Audio focus denegado"))
+            // Request audio focus. In an Android Auto session Google Maps /
+            // the AA host will typically already hold focus for navigation
+            // prompts, so AUDIOFOCUS_GAIN_TRANSIENT gets denied outright.
+            // We accept that and keep playing anyway — the platform's ducking
+            // layer mixes our playback with whatever else is active instead
+            // of muting us into silence like the old hard-fail did.
+            val focusGranted = requestAudioFocus()
+            if (!focusGranted) {
+                Timber.w("Audio focus denied (likely AA/Maps active) — playing anyway with ducking")
+            } else {
+                Timber.d("Audio focus granted")
             }
 
             mediaPlayer = MediaPlayer().apply {
@@ -132,25 +139,38 @@ class AudioPlayer @Inject constructor(
     fun isPlaying(): Boolean = isPlaying
 
     /**
-     * Solicita audio focus temporal para reproducción de voz.
+     * Request temporary audio focus for voice reply playback. Uses
+     * AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK so the Android Auto host / Google
+     * Maps navigation prompts are more likely to grant it — the "may duck"
+     * hint tells the platform that other players can keep going at reduced
+     * volume instead of having to stop, which AA permits freely where
+     * full-exclusive TRANSIENT gets denied.
+     *
+     * AUDIOFOCUS_LOSS still pauses us (permanent loss means someone took
+     * over, e.g. a phone call); transient losses are ignored so navigation
+     * blurbs don't chop our message in half.
      */
     // BUG-38: minSdk=29, so we always have API O. Removed dead < O branches.
     private fun requestAudioFocus(): Boolean {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        audioFocusRequest = AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+        audioFocusRequest = AudioFocusRequest.Builder(
+            android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+        )
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .setUsage(AudioAttributes.USAGE_MEDIA)
                     .build()
             )
+            .setWillPauseWhenDucked(false)
             .setOnAudioFocusChangeListener { focusChange ->
                 if (focusChange == android.media.AudioManager.AUDIOFOCUS_LOSS) {
                     pause()
                 }
             }
             .build()
-        return audioManager.requestAudioFocus(audioFocusRequest!!) == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        return audioManager.requestAudioFocus(audioFocusRequest!!) ==
+            android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED
     }
 
     /**

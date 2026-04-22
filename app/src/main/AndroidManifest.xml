@@ -33,6 +33,7 @@
     <application
         android:name=".AutogramApplication"
         android:allowBackup="false"
+        android:appCategory="social"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:localeConfig="@xml/locales_config"
@@ -100,16 +101,33 @@
         <meta-data
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
+        <!-- minCarApiLevel=3 so the Android Auto launcher actually surfaces the app.
+             Level 1 is accepted but AA hides sideloaded IOT apps that only declare
+             level 1 from the launcher in recent versions (14+). -->
         <meta-data
             android:name="androidx.car.app.minCarApiLevel"
-            android:value="1" />
+            android:value="3" />
         <meta-data
             android:name="androidx.car.app.theme"
             android:resource="@style/Theme.Autogram.Car" />
 
+        <!-- The CarAppService exposes two categories simultaneously:
+               - MESSAGING — lets AA route incoming-message notifications
+                 (Listen / Reply actions) through the car screen.
+               - IOT — lets the service appear in the Android Auto launcher
+                 so the user can open the app manually from the car.
+             Two separate intent-filters; AA matches either.
+
+             NOTE: for a sideloaded APK to show in the AA launcher the user
+             must also enable "Unknown sources" in Android Auto's developer
+             settings on the phone (tap the AA version 10 times to unlock). -->
         <service
             android:name=".ui.auto.AutogramCarAppService"
             android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.car.app.CarAppService" />
+                <category android:name="androidx.car.app.category.MESSAGING" />
+            </intent-filter>
             <intent-filter>
                 <action android:name="androidx.car.app.CarAppService" />
                 <category android:name="androidx.car.app.category.IOT" />
