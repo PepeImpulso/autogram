@@ -213,26 +213,34 @@ class PlayReplyUseCase @Inject constructor(
         }
         if (!settings.autoPlayReplies) return
 
-        currentPlayingId = message.id
-        messageRepository.update(message.copy(state = MessageState.PLAYING))
-        _playbackStatus.value = PlaybackStatus.Playing(message.id)
-        val fallback = com.autogram.app.infrastructure.audio.TtsPlayer
-            .detectLocale(text, java.util.Locale.getDefault())
-        val locale = if (settings.languageTag.isNotBlank())
-            java.util.Locale.forLanguageTag(settings.languageTag)
-        else java.util.Locale.getDefault()
-        // Content-based override wins over UI locale if the script doesn't
-        // match (e.g. UI is English but the summary came out in Spanish).
-        val detected = com.autogram.app.infrastructure.audio.TtsPlayer.detectLocale(text, locale)
-        ttsPlayer.speak(text, locale = detected) {
-            playbackScope.launch {
-                messageRepository.update(message.copy(
-                    state = MessageState.PLAYED,
-                    playedAt = System.currentTimeMillis()
-                ))
-                currentPlayingId = null
-                _playbackStatus.value = PlaybackStatus.Idle
-                playNext()
+        // Same coordination as playTextMessage: refuse to speak over an
+        // in-flight audio/TTS playback; enqueue the message instead so
+        // playNext picks it up after the current one finishes.
+        playbackStartLock.withLock {
+            if (audioPlayer.isPlaying() || ttsPlayer.isSpeaking()) {
+                pendingQueue.add(message)
+                _playbackStatus.value = PlaybackStatus.PendingCount(pendingQueue.size)
+                return@withLock
+            }
+            currentPlayingId = message.id
+            messageRepository.update(message.copy(state = MessageState.PLAYING))
+            _playbackStatus.value = PlaybackStatus.Playing(message.id)
+            val uiLocale = if (settings.languageTag.isNotBlank())
+                java.util.Locale.forLanguageTag(settings.languageTag)
+            else java.util.Locale.getDefault()
+            // Content-based override wins over UI locale if the script doesn't
+            // match (e.g. UI is English but the summary came out in Spanish).
+            val detected = com.autogram.app.infrastructure.audio.TtsPlayer.detectLocale(text, uiLocale)
+            ttsPlayer.speak(text, locale = detected) {
+                playbackScope.launch {
+                    messageRepository.update(message.copy(
+                        state = MessageState.PLAYED,
+                        playedAt = System.currentTimeMillis()
+                    ))
+                    currentPlayingId = null
+                    _playbackStatus.value = PlaybackStatus.Idle
+                    playNext()
+                }
             }
         }
     }
@@ -259,17 +267,42 @@ class PlayReplyUseCase @Inject constructor(
             // History screen shows it as unread; they'll tap play themselves.
             return
         }
-        currentPlayingId = message.id
-        messageRepository.update(message.copy(state = MessageState.PLAYING))
-        _playbackStatus.value = PlaybackStatus.Playing(message.id)
-        ttsPlayer.speak(text) {
-            playbackScope.launch {
-                messageRepository.update(message.copy(
-                    state = MessageState.PLAYED,
-                    playedAt = System.currentTimeMillis()
-                ))
-                currentPlayingId = null
-                playNext()
+
+        // Bug v1.18.x: if Merlin replies with both a voice note AND a
+        // text at the same time, handleVoiceNote fires AudioPlayer on
+        // the ogg while handleText fires TtsPlayer on the text — two
+        // independent engines, two simultaneous voices, user hears a
+        // cacophony. Gate TTS behind the same playbackStartLock the
+        // audio path uses, and if audio is already speaking, enqueue
+        // the text for after — exactly like a late-arriving voice note
+        // would be handled.
+        playbackStartLock.withLock {
+            if (audioPlayer.isPlaying() || ttsPlayer.isSpeaking()) {
+                pendingQueue.add(message)
+                _playbackStatus.value = PlaybackStatus.PendingCount(pendingQueue.size)
+                return@withLock
+            }
+            currentPlayingId = message.id
+            messageRepository.update(message.copy(state = MessageState.PLAYING))
+            _playbackStatus.value = PlaybackStatus.Playing(message.id)
+
+            // Detect locale from the text so a Spanish reply isn't read
+            // by an English voice. Fallback = user's UI locale (from
+            // settings.languageTag, or device default).
+            val uiLocale = if (settings.languageTag.isNotBlank())
+                java.util.Locale.forLanguageTag(settings.languageTag)
+            else java.util.Locale.getDefault()
+            val detected = com.autogram.app.infrastructure.audio.TtsPlayer.detectLocale(text, uiLocale)
+
+            ttsPlayer.speak(text, locale = detected) {
+                playbackScope.launch {
+                    messageRepository.update(message.copy(
+                        state = MessageState.PLAYED,
+                        playedAt = System.currentTimeMillis()
+                    ))
+                    currentPlayingId = null
+                    playNext()
+                }
             }
         }
     }

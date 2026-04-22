@@ -62,6 +62,13 @@ class TtsPlayer @Inject constructor(
                 .build()
         )
 
+        // Hard-stop anything currently queued/playing before we hand the
+        // new utterance to the engine. Combined with QUEUE_FLUSH below
+        // this means only one utterance is ever in flight — prevents
+        // the "two voices overlapping" bug where a late-arriving reply
+        // started speaking before the previous one finished.
+        runCatching { tts.stop() }
+
         val utteranceId = UUID.randomUUID().toString()
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(id: String?) {}
@@ -71,7 +78,7 @@ class TtsPlayer @Inject constructor(
             override fun onError(id: String?, errorCode: Int) { onDone() }
         })
         runCatching {
-            tts.speak(text, TextToSpeech.QUEUE_ADD, null, utteranceId)
+            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
         }.onFailure {
             Timber.w(it, "TtsPlayer.speak failed")
             onDone()
@@ -81,6 +88,9 @@ class TtsPlayer @Inject constructor(
     fun stop() {
         runCatching { engine?.stop() }
     }
+
+    /** True when the engine currently has an utterance in flight. */
+    fun isSpeaking(): Boolean = runCatching { engine?.isSpeaking == true }.getOrDefault(false)
 
     fun shutdown() {
         runCatching { engine?.stop(); engine?.shutdown() }
