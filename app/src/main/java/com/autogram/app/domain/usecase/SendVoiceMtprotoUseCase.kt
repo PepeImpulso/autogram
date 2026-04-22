@@ -16,7 +16,7 @@ import com.autogram.app.infrastructure.audio.RecordingSounds
 import com.autogram.app.infrastructure.platform.ConnectivityObserver
 import com.autogram.app.infrastructure.retry.RetryWorker
 import com.autogram.app.infrastructure.telegram.mtproto.AuthState
-import com.autogram.app.infrastructure.telegram.mtproto.TdLibClient
+import com.autogram.app.infrastructure.telegram.mtproto.TdLibSender
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,7 +35,7 @@ import javax.inject.Singleton
 @Singleton
 class SendVoiceMtprotoUseCase @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val tdLibClient: TdLibClient,
+    private val tdLibClient: TdLibSender,
     private val audioRecorder: AudioRecorder,
     private val emptyMessageFilter: EmptyMessageFilter,
     private val conversationRepository: ConversationRepository,
@@ -409,8 +409,13 @@ class SendVoiceMtprotoUseCase @Inject constructor(
         )
         runCatching { messageRepository.insert(message) }
             .onFailure { Timber.e(it, "Failed to persist QUEUED_OFFLINE message") }
-        // Kick the worker; it'll wait for network if needed, then drain the outbox.
-        RetryWorker.enqueueOnce(context)
+        // Kick the worker; it'll wait for network if needed, then drain the
+        // outbox. Wrapped in runCatching because WorkManager may not be
+        // initialized in unit-test environments — failing to enqueue isn't
+        // fatal: the worker also runs on its own periodic schedule and the
+        // row is already in QUEUED_OFFLINE for it to pick up later.
+        runCatching { RetryWorker.enqueueOnce(context) }
+            .onFailure { Timber.w(it, "RetryWorker.enqueueOnce skipped (WorkManager not ready?)") }
     }
 
     /**

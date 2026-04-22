@@ -146,14 +146,25 @@ class AutogramApplication : Application(), Configuration.Provider {
 
     companion object {
         // Patterns that match PII likely to sneak into log messages: phone
-        // numbers, Telegram chat/message ids, long numeric tokens. We replace
-        // in-place rather than dropping the event so the stack trace + code
-        // path is still useful for debugging.
-        private val PHONE_RE = Regex("""\+?\d[\d\s\-()]{7,}""")
-        private val LONG_ID_RE = Regex("""\b-?\d{9,}\b""")
+        // numbers and long numeric tokens (Telegram chat / message ids).
+        // We replace in-place rather than dropping the event so the stack
+        // trace + code path stays useful for debugging.
+        //
+        // Order matters: LONG_ID runs first because a pure-digit chat id
+        // (e.g. "1234567890") would also match the lax phone regex. After
+        // long IDs are masked the phone regex can only catch true phone-
+        // shaped strings (must start with + or contain at least one
+        // separator like space / dash / parens).
+        //
+        // Both regexes are anchored on \b so trailing whitespace and
+        // punctuation are preserved — a previous version ate the space
+        // after a phone match, producing "Call [phone]to verify" instead
+        // of "Call [phone] to verify".
+        private val LONG_ID_RE = Regex("""(?<![\d.])-?\d{9,}\b""")
+        private val PHONE_RE = Regex("""\+\d[\d\s\-()]{6,}\d|\b\d{1,4}([\s\-()]+\d{2,4}){2,}\b""")
 
         internal fun scrubPii(s: String): String =
-            s.replace(PHONE_RE, "[phone]").replace(LONG_ID_RE, "[id]")
+            s.replace(LONG_ID_RE, "[id]").replace(PHONE_RE, "[phone]")
 
         internal fun scrubSentryEvent(event: io.sentry.SentryEvent) {
             event.message?.let { m ->

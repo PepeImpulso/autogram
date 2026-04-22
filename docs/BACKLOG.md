@@ -75,40 +75,55 @@ Ideas de mejora del modo coche no implementadas:
 
 ### Tests
 
-Cobertura actual (post v1.15.0 + accumulated WIP):
+Cobertura actual (post acumulación, sin nueva release todavía):
 
 - ✅ [TtsPlayerDetectLocaleTest](app/src/test/java/com/autogram/app/infrastructure/audio/TtsPlayerDetectLocaleTest.kt) — 12 tests, detección Unicode
 - ✅ [SuggestQuickReplyUseCaseTest](app/src/test/java/com/autogram/app/domain/usecase/SuggestQuickReplyUseCaseTest.kt) — 14 tests, patrones ES+EN + LLM-wins-over-regex + LLM-fallback
 - ✅ [ExportImportUseCaseTest](app/src/test/java/com/autogram/app/domain/usecase/ExportImportUseCaseTest.kt) — 8 tests, round-trip + magic versions + corrupt/wrong-pw
-- ✅ [LlmQuickReplySuggesterTest](app/src/test/java/com/autogram/app/infrastructure/suggestion/LlmQuickReplySuggesterTest.kt) — 9 tests, JSON parser tolerancia (markdown, preamble, malformed)
+- ✅ [LlmQuickReplySuggesterTest](app/src/test/java/com/autogram/app/infrastructure/suggestion/LlmQuickReplySuggesterTest.kt) — 9 tests, JSON parser tolerancia
 - ✅ [PlayReplyUseCaseTest](app/src/test/java/com/autogram/app/domain/usecase/PlayReplyUseCaseTest.kt) — 18 tests, gates + state transitions + summary preference + stopAll
+- ✅ [OutboxRetryUseCaseTest](app/src/test/java/com/autogram/app/domain/usecase/OutboxRetryUseCaseTest.kt) — 10 tests, todas las ramas del retry decision tree
+- ✅ [AutogramApplicationScrubTest](app/src/test/java/com/autogram/app/AutogramApplicationScrubTest.kt) — 11 tests, Sentry PII regex (encontró un bug real con espacios + un mismatch phone-vs-id)
+- ✅ [SendVoiceMtprotoUseCaseTest](app/src/test/java/com/autogram/app/domain/usecase/SendVoiceMtprotoUseCaseTest.kt) — 10 tests, sendQuickReply paths + offline queue + auth gates + preview state
+- ✅ [AndroidOnDeviceTranscriptionEngineTest](app/src/test/java/com/autogram/app/infrastructure/transcription/AndroidOnDeviceTranscriptionEngineTest.kt) — 12 tests, downmix stereo→mono + linear resample (overflow guards, partial frames, identity, interpolation)
 
-**Total: 61 unit tests, 0 fallos.**
+**Total: 104 unit tests, 0 fallos.**
 
-Falta cobertura en:
+Pendientes de cobertura (todos opcionales, ninguno bloqueante):
 
-- `RetryWorker` — `CoroutineWorker` requiere Context, lo que necesita Robolectric o `androidx.work.testing`. **Path recomendado**: refactorizar para extraer la lógica a un `OutboxRetryUseCase` testeable y dejar el worker como shell delegador. Coste: ~1h, riesgo bajo, beneficio alto.
-- `SendVoiceMtprotoUseCase.stopAndSend` (preview flow) — flujo asíncrono complejo con múltiples states
-- `AndroidOnDeviceTranscriptionEngine` — decoder OGG→PCM puede tener edge cases con bitrates raros
-- `IncomingMessageNotifier` — verifica MessagingStyle + CarAppExtender se construye igual cuando el messageId es null
+- `IncomingMessageNotifier` — verificación de MessagingStyle + CarAppExtender, puede pinarse con un Robolectric pequeño si en el futuro emerge un bug aquí.
+- `AndroidOnDeviceTranscriptionEngine.decodeToMono16k` (full pipeline) — requiere MediaCodec, solo testeable como instrumented test en device.
+- Compose UI — no priorizado; el riesgo de regresión visual lo cubre la prueba manual + el rediseño está estable.
 
 Cuando un bug aparece en una de estas piezas, añadir el test de regresión antes del fix.
 
 ### Gesto en lock-screen
 
-Actualmente no hay widget de lock-screen para grabar. Posible mejora: un TileService en quick-settings que inicie la grabación sin desbloquear.
+**Resuelto** (post v1.15.0, en master sin shippar): Quick Settings tile "Voz a Merlin" en `tiles/RecordVoiceTileService.kt`. Tap desde la notification shade lanza MainActivity con `EXTRA_AUTO_RECORD` que arranca grabación al primary inmediatamente.
 
 ### Retention + .ogg borrado manualmente
 
 v1.8.1 añadió `repairMissingAudioPaths` en `RetentionCleanupWorker`. Si el usuario borra un `.ogg` manualmente (file manager), la próxima corrida del worker null-ea el path. **Resuelto**.
+
+### Bugs detectados por tests
+
+Tests de v1.15.0+WIP encontraron y arreglaron:
+
+- **Audio focus en AA** (v1.14.1): `AUDIOFOCUS_GAIN_TRANSIENT` denegado por AA hacía que la app no reprodujera. Fix: `MAY_DUCK` + play-aunque-deniegue. Confirmado por Sentry.
+- **MediaRecorder.stop() <1.5s** (v1.14.1): runtime exception escalaba a Sentry. Fix: downgrade a warning + delete output file.
+- **Sentry PII regex** (WIP en master): el regex de teléfono se comía espacios trailing y matching pure-digit IDs como teléfonos. Fix en companion: orden LONG_ID → PHONE + boundaries más estrictas.
+- **WorkManager en unit tests** (WIP): `RetryWorker.enqueueOnce` crasheaba en JVM sin WorkManager init. Fix: wrap en runCatching, no es fatal porque el worker tiene su propio schedule.
 
 ---
 
 ## Cómo retomar
 
 1. Leer este fichero + [docs/RELEASE_OPS.md](RELEASE_OPS.md) + la memoria en `.claude/projects/.../memory/MEMORY.md`.
-2. Estado actual: **v1.13.0 publicada** en `PepeImpulso/autogram-releases`.
-3. El roadmap está cerrado; para nuevo trabajo preguntar al usuario por prioridad.
+2. Estado actual: **v1.15.0 publicada** en `PepeImpulso/autogram-releases`. Acumulando trabajo en master para una release final con todo (QS tile + LLM chips + tests + refactor + bug fixes).
+3. El roadmap original está cerrado; lo único que queda es:
+   - **Whisper on-device** — necesita spike contigo + tu Samsung
+   - **AICore typed API** — esperar GA del SDK de Google
 4. Antes de cualquier cambio de schema → bump de versión en [AutogramDatabase.kt](app/src/main/java/com/autogram/app/infrastructure/persistence/AutogramDatabase.kt) + migración no-destructiva.
 5. Antes de añadir un string → localizar en los 6 locales (values, values-es, -en, -fr, -de, -zh, -ja).
 6. Antes de una release → `scripts/publish_autogram_release.sh --manual X.Y.Z` desde la Windows box con keystore.
+7. Cuando se decida shippar: bump versionCode/versionName en `app/build.gradle.kts` + commit + run script.

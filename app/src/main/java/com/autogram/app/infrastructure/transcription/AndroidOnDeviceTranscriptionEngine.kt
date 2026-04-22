@@ -55,6 +55,46 @@ class AndroidOnDeviceTranscriptionEngine @Inject constructor(
             return runCatching { SpeechRecognizer.isOnDeviceRecognitionAvailable(context) }
                 .getOrDefault(false)
         }
+
+        /**
+         * Average L+R PCM-16 little-endian samples into a single channel.
+         * `interleaved` must be aligned to 4 bytes (one stereo frame); any
+         * trailing bytes are ignored.
+         */
+        internal fun downmixStereoToMono(interleaved: ByteArray): ByteArray {
+            val buf = ByteBuffer.wrap(interleaved).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+            val mono = ByteBuffer.allocate(interleaved.size / 2).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+            while (buf.remaining() >= 4) {
+                val l = buf.short.toInt()
+                val r = buf.short.toInt()
+                mono.putShort(((l + r) / 2).toShort())
+            }
+            return mono.array()
+        }
+
+        /**
+         * Linear PCM-16 resampler — good enough for speech recognition; we
+         * don't need band-limited precision for an STT engine that's going
+         * to do its own filtering downstream. Returns the input unchanged
+         * if src == dst rate.
+         */
+        internal fun resampleLinear(pcm: ByteArray, srcRate: Int, dstRate: Int): ByteArray {
+            if (srcRate == dstRate) return pcm
+            val src = ByteBuffer.wrap(pcm).order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+            val srcLen = src.remaining()
+            val dstLen = (srcLen.toLong() * dstRate / srcRate).toInt()
+            val out = ByteBuffer.allocate(dstLen * 2).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+            for (i in 0 until dstLen) {
+                val srcIdx = i.toDouble() * srcRate / dstRate
+                val i0 = srcIdx.toInt().coerceAtMost(srcLen - 1)
+                val i1 = (i0 + 1).coerceAtMost(srcLen - 1)
+                val frac = srcIdx - i0
+                val s0 = src.get(i0).toDouble()
+                val s1 = src.get(i1).toDouble()
+                out.putShort((s0 + (s1 - s0) * frac).toInt().coerceIn(-32768, 32767).toShort())
+            }
+            return out.array()
+        }
     }
 
     override suspend fun transcribe(audioFile: File, locale: Locale): TranscriptionEngine.Result =
@@ -143,35 +183,9 @@ class AndroidOnDeviceTranscriptionEngine @Inject constructor(
         }
     }
 
-    private fun downmixStereoToMono(interleaved: ByteArray): ByteArray {
-        val buf = ByteBuffer.wrap(interleaved).order(java.nio.ByteOrder.LITTLE_ENDIAN)
-        val mono = ByteBuffer.allocate(interleaved.size / 2).order(java.nio.ByteOrder.LITTLE_ENDIAN)
-        while (buf.remaining() >= 4) {
-            val l = buf.short.toInt()
-            val r = buf.short.toInt()
-            mono.putShort(((l + r) / 2).toShort())
-        }
-        return mono.array()
-    }
-
-    /** Linear resampler — good enough for speech recognition. */
-    private fun resampleLinear(pcm: ByteArray, srcRate: Int, dstRate: Int): ByteArray {
-        if (srcRate == dstRate) return pcm
-        val src = ByteBuffer.wrap(pcm).order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer()
-        val srcLen = src.remaining()
-        val dstLen = (srcLen.toLong() * dstRate / srcRate).toInt()
-        val out = ByteBuffer.allocate(dstLen * 2).order(java.nio.ByteOrder.LITTLE_ENDIAN)
-        for (i in 0 until dstLen) {
-            val srcIdx = i.toDouble() * srcRate / dstRate
-            val i0 = srcIdx.toInt().coerceAtMost(srcLen - 1)
-            val i1 = (i0 + 1).coerceAtMost(srcLen - 1)
-            val frac = srcIdx - i0
-            val s0 = src.get(i0).toDouble()
-            val s1 = src.get(i1).toDouble()
-            out.putShort((s0 + (s1 - s0) * frac).toInt().coerceIn(-32768, 32767).toShort())
-        }
-        return out.array()
-    }
+    // Pure helpers live in the companion object so unit tests can call them
+    // without instantiating the engine (which needs a real Context). Both
+    // are byte-array in / byte-array out and have no Android dependencies.
 
     // --- Recognition ---------------------------------------------------------
 
