@@ -1,5 +1,8 @@
 package com.autogram.app.domain.usecase
 
+import com.autogram.app.infrastructure.suggestion.LlmQuickReplySuggester
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -17,22 +20,54 @@ import javax.inject.Singleton
  * triggered a useful chip.
  */
 @Singleton
-class SuggestQuickReplyUseCase @Inject constructor() {
+class SuggestQuickReplyUseCase @Inject constructor(
+    private val llmSuggester: LlmQuickReplySuggester
+) {
 
     data class Suggestion(val text: String, val ruleId: String)
 
     /**
      * Return up to [limit] suggested canned replies for [incomingText].
-     * Never returns duplicates. Order is most-confident-first.
+     *
+     * Strategy: try the user-configured LLM endpoint first (if any). If it
+     * returns a non-empty list, use those — they're contextual to the actual
+     * message. If the LLM is off, throws, or returns nothing, fall back to
+     * the deterministic regex rules so chips always show up for the patterns
+     * we know about.
+     *
+     * Never returns duplicates; order is best-first.
      */
-    fun suggestFor(incomingText: String, limit: Int = 3): List<Suggestion> {
+    suspend fun suggestFor(incomingText: String, limit: Int = 3): List<Suggestion> {
         val normalized = incomingText.lowercase().trim()
         if (normalized.isBlank()) return emptyList()
+
+        // LLM path with a hard ceiling of LLM_TIMEOUT_MS — a stalled endpoint
+        // shouldn't block chip suggestions forever. On timeout / exception /
+        // empty response we silently fall back to the regex baseline.
+        val llmTexts = runCatching {
+            withTimeout(LLM_TIMEOUT_MS) { llmSuggester.suggest(incomingText, limit) }
+        }.getOrElse {
+            if (it is TimeoutCancellationException) emptyList()
+            else emptyList()  // any other error: also fall back silently
+        }
+        if (llmTexts.isNotEmpty()) {
+            return llmTexts
+                .distinctBy { it.lowercase().trim() }
+                .take(limit)
+                .map { Suggestion(it, "llm") }
+        }
+
+        // Regex fallback — synchronous, deterministic, offline.
+        return matchRegexRules(normalized, limit)
+    }
+
+    /** Public for tests + the (future) debug toggle that forces regex-only. */
+    fun matchRegexRules(normalizedText: String, limit: Int = 3): List<Suggestion> {
         val out = mutableListOf<Suggestion>()
         val seen = mutableSetOf<String>()
         for (rule in RULES) {
             if (out.size >= limit) break
-            if (rule.trigger.containsMatchIn(normalized)) {
+            if (rule.trigger.containsMatchIn(normalizedText)) {
                 for (reply in rule.replies) {
                     if (out.size >= limit) break
                     if (seen.add(reply.lowercase())) {
@@ -51,6 +86,10 @@ class SuggestQuickReplyUseCase @Inject constructor() {
     )
 
     companion object {
+        // Hard timeout for the LLM call. Keeps the regex fallback responsive
+        // when the user picked a slow / unreachable endpoint.
+        private const val LLM_TIMEOUT_MS = 3_500L
+
         // Regex flags:
         //   - IGNORE_CASE is implicit via .lowercase() in suggestFor
         //   - we anchor as loose substring matches; specificity comes from

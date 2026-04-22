@@ -40,8 +40,8 @@ android {
         applicationId = "com.autogram.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 37
-        versionName = "1.14.1"
+        versionCode = 38
+        versionName = "1.15.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -160,6 +160,9 @@ dependencies {
     testImplementation(libs.mockk)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
+    // Real org.json instead of the Android stub so JSON parsing works in
+    // pure unit tests (no Robolectric needed).
+    testImplementation("org.json:json:20240303")
     androidTestImplementation(libs.junit.ext)
     androidTestImplementation(libs.espresso.core)
 }
