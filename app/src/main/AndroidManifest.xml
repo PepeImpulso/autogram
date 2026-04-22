@@ -147,6 +147,18 @@
                 <action android:name="androidx.car.app.CarAppService" />
                 <category android:name="androidx.car.app.category.IOT" />
             </intent-filter>
+            <!-- NAVIGATION category unlocks AA's NavigationTemplate + the
+                 SurfaceCallback API (AppManager.setSurfaceCallback). With
+                 SurfaceCallback we get a raw Canvas to draw the home
+                 screen ourselves — big Merlin circle, stacked shortcut
+                 chips, small secondary row — which isn't possible in
+                 GridTemplate/ListTemplate's fixed uniform-tile layout.
+                 Same technique Waze / Google Maps use to render rich UIs
+                 on the car head unit. -->
+            <intent-filter>
+                <action android:name="androidx.car.app.CarAppService" />
+                <category android:name="androidx.car.app.category.NAVIGATION" />
+            </intent-filter>
         </service>
 
         <!-- Foreground Service for MTProto receive loop -->

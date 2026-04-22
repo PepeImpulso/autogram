@@ -71,16 +71,42 @@ class MainScreen(
     private val cachedQuickReplies = MutableStateFlow<List<QuickReply>>(emptyList())
     private val cachedPinned = MutableStateFlow<List<Conversation>>(emptyList())
 
-    // Rendering 384×384 composite bitmaps on every `invalidate()` for 7-10
-    // tiles would be wasteful — AA may re-request the template several
-    // times per second during a state change. Cache the finished CarIcon
-    // keyed by a stable identity: for avatars `(id + photoPath + mtime)`
-    // invalidates the cache when the user changes the photo; for shortcut
-    // tiles `(id + kind)` is enough (background is fixed per kind).
+    // Unchanged from v1.17.x: icon cache only used by the fallback
+    // GridTemplate on the non-home screens (recording / status).
     private val iconCache: MutableMap<String, CarIcon> = HashMap()
+
+    // Custom canvas renderer for the home screen. Registered with AA's
+    // AppManager on screen start so AA hands us the Surface when the
+    // NavigationTemplate is shown. Unregistered on screen stop so other
+    // screens (recording, status) don't accidentally draw over the
+    // surface.
+    private val surfaceRenderer = AutogramSurfaceRenderer(carContext, screenScope).apply {
+        onPrimaryTap = { id -> startRecording(id) }
+        onSecondaryTap = { id -> startRecording(id) }
+        onShortcutTap = { qr -> sendShortcut(qr) }
+    }
 
     init {
         lifecycle.addObserver(object : androidx.lifecycle.DefaultLifecycleObserver {
+            override fun onStart(owner: androidx.lifecycle.LifecycleOwner) {
+                // Take ownership of the car surface whenever MainScreen
+                // is the visible screen. Releasing on onStop keeps other
+                // screens' templates (MessageTemplate for recording) from
+                // rendering our canvas behind them.
+                runCatching {
+                    carContext.getCarService(androidx.car.app.AppManager::class.java)
+                        .setSurfaceCallback(surfaceRenderer)
+                }.onFailure { Timber.w(it, "AppManager.setSurfaceCallback failed") }
+                pushState()
+            }
+
+            override fun onStop(owner: androidx.lifecycle.LifecycleOwner) {
+                runCatching {
+                    carContext.getCarService(androidx.car.app.AppManager::class.java)
+                        .setSurfaceCallback(null)
+                }
+            }
+
             override fun onDestroy(owner: androidx.lifecycle.LifecycleOwner) {
                 screenJob.cancel()
                 iconCache.clear()
@@ -100,15 +126,21 @@ class MainScreen(
         screenScope.launch {
             quickReplyRepository.observeAll().collect { list ->
                 cachedQuickReplies.value = list
+                pushState()
                 invalidate()
             }
         }
         screenScope.launch {
             conversationRepository.observePinned().collect { list ->
                 cachedPinned.value = list
+                pushState()
                 invalidate()
             }
         }
+    }
+
+    private fun pushState() {
+        surfaceRenderer.updateState(cachedPinned.value, cachedQuickReplies.value)
     }
 
     override fun onGetTemplate(): Template {
@@ -130,8 +162,21 @@ class MainScreen(
             is SendVoiceMtprotoUseCase.SendStatus.Error -> buildStatusTemplate(
                 carContext.getString(R.string.status_error) + ": ${status.message}"
             )
-            else -> buildMainGrid()
+            else -> buildHomeTemplate()
         }
+    }
+
+    /**
+     * Home = NavigationTemplate so AA hands us a raw Surface to render on
+     * (via AppManager.setSurfaceCallback → AutogramSurfaceRenderer). We
+     * skip setNavigationInfo/setMapActionStrip so the template shows
+     * nothing but our surface + the top ActionStrip.
+     */
+    private fun buildHomeTemplate(): Template {
+        return androidx.car.app.navigation.model.NavigationTemplate.Builder()
+            .setActionStrip(buildActionStrip())
+            .setBackgroundColor(CarColor.createCustom(0xFF121212.toInt(), 0xFF121212.toInt()))
+            .build()
     }
 
     private fun buildMainGrid(): GridTemplate {
