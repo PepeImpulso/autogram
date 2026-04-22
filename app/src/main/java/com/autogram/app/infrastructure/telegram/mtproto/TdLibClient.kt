@@ -38,7 +38,7 @@ import javax.inject.Singleton
 @Singleton
 class TdLibClient @Inject constructor(
     @ApplicationContext private val appContext: Context
-) {
+) : TdLibSender {
     companion object {
         init {
             // Must load the JNI lib before any TDLib class is touched.
@@ -52,7 +52,7 @@ class TdLibClient @Inject constructor(
     @Volatile private var client: Client? = null
 
     private val _authState = MutableStateFlow<AuthState>(AuthState.Uninitialized)
-    val authState: StateFlow<AuthState> = _authState.asStateFlow()
+    override val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
     /**
      * One-shot stream of auth errors that do NOT change [authState] (e.g. wrong
@@ -97,7 +97,7 @@ class TdLibClient @Inject constructor(
     }
 
     /** Submits a request and awaits the result without blocking the caller thread. */
-    suspend fun <T : TdApi.Object> send(query: TdApi.Function<T>): TdApi.Object {
+    override suspend fun <T : TdApi.Object> send(query: TdApi.Function<T>): TdApi.Object {
         val c = client ?: error("TDLib client not started")
         val deferred = CompletableDeferred<TdApi.Object>()
         c.send(query) { result ->

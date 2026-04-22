@@ -2,6 +2,8 @@ package com.autogram.app.ui.di
 
 import com.autogram.app.domain.repository.*
 import com.autogram.app.infrastructure.persistence.repository.*
+import com.autogram.app.infrastructure.telegram.mtproto.TdLibClient
+import com.autogram.app.infrastructure.telegram.mtproto.TdLibSender
 import com.autogram.app.infrastructure.transcription.AndroidOnDeviceTranscriptionEngine
 import com.autogram.app.infrastructure.transcription.TranscriptionEngine
 import com.autogram.app.BuildConfig
@@ -33,6 +35,9 @@ abstract class AppModule {
 
     @Binds @Singleton
     abstract fun bindCircleFolderRepository(impl: CircleFolderRepositoryImpl): CircleFolderRepository
+
+    @Binds @Singleton
+    abstract fun bindTdLibSender(impl: TdLibClient): TdLibSender
 
     @Binds @Singleton
     abstract fun bindTranscriptionEngine(impl: AndroidOnDeviceTranscriptionEngine): TranscriptionEngine

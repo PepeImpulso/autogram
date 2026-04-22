@@ -75,18 +75,22 @@ Ideas de mejora del modo coche no implementadas:
 
 ### Tests
 
-Cobertura actual **limitada pero no cero** (v1.13.0):
+Cobertura actual (post v1.15.0 + accumulated WIP):
 
 - ✅ [TtsPlayerDetectLocaleTest](app/src/test/java/com/autogram/app/infrastructure/audio/TtsPlayerDetectLocaleTest.kt) — 12 tests, detección Unicode
-- ✅ [SuggestQuickReplyUseCaseTest](app/src/test/java/com/autogram/app/domain/usecase/SuggestQuickReplyUseCaseTest.kt) — 10 tests, patrones ES+EN
+- ✅ [SuggestQuickReplyUseCaseTest](app/src/test/java/com/autogram/app/domain/usecase/SuggestQuickReplyUseCaseTest.kt) — 14 tests, patrones ES+EN + LLM-wins-over-regex + LLM-fallback
 - ✅ [ExportImportUseCaseTest](app/src/test/java/com/autogram/app/domain/usecase/ExportImportUseCaseTest.kt) — 8 tests, round-trip + magic versions + corrupt/wrong-pw
+- ✅ [LlmQuickReplySuggesterTest](app/src/test/java/com/autogram/app/infrastructure/suggestion/LlmQuickReplySuggesterTest.kt) — 9 tests, JSON parser tolerancia (markdown, preamble, malformed)
+- ✅ [PlayReplyUseCaseTest](app/src/test/java/com/autogram/app/domain/usecase/PlayReplyUseCaseTest.kt) — 18 tests, gates + state transitions + summary preference + stopAll
+
+**Total: 61 unit tests, 0 fallos.**
 
 Falta cobertura en:
 
-- `PlayReplyUseCase` — muchas ramas de estado, alto riesgo de regresión
-- `SendVoiceMtprotoUseCase.stopAndSend` (preview flow)
-- `RetryWorker` — el backoff y el maxRetries
+- `RetryWorker` — `CoroutineWorker` requiere Context, lo que necesita Robolectric o `androidx.work.testing`. **Path recomendado**: refactorizar para extraer la lógica a un `OutboxRetryUseCase` testeable y dejar el worker como shell delegador. Coste: ~1h, riesgo bajo, beneficio alto.
+- `SendVoiceMtprotoUseCase.stopAndSend` (preview flow) — flujo asíncrono complejo con múltiples states
 - `AndroidOnDeviceTranscriptionEngine` — decoder OGG→PCM puede tener edge cases con bitrates raros
+- `IncomingMessageNotifier` — verifica MessagingStyle + CarAppExtender se construye igual cuando el messageId es null
 
 Cuando un bug aparece en una de estas piezas, añadir el test de regresión antes del fix.
 
