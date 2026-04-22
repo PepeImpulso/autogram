@@ -158,9 +158,13 @@ class AutogramSurfaceRenderer(
         val w = width.toFloat()
         val h = height.toFloat()
 
-        // Reserve top-right area for AA's ActionStrip.
-        val topPadding = h * 0.14f
-        val sidePadding = w * 0.03f
+        // ActionStrip only occupies the top-RIGHT; the left side is free
+        // all the way up to the surface top. So content can start near
+        // y=0 on the left (where Merlin lives) — we only keep a small
+        // gutter. 0.14 was way too cautious and made Merlin look
+        // mid-canvas instead of top-aligned.
+        val topPadding = h * 0.04f
+        val sidePadding = w * 0.025f
         val contentTop = topPadding
         val contentBottom = h - h * 0.04f
 
@@ -187,14 +191,10 @@ class AutogramSurfaceRenderer(
                 radius = primaryRadius,
                 isPrimary = true
             )
-            drawTextCentered(
-                canvas = canvas,
-                text = tileTitle(primary),
-                cx = primaryCx,
-                cy = primaryCy + primaryRadius + w * 0.025f,
-                sizePx = w * 0.024f,
-                color = Color.WHITE
-            )
+            // Primary label deliberately omitted — the user's Merlin
+            // avatar already has "Merlín / CHIEF AI OFFICER" baked into
+            // the photo, and a duplicate external label was colliding
+            // with the secondary row below it.
             val hitBox = RectF(
                 primaryCx - primaryRadius,
                 primaryCy - primaryRadius,
