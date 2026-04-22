@@ -15,6 +15,12 @@
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- NavigationTemplate + SurfaceCallback require this permission.
+         Signature-protected by AA's host (Gearhead is signed with a
+         Google key that grants it). Declaring it enables Autogram's
+         custom canvas rendering on the car head unit — same mechanism
+         Waze and Google Maps use. -->
+    <uses-permission android:name="androidx.car.app.NAVIGATION_TEMPLATES" />
 
     <uses-feature
         android:name="android.hardware.type.automotive"
