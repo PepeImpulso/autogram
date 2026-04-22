@@ -452,12 +452,13 @@ class MainScreen(
         val canvas = Canvas(output)
         val center = sizePx / 2f
 
-        // Fill ratios: primary uses the full tile; secondaries shrink
-        // to ~76% so the tile reads as smaller. Ring + badge scale with
-        // the circle so proportions stay right.
-        val circleFill = if (isPrimary) 0.96f else 0.76f
+        // Fill ratios: primary fills the entire tile; secondaries
+        // shrink to ~55% so there's a dramatic (≈2×) size difference
+        // the user actually sees after AA downscales the bitmap. Ring
+        // + badge scale with the circle so proportions stay right.
+        val circleFill = if (isPrimary) 1.00f else 0.55f
         val circleRadius = (sizePx / 2f) * circleFill
-        val ringStroke = circleRadius * (if (isPrimary) 0.08f else 0.07f)
+        val ringStroke = circleRadius * (if (isPrimary) 0.10f else 0.09f)
         val photoRadius = circleRadius - ringStroke / 2f
 
         // ── Photo (or person-silhouette fallback) ────────────────────
@@ -481,9 +482,9 @@ class MainScreen(
 
         // ── Peach mic badge at bottom-right (scaled with circle) ─────
         // Primary badge is bigger for a stronger record-affordance cue;
-        // secondaries get a slightly smaller badge so the primary keeps
-        // the visual lead.
-        val badgeRadius = circleRadius * (if (isPrimary) 0.32f else 0.30f)
+        // secondaries get a smaller badge so the primary keeps the
+        // visual lead.
+        val badgeRadius = circleRadius * (if (isPrimary) 0.40f else 0.32f)
         // Place the badge's center where the circle's 45° edge meets a
         // 15° tuck-in, so it sits half-on, half-off the ring — same feel
         // as the phone's RecordCircle badge.
@@ -527,12 +528,16 @@ class MainScreen(
         val output = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(output)
 
+        // Chip fills nearly the whole canvas so the tile reads as a
+        // substantial button, not a tiny mark floating in empty space.
+        // Previous 0.76 fill was too timid — after AA's downsample the
+        // chip barely registered against the dark tile background.
         val center = sizePx / 2f
-        val chipSide = sizePx * 0.76f
+        val chipSide = sizePx * 0.94f
         val chipLeft = center - chipSide / 2f
         val chipTop = center - chipSide / 2f
         val chipRect = RectF(chipLeft, chipTop, chipLeft + chipSide, chipTop + chipSide)
-        val chipRadius = sizePx * 0.12f
+        val chipRadius = sizePx * 0.16f
 
         val chipPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
@@ -547,7 +552,7 @@ class MainScreen(
             tint = if (isVoice) COLOR_PEACH_BADGE else COLOR_GOLD_RING,
             cx = center,
             cy = center,
-            sizePx = chipSide * 0.50f
+            sizePx = chipSide * 0.60f
         )
 
         return output
@@ -622,13 +627,14 @@ class MainScreen(
     }
 
     companion object {
-        // Source bitmap size for every tile. AA downscales to whatever
-        // the head unit's tile slot is (varies by car). The 2024 Seat
-        // Ateca's MIB3 screen is 1280×720 → projected AA tiles land
-        // around 280-320px wide at ITEM_SIZE_LARGE, so a 512px source
-        // gives ~1.7× headroom for crisp downsampling without wasting
-        // memory on bitmaps larger than the largest realistic tile.
-        private const val AVATAR_TILE_SIZE: Int = 512
+        // Source bitmap size for every tile. The 2024 Seat Ateca's MIB3
+        // screen at 9.2" is 1280×640 native → AA projects tiles around
+        // 280-320px wide at ITEM_SIZE_LARGE. 768px gives ~2.5× oversample
+        // for crisp downsampling (antialiased downscales look sharper
+        // than a 1:1 match at AA's render-time filter settings).
+        // Memory: 768×768×4B = 2.3MB per tile × ~10 tiles = ~23MB
+        // cached, which is fine for a single-screen app.
+        private const val AVATAR_TILE_SIZE: Int = 768
 
         // Match the phone theme (see ui/theme/Color.kt extended colors).
         // Gold ring around each avatar + on the Bolt shortcut icon.
