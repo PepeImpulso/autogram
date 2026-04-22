@@ -146,16 +146,17 @@ class MainScreen(
     }
 
     private fun buildActionStrip(): ActionStrip {
+        // AA rule: an ActionStrip accepts at most ONE action with a
+        // custom title; the rest must be icon-only. We keep the title
+        // on "Voice command" (primary CTA, user needs to know it's
+        // voice-triggered) and drop the title from the silent toggle —
+        // the speaker icon + yellow tint when muted is clear enough.
         val isSilent = silentMode.value
         val silentIcon = if (isSilent) R.drawable.ic_silent else R.drawable.ic_volume_up
-        val silentLabel = carContext.getString(
-            if (isSilent) R.string.aa_silent_off else R.string.aa_silent_on
-        )
         return ActionStrip.Builder()
             .addAction(
                 Action.Builder()
                     .setIcon(carIcon(silentIcon, if (isSilent) CarColor.YELLOW else CarColor.DEFAULT))
-                    .setTitle(silentLabel)
                     .setOnClickListener { toggleSilent() }
                     .build()
             )
@@ -198,6 +199,9 @@ class MainScreen(
             .setTitle(carContext.getString(R.string.app_name))
             .setHeaderAction(Action.APP_ICON)
             .setIcon(carIcon(R.drawable.ic_mic, CarColor.RED))
+            // Same AA constraint as the home ActionStrip: max 1 action
+            // with a title. Keep the title on "Stop and send" (primary
+            // action) and make Cancel icon-only (red X is universal).
             .addAction(
                 Action.Builder()
                     .setTitle(carContext.getString(R.string.aa_stop_send))
@@ -208,7 +212,6 @@ class MainScreen(
             )
             .addAction(
                 Action.Builder()
-                    .setTitle(carContext.getString(R.string.aa_cancel))
                     .setIcon(carIcon(R.drawable.ic_cancel, CarColor.DEFAULT))
                     .setBackgroundColor(CarColor.SECONDARY)
                     .setOnClickListener {
@@ -234,7 +237,7 @@ class MainScreen(
             .setIcon(carIcon(icon, color))
             .addAction(
                 Action.Builder()
-                    .setTitle("Volver")
+                    .setTitle(carContext.getString(R.string.common_back))
                     .setOnClickListener {
                         sendMessageUseCase.reset()
                         invalidate()
