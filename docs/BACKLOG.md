@@ -1,111 +1,110 @@
 # Autogram — Backlog
 
-Pendientes **no ejecutados** del roadmap de las 16 mejoras y de las ideas posteriores. Este fichero es la memoria autoritativa: si algún día retomamos el proyecto, esto es lo que estaba en cola.
+Este fichero es la memoria autoritativa de lo que queda. Si alguien retoma el proyecto, esto es lo que había pendiente.
 
-Last updated: 2026-04-22.
-
----
-
-## Items del roadmap no entregados
-
-### #5 — Sugerencias contextuales de quick-reply  *(aplazado, depende de M4 completo)*
-
-Tras v1.8.0 ya tenemos `message.transcription`. Falta:
-- Heurísticas sencillas que lean la transcripción y propongan 2-3 frases de respuesta.
-  - Keywords simples: "¿dónde estás?" → chip "en casa", "llámame" → chip "te llamo ahora", "¿llegas?" → chip "en 10 min".
-  - Opcional: LLM via endpoint configurable (OpenAI/Claude/Ollama local) si el usuario mete un API key.
-- Aparecen como chips efímeros arriba de los atajos durante ~5 min tras recibir.
-- Toggle en Ajustes y gestión del endpoint LLM.
-
-Ficheros probables a tocar:
-- Nuevo `SuggestQuickReplyUseCase`
-- `MainViewModel` expone `suggestedChips: StateFlow<List<String>>`
-- `MainActivity` renderiza chips horizontalmente sobre el grid
-- Settings sección "Sugerencias inteligentes" con el endpoint LLM opcional
-
-### #4 — Resumen de mensajes largos  *(aplazado)*
-
-Si `message.transcription.wordCount > 200` → llamar a LLM para resumir a 1-2 frases.
-UI: muestra resumen como primer nivel; tap expande a texto completo + audio.
-Misma dependencia que #5 (endpoint LLM configurable).
-
-### #10 — Carpetas de círculos  *(aplazado — requiere iteración UX en vivo)*
-
-Agrupar círculos en pestañas. Plan concreto:
-- Nueva tabla `circle_folders(id, name, color, sortOrder)` — **migración v10→v11**.
-- `ConversationEntity` gana `folderId: String?`.
-- `MainActivity`: `TabRow` horizontal encima del grid. "Todos" + una pestaña por carpeta.
-- `FlowRow` filtra por la pestaña activa.
-- `ManagePinnedActivity`: nueva sección "Carpetas" con CRUD + asignación.
-
-Razón para no ejecutarlo autónomamente: toca la pantalla más usada y hay que iterar UX contigo.
-
-### #6 — Envío multicast  *(rechazado explícitamente)*
-
-El usuario declinó esta feature el 2026-04-22. No re-proponer. Ver `<local-user-dir>\.claude\projects\c--Dev-VS-Code---Apps-autogram\memory\feedback_multicast_abandoned.md`.
+Last updated: 2026-04-22 (tras v1.13.0).
 
 ---
 
-## Ideas propuestas durante la sesión (no votadas)
+## Roadmap de 16 mejoras — cerrado
 
-### Atajos Listen/Reply en la notificación  *(post-M3)*
+15 de 16 items entregados. El único que falta se cerró por decisión del usuario:
 
-La notificación actual de voz entrante (`IncomingMessageNotifier`) usa `MessagingStyle + CarAppExtender` pero sin acciones explícitas. Añadir:
-- `NotificationCompat.Action.Builder` con `RemoteInput` para responder (texto).
-- `ReplyAction` específico de Android Auto.
-- Acción "Escuchar" que, al tap, llama a `PlayReplyUseCase.playManually(messageId)`.
+| Item | Estado | Release |
+| --- | --- | --- |
+| #1 Transcripción de voz entrante | ✅ | v1.8.0 |
+| #2 TTS para respuestas de texto | ✅ | v1.6.0 |
+| #3 Rutado Bluetooth del coche | ✅ | v1.6.0 |
+| #4 Resumen de mensajes largos | ✅ | v1.11.0 |
+| #5 Sugerencias contextuales quick-reply | ✅ | v1.9.0 |
+| #6 Envío multi-círculo | ❌ rechazado | por usuario — ver memoria |
+| #7 Preview antes de enviar | ✅ | v1.5.0 |
+| #8 Haptic feedback | ✅ | v1.5.0 |
+| #9 Reordenar círculos | ✅ | v1.5.0 |
+| #10 Carpetas de círculos | ✅ | v1.13.0 |
+| #11 Cola offline + retry | ✅ | v1.4.0 |
+| #12 Crash reporting (Sentry) | ✅ | v1.4.0 |
+| #13 Bloqueo biométrico | ✅ | v1.5.0 |
+| #14 Limpieza audios huérfanos | ✅ | v1.4.0 |
+| #15 Wizard primera vez | ✅ | v1.7.0 |
+| #16 Exportar/importar config | ✅ | v1.7.0 |
 
-Utilidad: responder sin abrir la app desde wearables y AA.
+Además se shipearon **features adicionales** (no del roadmap original):
 
-### Whisper on-device como segundo engine  *(plan B para transcripción)*
-
-v1.8.0 usa `SpeechRecognizer` de Google. Si resulta insuficiente en la práctica (calidad, idioma, dependencia de servicios Google), la arquitectura `TranscriptionEngine` permite añadir una impl con `whisper.cpp`:
-- Añadir `whisper.cpp` como submódulo git + build nativo NDK
-- O usar un wrapper JitPack como `com.github.TadasAnt:whisper-cpp-android`
-- Modelo `base` multilingüe (~142 MB) descargable on-demand, no embebido
-- Cambiar el `@Binds` en `AppModule` para apuntar a la nueva impl
-
-Decisión se toma cuando se tenga tiempo de medir en el S25+ real.
-
-### Biometric toggle feedback  *(pulido)*
-
-Si el usuario activa "Unlock con huella" en un dispositivo sin biometría configurada, el toggle se guarda pero `BiometricGate.isSupported()` devuelve false y el gate se salta silenciosamente. Mejor:
-- Chequear `isSupported()` antes de persistir el toggle.
-- Si false → mostrar dialog "Configura primero una huella/PIN en Ajustes del sistema" con botón que abre `Settings.ACTION_BIOMETRIC_ENROLL`.
-
-### Atajos de teclado / accesibilidad en AA
-
-Probar que la app AA pasa el `CarAppApiLevelRestrictions` check y añadir:
-- Soporte de mando de volumen para cambiar velocidad de reproducción
-- Botón físico de "hang up" del coche para parar la reproducción
-
-### Métrica de uso offline
-
-Usar Sentry breadcrumbs o logs estructurados para medir:
-- % de mensajes que se encolaron offline
-- Tiempo medio entre encolado y envío exitoso
-- Tasa de `PERMANENTLY_FAILED`
+- **Listen/Reply actions** en notificaciones (v1.10.0) — con RemoteInput, útil en AA y wearables
+- **Auto-update prompt en pantalla inicio** (v1.10.0) — check cada 6h + dialog en Main + fallback a Ajustes
+- **Contadores opt-in** (v1.10.0) — toggle en Ajustes, default off
+- **Botón "reproducir original"** (v1.12.0) — para escuchar el audio del último mensaje resumido
+- **Rediseño premium** (v1.12.0) — ManagePinned y TargetPicker con ElevatedCards, chips, empty states
+- **Full security audit** (v1.8.1) — PBKDF2 600k, PFD leak, Mutex, Sentry PII scrub, MediaRecorder recovery
 
 ---
 
-## Deuda técnica detectada
+## Pendientes declarados pero **no críticos**
 
-### Retention worker + audio ya borrado manualmente
+### Whisper on-device como segundo engine de transcripción
 
-Si el usuario borra manualmente un `.ogg` (via un explorador de ficheros) antes de que retention cleanup corra, el path en DB queda apuntando a nada. El worker no lo repara — simplemente skippa. Podría invalidar `audioFilePath` a null tras detectar fichero inexistente.
+v1.8.0 usa Android `SpeechRecognizer`. Si Google rebaja la calidad o el soporte, la arquitectura `TranscriptionEngine` permite enchufar `whisper.cpp`:
 
-### Gesto de micro en pantalla lock
+- Añadir `whisper.cpp` como submódulo + build nativo NDK (o wrapper JitPack `com.github.TadasAnt:whisper-cpp-android`).
+- Modelo `base` multilingüe (~142 MB) descargable al activar, no embebido.
+- Cambiar `@Binds` en `AppModule.bindTranscriptionEngine` para apuntar a la nueva impl.
 
-Actualmente `RECORD_AUDIO` permission permite grabar incluso con la pantalla bloqueada (si la app está en primer plano). Falta probar/decidir si queremos que el long-press funcione en lock-screen widget.
+No urgente — `SpeechRecognizer` funciona bien en el S25+ del usuario.
 
-### Test coverage
+### AICore (Gemini Nano) — activación completa
 
-Prácticamente todo el código nuevo de M1-M6 no tiene tests. `ExportImportUseCase` en particular debería tener un test de round-trip (export → import → verificar igualdad), y `AndroidOnDeviceTranscriptionEngine` podría tener tests del decoder OGG→PCM.
+v1.11.0 integra Gemini Nano **via reflexión** así que no fuerza la dependencia. Cuando el artefacto `com.google.ai.edge.aicore:aicore` salga de early-access:
+
+1. Añadirlo a `app/build.gradle.kts`.
+2. Reemplazar la reflexión en [GeminiNanoSummarizationEngine.kt](app/src/main/java/com/autogram/app/infrastructure/summarization/GeminiNanoSummarizationEngine.kt) por la API tipada.
+
+Mientras tanto, el LLM endpoint cubre la feature.
+
+### Atajos de teclado / hardware en AA
+
+Ideas de mejora del modo coche no implementadas:
+
+- Mando de volumen → cambiar velocidad de reproducción
+- Botón físico "hang up" → parar reproducción
+- Grid con más de 8 secundarios visibles con paginación
+
+---
+
+## Deuda técnica conocida
+
+### Tests
+
+Cobertura actual **limitada pero no cero** (v1.13.0):
+
+- ✅ [TtsPlayerDetectLocaleTest](app/src/test/java/com/autogram/app/infrastructure/audio/TtsPlayerDetectLocaleTest.kt) — 12 tests, detección Unicode
+- ✅ [SuggestQuickReplyUseCaseTest](app/src/test/java/com/autogram/app/domain/usecase/SuggestQuickReplyUseCaseTest.kt) — 10 tests, patrones ES+EN
+- ✅ [ExportImportUseCaseTest](app/src/test/java/com/autogram/app/domain/usecase/ExportImportUseCaseTest.kt) — 8 tests, round-trip + magic versions + corrupt/wrong-pw
+
+Falta cobertura en:
+
+- `PlayReplyUseCase` — muchas ramas de estado, alto riesgo de regresión
+- `SendVoiceMtprotoUseCase.stopAndSend` (preview flow)
+- `RetryWorker` — el backoff y el maxRetries
+- `AndroidOnDeviceTranscriptionEngine` — decoder OGG→PCM puede tener edge cases con bitrates raros
+
+Cuando un bug aparece en una de estas piezas, añadir el test de regresión antes del fix.
+
+### Gesto en lock-screen
+
+Actualmente no hay widget de lock-screen para grabar. Posible mejora: un TileService en quick-settings que inicie la grabación sin desbloquear.
+
+### Retention + .ogg borrado manualmente
+
+v1.8.1 añadió `repairMissingAudioPaths` en `RetentionCleanupWorker`. Si el usuario borra un `.ogg` manualmente (file manager), la próxima corrida del worker null-ea el path. **Resuelto**.
 
 ---
 
 ## Cómo retomar
 
-1. Leer este fichero + `docs/RELEASE_OPS.md` (estado del roadmap) + la memoria en `.claude/projects/.../memory/MEMORY.md`.
-2. Comprobar qué hay en `master` vs `autogram-releases` — el estado actual es v1.8.0.
-3. Preguntar al usuario qué atacar; la lista es corta y cada punto está autocontenido.
+1. Leer este fichero + [docs/RELEASE_OPS.md](RELEASE_OPS.md) + la memoria en `.claude/projects/.../memory/MEMORY.md`.
+2. Estado actual: **v1.13.0 publicada** en `PepeImpulso/autogram-releases`.
+3. El roadmap está cerrado; para nuevo trabajo preguntar al usuario por prioridad.
+4. Antes de cualquier cambio de schema → bump de versión en [AutogramDatabase.kt](app/src/main/java/com/autogram/app/infrastructure/persistence/AutogramDatabase.kt) + migración no-destructiva.
+5. Antes de añadir un string → localizar en los 6 locales (values, values-es, -en, -fr, -de, -zh, -ja).
+6. Antes de una release → `scripts/publish_autogram_release.sh --manual X.Y.Z` desde la Windows box con keystore.
