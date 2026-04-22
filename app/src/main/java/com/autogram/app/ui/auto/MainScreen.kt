@@ -411,8 +411,15 @@ class MainScreen(
      * doesn't get crushed when AA downsamples our bitmap.
      */
     private fun micBadge(): androidx.car.app.model.Badge {
+        // setBackgroundColor requires setHasDot(true) — Badge throws
+        // IllegalStateException otherwise. "Dot" here means the filled
+        // circle chrome around the icon; without the dot the background
+        // colour has nothing to paint. With hasDot + backgroundColor +
+        // icon we get exactly the phone's "peach disc with white mic
+        // glyph" affordance, rendered by the car host natively.
         val peach = CarColor.createCustom(COLOR_PEACH_BADGE, COLOR_PEACH_BADGE)
         return androidx.car.app.model.Badge.Builder()
+            .setHasDot(true)
             .setBackgroundColor(peach)
             .setIcon(
                 CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_mic))
