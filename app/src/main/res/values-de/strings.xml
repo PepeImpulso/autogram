@@ -97,6 +97,7 @@
 
     <string name="aa_record">Aufnehmen</string>
     <string name="aa_stop_send">Stoppen und senden</string>
+    <string name="aa_recording_tap_to_send">Aufnahme · Tippen zum Senden</string>
     <string name="aa_cancel">Abbrechen</string>
     <string name="aa_silent_on">Stumm</string>
     <string name="aa_silent_off">Ton an</string>

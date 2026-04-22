@@ -96,6 +96,7 @@
 
     <string name="aa_record">録音</string>
     <string name="aa_stop_send">停止して送信</string>
+    <string name="aa_recording_tap_to_send">録音中 · タップで送信</string>
     <string name="aa_cancel">キャンセル</string>
     <string name="aa_silent_on">ミュート</string>
     <string name="aa_silent_off">音声オン</string>

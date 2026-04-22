@@ -103,6 +103,7 @@
     <!-- Android Auto labels -->
     <string name="aa_record">Grabar</string>
     <string name="aa_stop_send">Parar y enviar</string>
+    <string name="aa_recording_tap_to_send">Grabando · Toca para enviar</string>
     <string name="aa_cancel">Cancelar</string>
     <string name="aa_silent_on">Silenciar</string>
     <string name="aa_silent_off">Activar audio</string>

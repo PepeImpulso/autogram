@@ -97,6 +97,7 @@
 
     <string name="aa_record">Enregistrer</string>
     <string name="aa_stop_send">Arrêter et envoyer</string>
+    <string name="aa_recording_tap_to_send">Enregistrement · Touchez pour envoyer</string>
     <string name="aa_cancel">Annuler</string>
     <string name="aa_silent_on">Couper le son</string>
     <string name="aa_silent_off">Activer le son</string>

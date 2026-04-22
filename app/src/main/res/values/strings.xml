@@ -97,6 +97,7 @@
 
     <string name="aa_record">Record</string>
     <string name="aa_stop_send">Stop and send</string>
+    <string name="aa_recording_tap_to_send">Recording · Tap to send</string>
     <string name="aa_cancel">Cancel</string>
     <string name="aa_silent_on">Mute</string>
     <string name="aa_silent_off">Unmute</string>

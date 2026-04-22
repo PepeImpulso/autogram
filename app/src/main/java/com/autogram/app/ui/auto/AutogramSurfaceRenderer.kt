@@ -67,6 +67,19 @@ class AutogramSurfaceRenderer(
     var onPrimaryTap: (conversationId: String) -> Unit = {}
     var onSecondaryTap: (conversationId: String) -> Unit = {}
     var onShortcutTap: (quickReply: QuickReply) -> Unit = {}
+    // Fired when the user taps anywhere on the surface while the app
+    // is in the Recording state. AA gives us onClick only — no press/
+    // release events — so "hold to record, release to send" isn't
+    // achievable. Tap-to-start → tap-to-stop-and-send is the
+    // closest car-safe analogue.
+    var onStopAndSend: () -> Unit = {}
+
+    // Recording flag driven from MainScreen when SendStatus changes.
+    // When true, drawFrame renders a red pulse on the active target and
+    // treats any click as "stop and send" rather than a normal region
+    // hit-test.
+    @Volatile private var isRecording: Boolean = false
+    @Volatile private var activeTargetId: String? = null
 
     private var surfaceContainer: SurfaceContainer? = null
     private var visibleArea: Rect = Rect()
@@ -94,6 +107,12 @@ class AutogramSurfaceRenderer(
         requestRender()
     }
 
+    fun updateRecordingState(isRecording: Boolean, activeTargetId: String?) {
+        this.isRecording = isRecording
+        this.activeTargetId = activeTargetId
+        requestRender()
+    }
+
     override fun onSurfaceAvailable(surfaceContainer: SurfaceContainer) {
         Timber.i("AutogramSurfaceRenderer: surface available ${surfaceContainer.width}×${surfaceContainer.height}")
         this.surfaceContainer = surfaceContainer
@@ -117,6 +136,14 @@ class AutogramSurfaceRenderer(
     }
 
     override fun onClick(x: Float, y: Float) {
+        // During a recording, ANY tap on the surface stops and sends.
+        // This is the closest thing to "release to send" that AA
+        // allows us — onClick is the only touch event SurfaceCallback
+        // delivers (no onPressDown / onPressUp).
+        if (isRecording) {
+            onStopAndSend()
+            return
+        }
         // Reverse-walk so regions added last (drawn on top) hit-test first.
         regions.asReversed().firstOrNull { it.rect.contains(x, y) }?.action?.invoke()
     }
@@ -183,18 +210,16 @@ class AutogramSurfaceRenderer(
         val primaryCy = contentTop + primaryRadius
 
         if (primary != null) {
+            val isActive = isRecording && activeTargetId == primary.id
             drawAvatar(
                 canvas = canvas,
                 conv = primary,
                 cx = primaryCx,
                 cy = primaryCy,
                 radius = primaryRadius,
-                isPrimary = true
+                isPrimary = true,
+                isRecording = isActive
             )
-            // Primary label deliberately omitted — the user's Merlin
-            // avatar already has "Merlín / CHIEF AI OFFICER" baked into
-            // the photo, and a duplicate external label was colliding
-            // with the secondary row below it.
             val hitBox = RectF(
                 primaryCx - primaryRadius,
                 primaryCy - primaryRadius,
@@ -239,13 +264,15 @@ class AutogramSurfaceRenderer(
             visibleSecondaries.forEachIndexed { index, conv ->
                 val t = if (slotCount == 1) 0.5f else index / (slotCount - 1f)
                 val cx = rowLeft + (rowRight - rowLeft) * t
+                val isActive = isRecording && activeTargetId == conv.id
                 drawAvatar(
                     canvas = canvas,
                     conv = conv,
                     cx = cx,
                     cy = secondaryRowY,
                     radius = secondaryRadius,
-                    isPrimary = false
+                    isPrimary = false,
+                    isRecording = isActive
                 )
                 drawTextCentered(
                     canvas = canvas,
@@ -265,6 +292,35 @@ class AutogramSurfaceRenderer(
             }
         }
 
+        // Live recording banner — centred above Merlin so it doesn't
+        // collide with the ActionStrip. The user was asking for "press
+        // and release" semantics; AA won't deliver press events, so
+        // the banner documents the tap-to-stop affordance.
+        if (isRecording) {
+            val bannerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.FILL
+                color = COLOR_RECORDING_RED
+            }
+            val bannerHeight = h * 0.07f
+            val bannerWidth = w * 0.34f
+            val bannerLeft = (w - bannerWidth) / 2f
+            val bannerRect = RectF(
+                bannerLeft,
+                h * 0.005f,
+                bannerLeft + bannerWidth,
+                h * 0.005f + bannerHeight
+            )
+            canvas.drawRoundRect(bannerRect, bannerHeight / 2f, bannerHeight / 2f, bannerPaint)
+            drawTextCentered(
+                canvas = canvas,
+                text = carContext.getString(R.string.aa_recording_tap_to_send),
+                cx = bannerRect.centerX(),
+                cy = bannerRect.centerY(),
+                sizePx = bannerHeight * 0.46f,
+                color = Color.WHITE
+            )
+        }
+
         regions = newRegions
     }
 
@@ -274,12 +330,15 @@ class AutogramSurfaceRenderer(
         cx: Float,
         cy: Float,
         radius: Float,
-        isPrimary: Boolean
+        isPrimary: Boolean,
+        isRecording: Boolean = false
     ) {
         // Ring stroke: thinner than v1.18.x. User said the gold band
         // was too heavy; 4% on primary / 5% on secondaries reads as a
-        // clear accent without framing the photo into an icon.
-        val ringStroke = radius * (if (isPrimary) 0.04f else 0.05f)
+        // clear accent without framing the photo into an icon. When
+        // recording, we swap gold for red and thicken the ring so the
+        // active target is immediately obvious at a glance.
+        val ringStroke = radius * (if (isRecording) 0.08f else if (isPrimary) 0.04f else 0.05f)
         val photoRadius = radius - ringStroke
 
         // Photo layer — masked to a circle.
@@ -288,11 +347,13 @@ class AutogramSurfaceRenderer(
         val photoCircled = toCircleBitmap(photoBitmap, photoSize)
         canvas.drawBitmap(photoCircled, cx - photoRadius, cy - photoRadius, null)
 
-        // Gold ring.
+        // Ring. Red when this target is currently being recorded to,
+        // gold otherwise. The swap + thicker stroke (set above) gives
+        // a very obvious "active target" cue at car-screen distance.
         val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeWidth = ringStroke
-            color = COLOR_GOLD_RING
+            color = if (isRecording) COLOR_RECORDING_RED else COLOR_GOLD_RING
         }
         canvas.drawCircle(cx, cy, radius - ringStroke / 2f, ringPaint)
 
@@ -461,6 +522,8 @@ class AutogramSurfaceRenderer(
         private const val COLOR_SURFACE_BG: Int = 0xFF121212.toInt()
         private const val COLOR_GOLD_RING: Int = 0xFFD4A44C.toInt()
         private const val COLOR_PEACH_BADGE: Int = 0xFFFFA66A.toInt()
+        // Ring colour + "tap to send" hint while a recording is live.
+        private const val COLOR_RECORDING_RED: Int = 0xFFFF3D3D.toInt()
         private const val COLOR_CHIP_BG: Int = 0xFF3D2F26.toInt()
         private const val COLOR_SILHOUETTE_BG: Int = 0xFF3E4A56.toInt()
     }

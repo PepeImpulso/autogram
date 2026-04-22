@@ -84,6 +84,11 @@ class MainScreen(
         onPrimaryTap = { id -> startRecording(id) }
         onSecondaryTap = { id -> startRecording(id) }
         onShortcutTap = { qr -> sendShortcut(qr) }
+        // While a recording is in flight, ANY tap on the surface stops
+        // the recording and sends it. Closest approximation to "release
+        // to send" that AA's SurfaceCallback allows — onClick is the
+        // only pointer event we receive.
+        onStopAndSend = { stopAndSend() }
     }
 
     init {
@@ -113,7 +118,18 @@ class MainScreen(
             }
         })
         screenScope.launch {
-            sendMessageUseCase.status.collect { invalidate() }
+            sendMessageUseCase.status.collect { status ->
+                val isRecording = status is SendVoiceMtprotoUseCase.SendStatus.Recording
+                val activeId = sendMessageUseCase.activeTargetId.value
+                surfaceRenderer.updateRecordingState(isRecording, activeId)
+                invalidate()
+            }
+        }
+        screenScope.launch {
+            sendMessageUseCase.activeTargetId.collect { activeId ->
+                val isRecording = sendMessageUseCase.status.value is SendVoiceMtprotoUseCase.SendStatus.Recording
+                surfaceRenderer.updateRecordingState(isRecording, activeId)
+            }
         }
         screenScope.launch {
             manageSettingsUseCase.observe().collect {
@@ -145,7 +161,11 @@ class MainScreen(
 
     override fun onGetTemplate(): Template {
         return when (val status = sendMessageUseCase.status.value) {
-            is SendVoiceMtprotoUseCase.SendStatus.Recording -> buildRecordingTemplate()
+            // Recording stays on the home surface — the renderer shows
+            // a red ring on the active target + a top banner that any
+            // tap sends. Navigating away to MessageTemplate would tear
+            // down the surface and lose our custom canvas mid-recording.
+            is SendVoiceMtprotoUseCase.SendStatus.Recording -> buildHomeTemplate()
             is SendVoiceMtprotoUseCase.SendStatus.Sending -> buildStatusTemplate(carContext.getString(R.string.status_sending))
             is SendVoiceMtprotoUseCase.SendStatus.Sent -> {
                 resetJob?.cancel()
