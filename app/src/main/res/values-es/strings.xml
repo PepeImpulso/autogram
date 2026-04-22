@@ -238,6 +238,31 @@
     <string name="stats_last_7_days">Últimos 7 días</string>
     <string name="stats_no_data">Aún no hay datos para mostrar.</string>
     <string name="history_empty">Aún no hay mensajes.</string>
+    <string name="history_empty_sub">Cuando Merlin u otro chat fijado te envíe una voz o texto, aparecerá aquí.</string>
+    <string name="history_direction_incoming">Entrante</string>
+    <string name="history_direction_outgoing">Saliente</string>
+    <string name="history_voice_note">Nota de voz · %1$s</string>
+    <string name="history_no_content">(sin contenido)</string>
+    <string name="history_today">Hoy</string>
+    <string name="history_yesterday">Ayer</string>
+    <string name="history_state_sent">Enviado</string>
+    <string name="history_state_sending">Enviando…</string>
+    <string name="history_state_queued">En cola</string>
+    <string name="history_state_queued_offline">En cola (sin conexión)</string>
+    <string name="history_state_failed">Error</string>
+    <string name="history_state_failed_permanent">No se reintentará</string>
+    <string name="history_state_received">Nuevo</string>
+    <string name="history_state_pending_playback">Pendiente</string>
+    <string name="history_state_playing">Reproduciendo…</string>
+    <string name="history_state_paused">Pausado</string>
+    <string name="history_state_played">Reproducido</string>
+    <string name="playback_play_cd">Reproducir</string>
+    <string name="playback_pause_cd">Pausar</string>
+    <string name="stats_legend_sent">Enviados</string>
+    <string name="stats_legend_received">Recibidos</string>
+    <string name="stats_empty_title">Aún sin actividad</string>
+    <string name="stats_empty_sub">Envía un mensaje de voz o recibe una respuesta y las estadísticas aparecerán aquí.</string>
+    <string name="stats_last7_sub">Enviados y recibidos por día</string>
 
     <!-- Pinned / target pickers -->
     <string name="pinned_title">Accesos rápidos</string>
