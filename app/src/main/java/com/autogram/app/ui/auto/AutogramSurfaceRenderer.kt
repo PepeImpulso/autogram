@@ -121,7 +121,19 @@ class AutogramSurfaceRenderer(
     // used inside `drawDrawableCentered`. Without this we'd allocate a
     // fresh Bitmap per-glyph per-frame (~30 bitmaps/frame × redraws per
     // state change = sustained GC pressure on cheaper head units).
-    private val drawableRasterCache: ConcurrentHashMap<Long, Bitmap> = ConcurrentHashMap()
+    //
+    // Bounded: shortcut chip + avatar badge sizes depend on dynamic
+    // layout (surface dimensions, number of visible shortcuts), so
+    // surface-size changes across connection/rotation cycles could
+    // otherwise accumulate entries indefinitely. LinkedHashMap in
+    // access-order mode evicts the least-recently-used glyph.
+    private val drawableRasterCache: MutableMap<Long, Bitmap> =
+        java.util.Collections.synchronizedMap(
+            object : LinkedHashMap<Long, Bitmap>(DRAWABLE_CACHE_MAX, 0.75f, true) {
+                override fun removeEldestEntry(eldest: Map.Entry<Long, Bitmap>?): Boolean =
+                    size > DRAWABLE_CACHE_MAX
+            }
+        )
 
     // Conflated draw pipeline. Multiple upstream signals (pinned flow,
     // shortcuts flow, recording state, visible-area change) emit in
@@ -173,6 +185,11 @@ class AutogramSurfaceRenderer(
     override fun onSurfaceDestroyed(surfaceContainer: SurfaceContainer) {
         Timber.i("AutogramSurfaceRenderer: surface destroyed")
         this.surfaceContainer = null
+        // Raster cache is sized-dependent and the next surface may come
+        // back at a different dimension (orientation change, reconnect
+        // to a different head unit). Cheaper to rebuild than to keep
+        // stale sizes around.
+        drawableRasterCache.clear()
     }
 
     /**
@@ -578,20 +595,37 @@ class AutogramSurfaceRenderer(
         sizePx: Float
     ) {
         val intSize = sizePx.toInt().coerceAtLeast(1)
-        // Cache key: pack resId (up to 20 bits in practice), tint (full
-        // 32 bits) and intSize (bounded) into a Long so we reuse the
-        // same rasterised bitmap across frames for the same glyph.
-        val key = (resId.toLong() and 0xFFFFF shl 44) or
-            (intSize.toLong() and 0x3FFF shl 30) or
+        // Cache key: pack resId (20 bits), intSize (14 bits) and tint
+        // (lower 30 bits) into a single Long so we reuse the same
+        // rasterised bitmap across frames for the same glyph.
+        //
+        // NOTE: explicit parentheses are critical. Kotlin's `and` and
+        // `shl` are BOTH infix operators with the same precedence and
+        // left-to-right associativity, so the obvious-looking
+        // `a.toLong() and 0xFFFFF shl 44` actually parses as
+        // `a.toLong() and (0xFFFFF shl 44)` — masking `a` with a
+        // pre-shifted sentinel and dropping all of its low bits. That
+        // caused cache collisions between different glyphs sharing high
+        // bits. Wrap every `and` in its own parens.
+        val key = ((resId.toLong() and 0xFFFFF) shl 44) or
+            ((intSize.toLong() and 0x3FFF) shl 30) or
             (tint.toLong() and 0x3FFFFFFF)
-        val bitmap = drawableRasterCache.getOrPut(key) {
+        // `getOrPut` on Collections.synchronizedMap isn't atomic
+        // (get+put are synchronized individually, but the block in
+        // between is not), so two draw frames could race and produce
+        // two bitmaps. Negligible: one gets overwritten; both are
+        // identical content anyway. Kept simple rather than locking
+        // the whole map across the drawable rasterisation.
+        val bitmap = drawableRasterCache[key] ?: run {
             val drawable = ContextCompat.getDrawable(carContext, resId)?.mutate()
-                ?: return@getOrPut Bitmap.createBitmap(intSize, intSize, Bitmap.Config.ARGB_8888)
             val bmp = Bitmap.createBitmap(intSize, intSize, Bitmap.Config.ARGB_8888)
-            val tmpCanvas = Canvas(bmp)
-            drawable.setTint(tint)
-            drawable.setBounds(0, 0, intSize, intSize)
-            drawable.draw(tmpCanvas)
+            if (drawable != null) {
+                val tmpCanvas = Canvas(bmp)
+                drawable.setTint(tint)
+                drawable.setBounds(0, 0, intSize, intSize)
+                drawable.draw(tmpCanvas)
+            }
+            drawableRasterCache[key] = bmp
             bmp
         }
         canvas.drawBitmap(bitmap, cx - intSize / 2f, cy - intSize / 2f, null)
@@ -603,6 +637,13 @@ class AutogramSurfaceRenderer(
         // any car-budget grid will show at once (primary + up to ~8
         // secondaries + a handful of shortcut overflow).
         private const val PHOTO_CACHE_MAX: Int = 12
+
+        // Cap drawable raster cache. Each glyph ~4-16KB, ~8 distinct
+        // keys active in a typical render (mic/bolt/person × 2-3
+        // sizes × a few tints). 24 leaves safety margin across
+        // surface-size changes (e.g. phone orientation switch
+        // mid-session) without accumulating indefinitely.
+        private const val DRAWABLE_CACHE_MAX: Int = 24
 
         // AA's dark tile background. Near-black with a whisper of warmth
         // so the gold ring reads against it without flattening to pure

@@ -167,12 +167,23 @@ class QuickRepliesSettingsViewModel @Inject constructor(
                             runCatching { staging.delete() }
                             return@launch
                         }
-                        val renamed = runCatching {
-                            if (dst.exists()) dst.delete()
-                            staging.renameTo(dst)
-                        }.getOrDefault(false)
-                        if (!renamed) {
-                            Timber.w("voice shortcut save: rename staging→dst failed; keeping previous file")
+                        // Atomic replace: Files.move + REPLACE_EXISTING
+                        // maps to POSIX rename(2) on Android, which is
+                        // atomic at the filesystem level. Previous
+                        // code did `dst.delete() + staging.renameTo(dst)`
+                        // which had a window between delete and rename
+                        // where a process kill would leave the user
+                        // with the old shortcut gone and no replacement.
+                        val moved = runCatching {
+                            java.nio.file.Files.move(
+                                staging.toPath(),
+                                dst.toPath(),
+                                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                                java.nio.file.StandardCopyOption.ATOMIC_MOVE
+                            )
+                        }
+                        if (moved.isFailure) {
+                            Timber.w(moved.exceptionOrNull(), "voice shortcut save: atomic move failed; keeping previous file")
                             runCatching { staging.delete() }
                             return@launch
                         }

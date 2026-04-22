@@ -41,6 +41,14 @@ class TtsPlayer @Inject constructor(
     // in PlayReplyUseCase relies on that callback to fire playNext,
     // so a lost callback = queue stuck forever.
     @Volatile private var pendingOnDone: (() -> Unit)? = null
+    // Utterance id the pending callback is tied to. TTS engine's
+    // OnUtteranceProgressListener delivers onDone/onError for each
+    // utterance on its own binder thread, which can race a subsequent
+    // speak() that already replaced pendingOnDone — we'd fire the new
+    // utterance's callback on the old utterance's listener event.
+    // Matching `id` against the one we handed to `tts.speak()` shuts
+    // that race cleanly.
+    @Volatile private var pendingUtteranceId: String? = null
 
     /**
      * Reads [text] aloud. By default picks the voice for the UI locale, but
@@ -82,27 +90,31 @@ class TtsPlayer @Inject constructor(
         // PlayReplyUseCase.playNext never runs and the queue freezes.
         val previousOnDone = pendingOnDone
         pendingOnDone = null
+        pendingUtteranceId = null
         runCatching { tts.stop() }
         previousOnDone?.invoke()
 
-        pendingOnDone = onDone
         val utteranceId = UUID.randomUUID().toString()
+        pendingOnDone = onDone
+        pendingUtteranceId = utteranceId
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(id: String?) {}
-            override fun onDone(id: String?) {
-                val cb = pendingOnDone
-                pendingOnDone = null
-                cb?.invoke()
-            }
+            override fun onDone(id: String?) = fireIfMatches(id)
             @Deprecated("Deprecated in API 21", ReplaceWith(""))
-            override fun onError(id: String?) {
+            override fun onError(id: String?) = fireIfMatches(id)
+            override fun onError(id: String?, errorCode: Int) = fireIfMatches(id)
+
+            private fun fireIfMatches(id: String?) {
+                // Listener events for a stopped utterance may arrive
+                // AFTER the next speak() has replaced pendingOnDone.
+                // Only fire if the event belongs to the utterance we
+                // currently track — otherwise the new utterance's
+                // callback would be invoked at the old utterance's
+                // stop event, chaining playNext() too early.
+                if (id == null || id != pendingUtteranceId) return
                 val cb = pendingOnDone
                 pendingOnDone = null
-                cb?.invoke()
-            }
-            override fun onError(id: String?, errorCode: Int) {
-                val cb = pendingOnDone
-                pendingOnDone = null
+                pendingUtteranceId = null
                 cb?.invoke()
             }
         })
@@ -112,6 +124,7 @@ class TtsPlayer @Inject constructor(
             Timber.w(it, "TtsPlayer.speak failed")
             val cb = pendingOnDone
             pendingOnDone = null
+            pendingUtteranceId = null
             cb?.invoke()
         }
     }
@@ -124,6 +137,7 @@ class TtsPlayer @Inject constructor(
         // is a no-op.
         val previousOnDone = pendingOnDone
         pendingOnDone = null
+        pendingUtteranceId = null
         runCatching { engine?.stop() }
         previousOnDone?.invoke()
     }

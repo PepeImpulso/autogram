@@ -87,6 +87,24 @@ class SendVoiceMtprotoUseCase @Inject constructor(
         if (audioRecorder.isRecording()) {
             return Result.failure(IllegalStateException("Ya hay una grabación en curso"))
         }
+        // Reject starts when a previous send is mid-flight. Without
+        // this guard, a user double-tap while the pipeline is
+        // Validating / Sending / PreviewReady starts a new recording
+        // that overwrites `currentAudioFile`, flipping the UI out of
+        // the Sending state and potentially shipping a corrupt send.
+        // Allow starts from terminal states (Idle / Sent / Error /
+        // Discarded / QueuedOffline) — the previous send is done.
+        when (_status.value) {
+            SendStatus.Idle,
+            is SendStatus.Sent,
+            is SendStatus.Error,
+            is SendStatus.Discarded,
+            SendStatus.QueuedOffline -> Unit
+            else -> {
+                Timber.w("startRecording refused — pipeline busy in state ${_status.value}")
+                return Result.failure(IllegalStateException("Pipeline ocupado: ${_status.value::class.simpleName}"))
+            }
+        }
         // Interrupt any voice reply currently playing so the driver can speak over
         // an unwanted/long-winded answer from Merlin and send their own prompt.
         // Also drops any queued pending playbacks.
