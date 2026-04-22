@@ -1,15 +1,18 @@
 package com.autogram.app.ui.auto
 
+import android.content.Intent
 import androidx.car.app.CarAppService
 import androidx.car.app.Screen
 import androidx.car.app.Session
 import androidx.car.app.validation.HostValidator
+import androidx.core.content.ContextCompat
 import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.QuickReplyRepository
 import com.autogram.app.domain.usecase.ManageSettingsUseCase
 import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.domain.usecase.SendVoiceMtprotoUseCase
 import com.autogram.app.infrastructure.platform.VoiceCommandRecognizer
+import com.autogram.app.service.MtprotoReceiverService
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -33,6 +36,24 @@ class AutogramCarAppService : CarAppService() {
         // the manifest isn't being matched — e.g. the user hasn't enabled
         // "Unknown sources" in Android Auto → Developer Settings.
         timber.log.Timber.i("AutogramCarAppService onCreate — AA instantiated the service")
+
+        // Start MtprotoReceiverService so TDLib is authenticated and
+        // ready before the user taps Record on the car screen. Without
+        // this, launching Autogram *only* via Android Auto (without ever
+        // opening MainActivity on the phone) leaves TDLib un-initialised
+        // — voice messages get recorded, validated, and silently queue
+        // offline forever because authState never reaches Ready.
+        // startForegroundService is idempotent: if the service is
+        // already running (e.g. MainActivity was opened earlier) this
+        // is a no-op.
+        runCatching {
+            val intent = Intent(this, MtprotoReceiverService::class.java).apply {
+                action = MtprotoReceiverService.ACTION_START
+            }
+            ContextCompat.startForegroundService(this, intent)
+        }.onFailure {
+            timber.log.Timber.w(it, "Failed to start MtprotoReceiverService from CarApp context")
+        }
     }
 
     override fun createHostValidator(): HostValidator {
