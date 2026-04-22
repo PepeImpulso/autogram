@@ -5,6 +5,7 @@ import com.autogram.app.domain.repository.SettingsRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Headers
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -46,6 +47,11 @@ class LlmQuickReplySuggester @Inject constructor(
             if (endpoint.isBlank()) return@withContext emptyList()
             val url = if (endpoint.endsWith("/chat/completions")) endpoint
                       else endpoint.trimEnd('/') + "/chat/completions"
+            val parsed = url.toHttpUrlOrNull()
+            if (parsed == null || (parsed.scheme != "http" && parsed.scheme != "https")) {
+                Timber.w("LLM suggest endpoint invalid — falling back to regex")
+                return@withContext emptyList()
+            }
 
             val systemPrompt = buildString {
                 append("You suggest short canned replies for a chat message. ")

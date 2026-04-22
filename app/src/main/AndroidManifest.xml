@@ -65,17 +65,17 @@
         <activity
             android:name=".ui.phone.ManagePinnedActivity"
             android:exported="false"
-            android:label="Accesos rápidos" />
+            android:label="@string/pinned_title" />
 
         <activity
             android:name=".ui.phone.PinnedPickerActivity"
             android:exported="false"
-            android:label="Añadir acceso rápido" />
+            android:label="@string/picker_add_shortcut_title" />
 
         <activity
             android:name=".ui.phone.QuickRepliesSettingsActivity"
             android:exported="false"
-            android:label="Respuestas rápidas" />
+            android:label="@string/quick_replies_title" />
 
         <activity
             android:name=".ui.phone.HistoryActivity"

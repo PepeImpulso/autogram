@@ -24,11 +24,13 @@ cd "$REPO_ROOT"
 
 MODE="ci"
 PUSH_TAG=1
+NOTES_ARG=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --manual) MODE="manual"; shift ;;
         --no-tag) PUSH_TAG=0; shift ;;
         --tag)    PUSH_TAG=1; shift ;;
+        --notes)  NOTES_ARG="$2"; shift 2 ;;
         -h|--help)
             grep -E '^# ' "${BASH_SOURCE[0]}" | sed 's/^# //'
             exit 0 ;;
@@ -112,18 +114,40 @@ if [[ "$PUSH_TAG" == "1" ]]; then
 fi
 
 # Publish (or replace) the release on the public repo.
+# Release-notes discovery order:
+#   1. explicit --notes <file>
+#   2. docs/release-notes/<TAG>.md in-repo
+#   3. fallback stub with build info
 TITLE="$TAG"
-NOTES_FILE="$(mktemp)"
-cat > "$NOTES_FILE" <<EOF
+NOTES_FILE=""
+CLEANUP_NOTES=0
+if [[ -n "$NOTES_ARG" ]]; then
+    if [[ ! -f "$NOTES_ARG" ]]; then
+        echo "ERROR: --notes file not found: $NOTES_ARG" >&2
+        exit 1
+    fi
+    NOTES_FILE="$NOTES_ARG"
+elif [[ -f "$REPO_ROOT/docs/release-notes/$TAG.md" ]]; then
+    NOTES_FILE="$REPO_ROOT/docs/release-notes/$TAG.md"
+    echo "[publish] using notes from docs/release-notes/$TAG.md"
+else
+    NOTES_FILE="$(mktemp)"
+    CLEANUP_NOTES=1
+    cat > "$NOTES_FILE" <<EOF
 Autogram $TAG
 
 Build: local signed ($(date -Iseconds)).
 Source commit: $(git rev-parse --short HEAD).
+
+(No release notes file found at docs/release-notes/$TAG.md — consider
+adding one in NitrOdoo format for future users.)
 EOF
+fi
 
 if gh release view "$TAG" --repo PepeImpulso/autogram-releases >/dev/null 2>&1; then
-    echo "[publish] release $TAG already exists — uploading APK as asset update"
+    echo "[publish] release $TAG already exists — uploading APK as asset update + refreshing notes"
     gh release upload "$TAG" "$STAGED" --repo PepeImpulso/autogram-releases --clobber
+    gh release edit "$TAG" --repo PepeImpulso/autogram-releases --notes-file "$NOTES_FILE"
 else
     gh release create "$TAG" "$STAGED" \
         --repo PepeImpulso/autogram-releases \
@@ -131,7 +155,7 @@ else
         --notes-file "$NOTES_FILE"
 fi
 
-rm -f "$NOTES_FILE"
+[[ "$CLEANUP_NOTES" == "1" ]] && rm -f "$NOTES_FILE"
 
 echo
 echo "[publish] OK"

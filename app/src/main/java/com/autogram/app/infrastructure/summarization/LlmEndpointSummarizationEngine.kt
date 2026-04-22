@@ -4,6 +4,7 @@ import com.autogram.app.domain.repository.SettingsRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Headers
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -46,6 +47,11 @@ class LlmEndpointSummarizationEngine @Inject constructor(
             }
             val url = if (endpoint.endsWith("/chat/completions")) endpoint
                       else endpoint.trimEnd('/') + "/chat/completions"
+            val parsed = url.toHttpUrlOrNull()
+            if (parsed == null || (parsed.scheme != "http" && parsed.scheme != "https")) {
+                Timber.w("LLM summary endpoint invalid (scheme or parse)")
+                return@withContext SummarizationEngine.Result.Error("invalid endpoint")
+            }
 
             val systemPrompt = buildString {
                 append("You are a summarizer. Output a 1-2 sentence summary only. ")

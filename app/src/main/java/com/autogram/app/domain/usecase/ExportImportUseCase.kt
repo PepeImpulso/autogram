@@ -129,6 +129,16 @@ class ExportImportUseCase @Inject constructor(
         if (encrypted.size < MAGIC_SIZE + SALT_SIZE + IV_SIZE + GCM_TAG_BITS / 8) {
             return ImportResult.Corrupt
         }
+        // Upper bound: a legitimate backup contains settings + quick-replies
+        // + conversations (no secrets) + base64'd circle photos. 50 MB is
+        // ~25 MB of raw photos, already well beyond anything a user would
+        // accumulate. A hostile .autogram file could otherwise OOM the
+        // import because we hold plaintext + BackupPayload + base64 bytes
+        // all in heap.
+        if (encrypted.size > MAX_BACKUP_BYTES) {
+            Timber.w("Import refused: backup size ${encrypted.size} > $MAX_BACKUP_BYTES")
+            return ImportResult.Corrupt
+        }
         val magic = encrypted.copyOfRange(0, MAGIC_SIZE)
         val iters = supportedMagics[magic.toList()]
             ?: return if (looksLikeAugbkp(magic)) ImportResult.UnsupportedVersion
@@ -255,6 +265,7 @@ class ExportImportUseCase @Inject constructor(
         private const val KDF_ITERATIONS_V1 = 100_000
         private const val KDF_ITERATIONS_V2 = 600_000
         private const val BACKUP_SCHEMA_VERSION = 1
+        private const val MAX_BACKUP_BYTES = 50 * 1024 * 1024
 
         private val supportedMagics: Map<List<Byte>, Int> = mapOf(
             MAGIC_V1.toList() to KDF_ITERATIONS_V1,
