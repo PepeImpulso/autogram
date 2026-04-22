@@ -192,6 +192,51 @@ class PlayReplyUseCase @Inject constructor(
      * in English plays back in an English voice regardless of the device
      * default. Marks the row PLAYED when the utterance finishes.
      */
+    /**
+     * Speak whatever short text best represents [message] — prefers summary
+     * over transcription over original textContent. Used by the receiver
+     * service when `summarizeLongMessages` is on, in place of the original
+     * audio playback. TTS picks its voice based on the text's detected
+     * script so a Spanish summary isn't read with an English voice.
+     */
+    suspend fun playSummaryOrTranscription(message: Message, isCallActive: Boolean = false) {
+        val text = message.summary?.takeIf { it.isNotBlank() }
+            ?: message.transcription?.takeIf { it.isNotBlank() }
+            ?: message.textContent?.takeIf { it.isNotBlank() }
+            ?: return
+        val settings = settingsRepository.get()
+        if (isCallActive) {
+            enqueuePending(message, PendingReason.IN_CALL); return
+        }
+        if (settings.silentMode) {
+            enqueuePending(message, PendingReason.SILENT_MODE); return
+        }
+        if (!settings.autoPlayReplies) return
+
+        currentPlayingId = message.id
+        messageRepository.update(message.copy(state = MessageState.PLAYING))
+        _playbackStatus.value = PlaybackStatus.Playing(message.id)
+        val fallback = com.autogram.app.infrastructure.audio.TtsPlayer
+            .detectLocale(text, java.util.Locale.getDefault())
+        val locale = if (settings.languageTag.isNotBlank())
+            java.util.Locale.forLanguageTag(settings.languageTag)
+        else java.util.Locale.getDefault()
+        // Content-based override wins over UI locale if the script doesn't
+        // match (e.g. UI is English but the summary came out in Spanish).
+        val detected = com.autogram.app.infrastructure.audio.TtsPlayer.detectLocale(text, locale)
+        ttsPlayer.speak(text, locale = detected) {
+            playbackScope.launch {
+                messageRepository.update(message.copy(
+                    state = MessageState.PLAYED,
+                    playedAt = System.currentTimeMillis()
+                ))
+                currentPlayingId = null
+                _playbackStatus.value = PlaybackStatus.Idle
+                playNext()
+            }
+        }
+    }
+
     suspend fun playTextMessage(message: Message, isCallActive: Boolean = false) {
         val text = message.textContent ?: return
         if (text.isBlank()) return

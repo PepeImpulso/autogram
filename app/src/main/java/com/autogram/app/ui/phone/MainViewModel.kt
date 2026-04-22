@@ -8,6 +8,7 @@ import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.domain.repository.QuickReplyRepository
 import com.autogram.app.domain.repository.SettingsRepository
+import com.autogram.app.domain.model.Message
 import com.autogram.app.domain.model.MessageDirection
 import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.domain.usecase.SendVoiceMtprotoUseCase
@@ -51,6 +52,31 @@ class MainViewModel @Inject constructor(
     val sendStatus: StateFlow<SendVoiceMtprotoUseCase.SendStatus> = sendMessageUseCase.status
     val playbackStatus: StateFlow<PlayReplyUseCase.PlaybackStatus> = playReplyUseCase.playbackStatus
     val activeTargetId: StateFlow<String?> = sendMessageUseCase.activeTargetId
+
+    /**
+     * Most-recent incoming message *with a playable audio file* for the
+     * currently-active target. When summarize mode is on the user never
+     * hears the original by default — this flow feeds the "Play original"
+     * button on Main so they can tap into the raw audio whenever they want
+     * more detail than the 1-2 sentence summary.
+     */
+    val lastIncomingWithAudio: StateFlow<Message?> =
+        combine(
+            messageRepository.observeAllAcrossConversations(),
+            activeTargetId
+        ) { messages, activeId ->
+            if (activeId == null) null
+            else messages.asSequence()
+                .filter { it.conversationId == activeId }
+                .filter { it.direction == MessageDirection.INCOMING }
+                .filter { !it.audioFilePath.isNullOrBlank() }
+                .maxByOrNull { it.createdAt }
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    fun playLastOriginal() {
+        val msg = lastIncomingWithAudio.value ?: return
+        viewModelScope.launch { playReplyUseCase.playManually(msg) }
+    }
 
     val pinned: StateFlow<List<Conversation>> =
         conversationRepository.observePinned()

@@ -9,6 +9,7 @@
     <!-- Common -->
     <string name="common_back">Volver</string>
     <string name="common_dismiss">Cerrar</string>
+    <string name="main_play_last_original">Reproducir original</string>
     <string name="common_cancel">Cancelar</string>
     <string name="common_close">Cerrar</string>
     <string name="common_save">Guardar</string>
@@ -117,6 +118,9 @@
     <string name="settings_section_security_sub">Quién puede abrir Autogram.</string>
     <string name="settings_biometric_lock">Desbloquear con huella</string>
     <string name="settings_biometric_lock_sub">Pide huella o PIN al reabrir la app.</string>
+    <string name="settings_biometric_missing_title">Configura antes una huella o PIN</string>
+    <string name="settings_biometric_missing_body">Este dispositivo no tiene huella ni bloqueo de pantalla configurado, así que activar el bloqueo no serviría. Configúralo en los ajustes del sistema y vuelve.</string>
+    <string name="settings_biometric_open_enrol">Abrir ajustes del sistema</string>
     <string name="biometric_unlock_subtitle">Desbloquea para continuar</string>
     <string name="preview_title">Revisar y enviar</string>
     <string name="preview_play">Reproducir</string>
@@ -244,9 +248,18 @@
     <string name="pinned_move_up">Subir</string>
     <string name="pinned_move_down">Bajar</string>
     <string name="pinned_background_cd">Imagen de fondo</string>
+    <string name="pinned_set_photo">Poner foto</string>
+    <string name="pinned_clear_photo">Quitar foto</string>
+    <string name="pinned_mark_primary">Convertir en principal</string>
+    <string name="pinned_more_actions">Más acciones</string>
     <string name="pinned_zoom_hint">Pellizca para hacer zoom · arrastra para mover</string>
     <string name="picker_add_shortcut_title">Añadir acceso rápido</string>
     <string name="picker_choose_chat">Elige chat</string>
+    <string name="picker_choose_topic">Elige tema</string>
+    <string name="picker_search_chat_placeholder">Buscar chats</string>
+    <string name="picker_search_topic_placeholder">Buscar temas</string>
+    <string name="picker_search_no_match">Sin resultados para \"%1$s\"</string>
+    <string name="picker_loading">Cargando chats…</string>
     <string name="picker_no_chats">No se encontraron chats disponibles.\nAsegúrate de haber iniciado al menos una conversación en Telegram.</string>
     <string name="picker_no_chats_short">No se encontraron chats disponibles.</string>
     <string name="picker_chat_private">Chat privado</string>

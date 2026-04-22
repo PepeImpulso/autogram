@@ -5,6 +5,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import timber.log.Timber
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -38,10 +39,13 @@ class GeminiNanoSummarizationEngine @Inject constructor(
             val prompt = buildString {
                 append("Summarize the following in 1-2 sentences")
                 if (!targetLanguageTag.isNullOrBlank()) {
-                    append(" in ")
-                    append(targetLanguageTag)
+                    val name = Locale.forLanguageTag(targetLanguageTag).displayLanguage
+                        .ifBlank { targetLanguageTag }
+                    append(" in ").append(name)
+                    append(" (translate if the input isn't already in ")
+                    append(name).append(")")
                 }
-                append(". No preamble:\n\n")
+                append(". No preamble, no quotes:\n\n")
                 append(text)
             }
             try {

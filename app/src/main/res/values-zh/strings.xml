@@ -8,6 +8,7 @@
 
     <string name="common_back">返回</string>
     <string name="common_dismiss">关闭</string>
+    <string name="main_play_last_original">播放原始音频</string>
     <string name="common_cancel">取消</string>
     <string name="common_close">关闭</string>
     <string name="common_save">保存</string>
@@ -109,6 +110,9 @@
     <string name="settings_section_security_sub">谁可以打开 Autogram。</string>
     <string name="settings_biometric_lock">指纹解锁</string>
     <string name="settings_biometric_lock_sub">重新打开时要求指纹或设备密码。</string>
+    <string name="settings_biometric_missing_title">请先设置指纹或 PIN 码</string>
+    <string name="settings_biometric_missing_body">此设备尚未设置任何指纹或锁屏密码，开启应用锁毫无意义。请在系统设置中先配置一个，然后再回来。</string>
+    <string name="settings_biometric_open_enrol">打开系统设置</string>
     <string name="biometric_unlock_subtitle">解锁以继续</string>
     <string name="preview_title">查看并发送</string>
     <string name="preview_play">播放</string>
@@ -233,9 +237,18 @@
     <string name="pinned_move_up">上移</string>
     <string name="pinned_move_down">下移</string>
     <string name="pinned_background_cd">背景图片</string>
+    <string name="pinned_set_photo">设置照片</string>
+    <string name="pinned_clear_photo">清除照片</string>
+    <string name="pinned_mark_primary">设为主要</string>
+    <string name="pinned_more_actions">更多操作</string>
     <string name="pinned_zoom_hint">双指缩放 · 拖动平移</string>
     <string name="picker_add_shortcut_title">添加快捷</string>
     <string name="picker_choose_chat">选择聊天</string>
+    <string name="picker_choose_topic">选择话题</string>
+    <string name="picker_search_chat_placeholder">搜索聊天</string>
+    <string name="picker_search_topic_placeholder">搜索话题</string>
+    <string name="picker_search_no_match">没有关于 \"%1$s\" 的结果</string>
+    <string name="picker_loading">正在加载聊天…</string>
     <string name="picker_no_chats">没有可用的聊天。\n请确保在 Telegram 中至少开始了一次对话。</string>
     <string name="picker_no_chats_short">没有可用的聊天。</string>
     <string name="picker_chat_private">私聊</string>

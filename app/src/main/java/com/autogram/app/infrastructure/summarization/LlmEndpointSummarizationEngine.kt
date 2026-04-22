@@ -11,6 +11,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import timber.log.Timber
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -47,9 +48,17 @@ class LlmEndpointSummarizationEngine @Inject constructor(
                       else endpoint.trimEnd('/') + "/chat/completions"
 
             val systemPrompt = buildString {
-                append("You are a summarizer. Reply with a 1-2 sentence summary in ")
-                append(targetLanguageTag?.takeIf { it.isNotBlank() } ?: "the same language as the input")
-                append(". No preamble, no meta-commentary.")
+                append("You are a summarizer. Output a 1-2 sentence summary only. ")
+                append("No preamble, no meta-commentary, no quotes. ")
+                val tag = targetLanguageTag?.takeIf { it.isNotBlank() }
+                if (tag != null) {
+                    val name = Locale.forLanguageTag(tag).displayLanguage.ifBlank { tag }
+                    append("CRITICAL: write the summary in $name (locale $tag), ")
+                    append("regardless of the input's language. ")
+                    append("Translate if necessary; the summary MUST be in $name.")
+                } else {
+                    append("Write the summary in the same language as the input.")
+                }
             }
             val payload = JSONObject()
                 .put("model", model)

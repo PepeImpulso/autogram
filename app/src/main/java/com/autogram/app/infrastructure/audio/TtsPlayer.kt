@@ -33,7 +33,14 @@ class TtsPlayer @Inject constructor(
     @Volatile private var engine: TextToSpeech? = null
     @Volatile private var initialized = false
 
-    suspend fun speak(text: String, onDone: () -> Unit = {}) {
+    /**
+     * Reads [text] aloud. By default picks the voice for the UI locale, but
+     * callers that know the text's actual language (e.g. a summary generated
+     * in the original message's language, which may differ from the UI) can
+     * pass an explicit [locale] so a Spanish summary isn't read by an English
+     * voice.
+     */
+    suspend fun speak(text: String, locale: Locale? = null, onDone: () -> Unit = {}) {
         if (text.isBlank()) {
             onDone()
             return
@@ -44,8 +51,8 @@ class TtsPlayer @Inject constructor(
             return
         }
         val settings = settingsRepository.get()
-        val locale = currentLocaleOrDefault()
-        runCatching { tts.language = locale }
+        val effectiveLocale = locale ?: currentLocaleOrDefault()
+        runCatching { tts.language = effectiveLocale }
 
         tts.setSpeechRate(settings.playbackSpeed.coerceIn(0.5f, 2.0f))
         tts.setAudioAttributes(
@@ -96,5 +103,49 @@ class TtsPlayer @Inject constructor(
         val list = AppCompatDelegate.getApplicationLocales()
         if (!list.isEmpty) return list[0] ?: Locale.getDefault()
         return Locale.getDefault()
+    }
+
+    companion object {
+        /**
+         * Cheap content-based locale detection. Used when we need to read
+         * text whose language might not match the UI (e.g. a summary produced
+         * in the original message's language). Checks unicode scripts in
+         * descending specificity: CJK scripts first (they're unambiguous),
+         * then Spanish-specific markers, else falls back to [fallback].
+         */
+        fun detectLocale(text: String, fallback: Locale): Locale {
+            if (text.isBlank()) return fallback
+            var hasHiraganaKatakana = false
+            var hasHangul = false
+            var hasCjkIdeograph = false
+            var hasSpanishMarker = false
+            for (ch in text) {
+                val block = Character.UnicodeBlock.of(ch)
+                when (block) {
+                    Character.UnicodeBlock.HIRAGANA,
+                    Character.UnicodeBlock.KATAKANA -> hasHiraganaKatakana = true
+                    Character.UnicodeBlock.HANGUL_SYLLABLES,
+                    Character.UnicodeBlock.HANGUL_COMPATIBILITY_JAMO,
+                    Character.UnicodeBlock.HANGUL_JAMO -> hasHangul = true
+                    Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS,
+                    Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A,
+                    Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS -> hasCjkIdeograph = true
+                    else -> Unit
+                }
+                if (ch in SPANISH_MARKERS) hasSpanishMarker = true
+            }
+            return when {
+                hasHiraganaKatakana -> Locale.JAPANESE
+                hasHangul -> Locale.KOREAN
+                hasCjkIdeograph -> Locale.CHINESE
+                hasSpanishMarker -> Locale("es")
+                else -> fallback
+            }
+        }
+
+        private val SPANISH_MARKERS = setOf(
+            'ñ', 'Ñ', 'á', 'é', 'í', 'ó', 'ú', 'Á', 'É', 'Í', 'Ó', 'Ú',
+            'ü', 'Ü', '¿', '¡'
+        )
     }
 }

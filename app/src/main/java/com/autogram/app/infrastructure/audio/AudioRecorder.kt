@@ -83,23 +83,44 @@ class AudioRecorder @Inject constructor(
      * @return Archivo de audio o null si hubo error.
      */
     fun stop(): File? {
-        return try {
-            recorder?.apply {
-                stop()
-                release()
-            }
-            recorder = null
-            isRecording = false
-
-            val duration = System.currentTimeMillis() - startTimeMs
+        val duration = System.currentTimeMillis() - startTimeMs
+        // MediaRecorder.stop() throws RuntimeException ("stop failed") when
+        // called before the encoder has committed any frames — in practice
+        // this means the user released the record button too fast (<~1 s on
+        // many devices). That's a UX edge case, not a crash worth escalating
+        // to Sentry, so we downgrade to a warning here and drop the empty
+        // output file. Other failures (hardware error, IO) still surface.
+        val current = recorder
+        recorder = null
+        isRecording = false
+        if (current == null) return outputFile
+        try {
+            current.stop()
+            current.release()
             outputFile?.let {
                 Timber.d("Grabación detenida: ${it.absolutePath} (${duration}ms, ${it.length()} bytes)")
             }
-            outputFile
+            return outputFile
+        } catch (e: RuntimeException) {
+            // Distinguish the well-known "stop failed" empty-frames case from
+            // genuine faults by looking at recording duration and message.
+            val isEmptyFrameStop = duration < 1500 ||
+                (e.message?.contains("stop failed", ignoreCase = true) == true)
+            if (isEmptyFrameStop) {
+                Timber.w("Grabación demasiado corta (${duration}ms); descarto fichero")
+            } else {
+                Timber.e(e, "Error al detener grabación (${duration}ms)")
+            }
+            runCatching { current.release() }
+            outputFile?.let { runCatching { if (it.exists()) it.delete() } }
+            outputFile = null
+            return null
         } catch (e: Exception) {
-            Timber.e(e, "Error al detener grabación")
-            cleanup()
-            null
+            Timber.e(e, "Error al detener grabación (${duration}ms)")
+            runCatching { current.release() }
+            outputFile?.let { runCatching { if (it.exists()) it.delete() } }
+            outputFile = null
+            return null
         }
     }
 

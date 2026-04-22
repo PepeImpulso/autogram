@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -161,6 +162,7 @@ private fun MainScreen(
     val updateState by updateViewModel.state.collectAsState()
     val suggestions by viewModel.suggestedChips.collectAsState()
     val showPendingBadges by viewModel.showPendingBadges.collectAsState()
+    val lastIncomingAudio by viewModel.lastIncomingWithAudio.collectAsState()
 
     LaunchedEffect(Unit) {
         // Silent update check throttled: the ViewModel check() is cheap but we
@@ -240,6 +242,14 @@ private fun MainScreen(
                     },
                     onDismiss = { viewModel.dismissSuggestions() }
                 )
+                Spacer(Modifier.height(16.dp))
+            }
+
+            // Play-last-original button. Uses tertiaryContainer + a headphone
+            // icon so it can't be confused with the quick-reply attajos (which
+            // are filled-tonal buttons in the primary colour scheme).
+            lastIncomingAudio?.let {
+                PlayLastOriginalButton(onClick = viewModel::playLastOriginal)
                 Spacer(Modifier.height(16.dp))
             }
 
@@ -431,6 +441,47 @@ private fun StatusPill(
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Medium
         )
+    }
+}
+
+/**
+ * Outlined pill showing "Play last original" — appears when summary mode is
+ * on or when a previously-received voice note is still on disk. Deliberately
+ * styled with tertiaryContainer so it reads as a secondary affordance, not
+ * a quick-reply attajo.
+ */
+@Composable
+private fun PlayLastOriginalButton(onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.tertiary.copy(alpha = 0.4f)
+        ),
+        modifier = Modifier
+            .padding(horizontal = 24.dp)
+            .fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                Icons.Filled.Headphones,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onTertiaryContainer
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                stringResource(R.string.main_play_last_original),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onTertiaryContainer
+            )
+        }
     }
 }
 

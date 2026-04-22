@@ -45,10 +45,34 @@ class RetentionCleanupWorker @AssistedInject constructor(
                 Timber.i("RetentionCleanupWorker: purged DB rows older than ${settings.retentionDays}d for ${conversations.size} conv(s)")
             }
             sweepOrphanAudios()
+            repairMissingAudioPaths()
             Result.success()
         } catch (e: Exception) {
             Timber.e(e, "RetentionCleanupWorker failed")
             Result.retry()
+        }
+    }
+
+    /**
+     * Walk every INCOMING message with a non-null `audioFilePath` and, if the
+     * file no longer exists on disk (user cleared cache, pruned with a file
+     * manager, etc.), null the path out. The row stays so History still
+     * shows "a voice note arrived at HH:MM" — we just stop advertising a
+     * file that's gone, which would have shown a broken play button.
+     */
+    private suspend fun repairMissingAudioPaths() {
+        val all = messageRepository.observeAllAcrossConversations().first()
+        var repaired = 0
+        for (msg in all) {
+            val path = msg.audioFilePath ?: continue
+            val f = File(path)
+            if (!f.exists()) {
+                messageRepository.update(msg.copy(audioFilePath = null))
+                repaired++
+            }
+        }
+        if (repaired > 0) {
+            Timber.i("RetentionCleanupWorker: nulled $repaired missing audioFilePath(s)")
         }
     }
 

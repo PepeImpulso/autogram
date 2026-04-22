@@ -18,24 +18,39 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.HideImage
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -54,6 +69,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.window.Dialog
@@ -120,14 +137,23 @@ private fun ManagePinnedScreen(
     var zoomPath by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.pinned_title)) },
+                title = {
+                    Text(
+                        stringResource(R.string.pinned_title),
+                        fontWeight = FontWeight.SemiBold
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back))
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                )
             )
         },
         floatingActionButton = {
@@ -152,8 +178,14 @@ private fun ManagePinnedScreen(
             }
             return@Scaffold
         }
-        LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
-            // Position among non-primary rows — primary doesn't reorder.
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            // 96dp bottom padding keeps the last card above the FAB's shadow.
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             val secondary = pinned.filter { !it.isActive }
             items(pinned, key = { it.id }) { conv ->
                 val secondaryIdx = if (conv.isActive) -1 else secondary.indexOfFirst { it.id == conv.id }
@@ -177,6 +209,8 @@ private fun ManagePinnedScreen(
                     onMoveDown = { viewModel.moveDown(conv.id) }
                 )
             }
+            // Spacer so the bottom card isn't under the FAB.
+            item { Spacer(Modifier.height(72.dp)) }
         }
     }
 
@@ -199,69 +233,178 @@ private fun PinnedRow(
     onMoveDown: () -> Unit
 ) {
     val hasPhoto = conv.photoLocalPath != null
-    ListItem(
-        leadingContent = {
-            CircleAvatar(
-                conv = conv,
-                size = 48.dp,
-                modifier = if (hasPhoto) Modifier.clickable(onClick = onAvatarTap)
-                           else Modifier
-            )
-        },
-        headlineContent = {
-            val untitled = stringResource(R.string.common_untitled)
-            Text(
-                buildString {
-                    append(conv.targetTitle ?: untitled)
-                    conv.topicName?.let { append(" › ").append(it) }
-                }
-            )
-        },
-        supportingContent = {
-            Text(
-                if (conv.isActive) stringResource(R.string.pinned_label_primary)
-                else stringResource(R.string.pinned_label_secondary),
-                style = MaterialTheme.typography.bodySmall,
-                color = if (conv.isActive) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        },
-        trailingContent = {
-            Row {
-                // Reorder arrows only apply to secondary circles. Disabled
-                // chevrons at the ends make the available range obvious.
-                if (!conv.isActive) {
-                    IconButton(onClick = onMoveUp, enabled = canMoveUp) {
-                        Icon(Icons.Filled.ArrowUpward, stringResource(R.string.pinned_move_up))
+    val untitled = stringResource(R.string.common_untitled)
+    var menuOpen by remember { mutableStateOf(false) }
+
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = if (conv.isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                             else MaterialTheme.colorScheme.surface
+        ),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Avatar — larger than the previous 48dp ListItem, with the
+            // primary badge overlaid in the bottom-right.
+            Box(contentAlignment = Alignment.BottomEnd) {
+                CircleAvatar(
+                    conv = conv,
+                    size = 56.dp,
+                    modifier = if (hasPhoto) Modifier.clickable(onClick = onAvatarTap) else Modifier
+                )
+                if (conv.isActive) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Filled.Star,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(12.dp)
+                            )
+                        }
                     }
-                    IconButton(onClick = onMoveDown, enabled = canMoveDown) {
-                        Icon(Icons.Filled.ArrowDownward, stringResource(R.string.pinned_move_down))
-                    }
                 }
-                IconButton(onClick = onSetPrimary) {
-                    Icon(
-                        imageVector = if (conv.isActive) Icons.Filled.Star
-                                      else Icons.Outlined.StarBorder,
-                        contentDescription = stringResource(R.string.pinned_mark_primary_cd),
-                        tint = if (conv.isActive) MaterialTheme.colorScheme.primary
-                               else MaterialTheme.colorScheme.onSurfaceVariant
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    conv.targetTitle ?: untitled,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                conv.topicName?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
-                IconButton(
-                    onClick = if (conv.photoLocalPath != null) onClearPhoto else onPickPhoto
-                ) {
-                    Icon(Icons.Filled.Image, stringResource(R.string.pinned_background_cd))
+                Spacer(Modifier.height(6.dp))
+                AssistChip(
+                    onClick = {},
+                    enabled = false,
+                    label = {
+                        Text(
+                            if (conv.isActive) stringResource(R.string.pinned_label_primary)
+                            else stringResource(R.string.pinned_label_secondary),
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    },
+                    colors = AssistChipDefaults.assistChipColors(
+                        disabledContainerColor = if (conv.isActive)
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                        else MaterialTheme.colorScheme.surfaceVariant,
+                        disabledLabelColor = if (conv.isActive)
+                            MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                )
+            }
+            // Reorder chevrons on the right — only for secondary circles,
+            // disabled at range ends. Smaller than the old IconButtons so
+            // they don't dominate the card.
+            if (!conv.isActive) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    IconButton(
+                        onClick = onMoveUp,
+                        enabled = canMoveUp,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.ArrowUpward,
+                            stringResource(R.string.pinned_move_up),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = onMoveDown,
+                        enabled = canMoveDown,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.ArrowDownward,
+                            stringResource(R.string.pinned_move_down),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
-                // Allow removing only non-primary circles — the primary target
-                // is managed through Settings › Destino de mensajes.
-                if (!conv.isActive) {
-                    IconButton(onClick = onRemove) {
-                        Icon(Icons.Filled.Delete, stringResource(R.string.common_remove))
+            }
+            // Overflow menu: collapses the rarely-used actions (set primary,
+            // photo management, delete) so the card stays scannable.
+            Box {
+                IconButton(onClick = { menuOpen = true }) {
+                    Icon(
+                        Icons.Filled.MoreVert,
+                        contentDescription = stringResource(R.string.pinned_more_actions),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                DropdownMenu(
+                    expanded = menuOpen,
+                    onDismissRequest = { menuOpen = false }
+                ) {
+                    if (!conv.isActive) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.pinned_mark_primary)) },
+                            onClick = { menuOpen = false; onSetPrimary() },
+                            leadingIcon = { Icon(Icons.Filled.StarBorder, null) }
+                        )
+                    }
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                if (hasPhoto) stringResource(R.string.pinned_clear_photo)
+                                else stringResource(R.string.pinned_set_photo)
+                            )
+                        },
+                        onClick = {
+                            menuOpen = false
+                            if (hasPhoto) onClearPhoto() else onPickPhoto()
+                        },
+                        leadingIcon = {
+                            Icon(
+                                if (hasPhoto) Icons.Filled.HideImage else Icons.Filled.Image,
+                                null
+                            )
+                        }
+                    )
+                    if (!conv.isActive) {
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    stringResource(R.string.common_remove),
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            },
+                            onClick = { menuOpen = false; onRemove() },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Filled.Delete,
+                                    null,
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        )
                     }
                 }
             }
         }
-    )
+    }
 }
 
 /**

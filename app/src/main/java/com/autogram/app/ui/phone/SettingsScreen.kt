@@ -319,6 +319,7 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 )
             }
 
+            var showNoBiometricDialog by remember { mutableStateOf(false) }
             SectionCard(
                 icon = Icons.Filled.Fingerprint,
                 title = stringResource(R.string.settings_section_security),
@@ -328,7 +329,51 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                     label = stringResource(R.string.settings_biometric_lock),
                     supporting = stringResource(R.string.settings_biometric_lock_sub),
                     checked = state.biometricLockEnabled,
-                    onCheckedChange = viewModel::updateBiometricLock
+                    onCheckedChange = { enabled ->
+                        if (enabled && !com.autogram.app.infrastructure.platform.BiometricGate.isSupported(context)) {
+                            // The system has nothing to prompt with — don't
+                            // silently flip the toggle on and let the user
+                            // believe they locked the app.
+                            showNoBiometricDialog = true
+                        } else {
+                            viewModel.updateBiometricLock(enabled)
+                        }
+                    }
+                )
+            }
+            if (showNoBiometricDialog) {
+                AlertDialog(
+                    onDismissRequest = { showNoBiometricDialog = false },
+                    icon = { Icon(Icons.Filled.Fingerprint, contentDescription = null) },
+                    title = { Text(stringResource(R.string.settings_biometric_missing_title)) },
+                    text = { Text(stringResource(R.string.settings_biometric_missing_body)) },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            showNoBiometricDialog = false
+                            runCatching {
+                                // ACTION_BIOMETRIC_ENROLL is API 30+. On older
+                                // devices fall back to the generic Security
+                                // settings screen.
+                                val intent = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                                    android.content.Intent(android.provider.Settings.ACTION_BIOMETRIC_ENROLL).apply {
+                                        putExtra(
+                                            android.provider.Settings.EXTRA_BIOMETRIC_AUTHENTICATORS_ALLOWED,
+                                            androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK
+                                                    or androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
+                                        )
+                                    }
+                                } else {
+                                    android.content.Intent(android.provider.Settings.ACTION_SECURITY_SETTINGS)
+                                }
+                                context.startActivity(intent)
+                            }
+                        }) { Text(stringResource(R.string.settings_biometric_open_enrol)) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showNoBiometricDialog = false }) {
+                            Text(stringResource(R.string.common_cancel))
+                        }
+                    }
                 )
             }
 

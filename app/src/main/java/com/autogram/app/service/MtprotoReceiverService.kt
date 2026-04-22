@@ -15,6 +15,7 @@ import com.autogram.app.domain.model.MessageDirection
 import com.autogram.app.domain.model.MessageState
 import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.MessageRepository
+import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.domain.usecase.SummarizeMessageUseCase
 import com.autogram.app.domain.usecase.TranscribeVoiceUseCase
@@ -69,6 +70,7 @@ class MtprotoReceiverService : Service() {
     @Inject lateinit var incomingMessageNotifier: IncomingMessageNotifier
     @Inject lateinit var transcribeVoiceUseCase: TranscribeVoiceUseCase
     @Inject lateinit var summarizeMessageUseCase: SummarizeMessageUseCase
+    @Inject lateinit var settingsRepository: SettingsRepository
 
     private var scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var supervisorJob: Job? = null
@@ -219,14 +221,30 @@ class MtprotoReceiverService : Service() {
             timestampMs = message.createdAt,
             messageId = message.id
         )
-        // Kick off transcription in the service's own scope so playback and
-        // recognition run in parallel. The use case no-ops if the feature
-        // toggle is off, so it's safe to always call.
-        scope.launch { transcribeVoiceUseCase.transcribe(message.id) }
-        playReplyUseCase.playVoiceMessage(
-            message = message,
-            isCallActive = callStateMonitor.isInCall.value
-        )
+        val settings = settingsRepository.get()
+        if (settings.summarizeLongMessages && settings.summaryEngine != com.autogram.app.domain.model.SummaryEngineType.NONE) {
+            // Summary mode — skip the original audio. Transcribe (which
+            // chains summarize internally), then TTS the summary or, for
+            // short messages that didn't qualify, the raw transcription.
+            // The user has a "play original" button on Main if they want
+            // the full audio.
+            scope.launch {
+                transcribeVoiceUseCase.transcribe(message.id)
+                val updated = messageRepository.getById(message.id) ?: return@launch
+                playReplyUseCase.playSummaryOrTranscription(
+                    message = updated,
+                    isCallActive = callStateMonitor.isInCall.value
+                )
+            }
+        } else {
+            // Classic mode: play the audio now, transcribe + summarize in
+            // the background for display in History.
+            scope.launch { transcribeVoiceUseCase.transcribe(message.id) }
+            playReplyUseCase.playVoiceMessage(
+                message = message,
+                isCallActive = callStateMonitor.isInCall.value
+            )
+        }
     }
 
     private suspend fun handleText(
