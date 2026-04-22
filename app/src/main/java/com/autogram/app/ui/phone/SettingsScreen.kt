@@ -112,6 +112,8 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                     android.widget.Toast.makeText(context, context.getString(R.string.backup_import_wrong_password), android.widget.Toast.LENGTH_LONG).show()
                 SettingsViewModel.BackupEvent.ImportCorrupt ->
                     android.widget.Toast.makeText(context, context.getString(R.string.backup_import_corrupt), android.widget.Toast.LENGTH_LONG).show()
+                SettingsViewModel.BackupEvent.ImportUnsupportedVersion ->
+                    android.widget.Toast.makeText(context, context.getString(R.string.backup_import_unsupported), android.widget.Toast.LENGTH_LONG).show()
                 is SettingsViewModel.BackupEvent.ImportFailed ->
                     android.widget.Toast.makeText(context, context.getString(R.string.backup_import_fail, event.message), android.widget.Toast.LENGTH_LONG).show()
             }
@@ -818,8 +820,14 @@ private fun ExportPasswordDialog(
     val emptyMsg = stringResource(R.string.backup_password_empty)
     val mismatchMsg = stringResource(R.string.backup_password_mismatch)
     val tooShortMsg = stringResource(R.string.backup_password_too_short)
+    // String is immutable — we can't zeroize its char[] in-place. But dropping
+    // the reference (setting to "") lets GC reclaim it. Always clear on unmount.
+    DisposableEffect(Unit) {
+        onDispose { pwd = ""; confirm = ""; error = null }
+    }
+    val handleDismiss = { pwd = ""; confirm = ""; error = null; onDismiss() }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = handleDismiss,
         title = { Text(stringResource(R.string.backup_password_title)) },
         text = {
             Column {
@@ -854,12 +862,18 @@ private fun ExportPasswordDialog(
                     pwd.isEmpty() -> error = emptyMsg
                     pwd.length < 8 -> error = tooShortMsg
                     pwd != confirm -> error = mismatchMsg
-                    else -> onConfirm(pwd.toCharArray())
+                    else -> {
+                        val chars = pwd.toCharArray()
+                        // Drop references before invoking the callback — the
+                        // callback's caller owns zeroizing the CharArray copy.
+                        pwd = ""; confirm = ""; error = null
+                        onConfirm(chars)
+                    }
                 }
             }) { Text(stringResource(R.string.backup_export_confirm)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.backup_cancel)) }
+            TextButton(onClick = handleDismiss) { Text(stringResource(R.string.backup_cancel)) }
         }
     )
 }
@@ -872,8 +886,12 @@ private fun ImportPasswordDialog(
     var pwd by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     val emptyMsg = stringResource(R.string.backup_password_empty)
+    DisposableEffect(Unit) {
+        onDispose { pwd = ""; error = null }
+    }
+    val handleDismiss = { pwd = ""; error = null; onDismiss() }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = handleDismiss,
         title = { Text(stringResource(R.string.backup_password_title)) },
         text = {
             Column {
@@ -895,11 +913,15 @@ private fun ImportPasswordDialog(
         confirmButton = {
             TextButton(onClick = {
                 if (pwd.isEmpty()) error = emptyMsg
-                else onConfirm(pwd.toCharArray())
+                else {
+                    val chars = pwd.toCharArray()
+                    pwd = ""; error = null
+                    onConfirm(chars)
+                }
             }) { Text(stringResource(R.string.backup_confirm)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.backup_cancel)) }
+            TextButton(onClick = handleDismiss) { Text(stringResource(R.string.backup_cancel)) }
         }
     )
 }

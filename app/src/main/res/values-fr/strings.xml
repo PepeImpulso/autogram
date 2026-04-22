@@ -162,6 +162,7 @@
     <string name="backup_import_ok">Sauvegarde restaurée ✓</string>
     <string name="backup_import_wrong_password">Mot de passe incorrect</string>
     <string name="backup_import_corrupt">Le fichier ne semble pas être une sauvegarde Autogram</string>
+    <string name="backup_import_unsupported">Cette sauvegarde provient d\'une version plus récente d\'Autogram. Mettez à jour l\'app et réessayez.</string>
     <string name="backup_import_fail">Échec de la restauration : %s</string>
     <string name="backup_import_confirm_title">Restaurer cette sauvegarde ?</string>
     <string name="backup_import_confirm_body">Vos cercles, réponses rapides et réglages actuels seront écrasés. Irréversible.</string>

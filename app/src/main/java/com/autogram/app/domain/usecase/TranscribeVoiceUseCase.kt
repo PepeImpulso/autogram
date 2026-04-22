@@ -68,6 +68,9 @@ class TranscribeVoiceUseCase @Inject constructor(
     private fun currentUiLocale(tag: String): Locale {
         if (tag.isNotBlank()) return Locale.forLanguageTag(tag)
         val appLocale = AppCompatDelegate.getApplicationLocales()
-        return if (!appLocale.isEmpty) appLocale.get(0) ?: Locale.getDefault() else Locale.getDefault()
+        // LocaleListCompat.get(0) on an empty list throws IOOBE, so gate on
+        // isEmpty first and fall back to the platform default if nothing's set.
+        if (appLocale.isEmpty) return Locale.getDefault()
+        return appLocale[0] ?: Locale.getDefault()
     }
 }

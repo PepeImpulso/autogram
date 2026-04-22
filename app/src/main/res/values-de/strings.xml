@@ -162,6 +162,7 @@
     <string name="backup_import_ok">Backup wiederhergestellt ✓</string>
     <string name="backup_import_wrong_password">Falsches Passwort</string>
     <string name="backup_import_corrupt">Datei sieht nicht wie ein Autogram-Backup aus</string>
+    <string name="backup_import_unsupported">Dieses Backup wurde mit einer neueren Autogram-Version erstellt. App aktualisieren und erneut versuchen.</string>
     <string name="backup_import_fail">Wiederherstellung fehlgeschlagen: %s</string>
     <string name="backup_import_confirm_title">Dieses Backup wiederherstellen?</string>
     <string name="backup_import_confirm_body">Aktuelle Kreise, Schnellantworten und Einstellungen werden überschrieben. Nicht rückgängig zu machen.</string>

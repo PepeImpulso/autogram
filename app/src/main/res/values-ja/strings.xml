@@ -161,6 +161,7 @@
     <string name="backup_import_ok">バックアップを復元しました ✓</string>
     <string name="backup_import_wrong_password">パスワードが違います</string>
     <string name="backup_import_corrupt">Autogram バックアップではないようです</string>
+    <string name="backup_import_unsupported">このバックアップは新しいバージョンの Autogram で作成されました。アプリを更新してから再度お試しください。</string>
     <string name="backup_import_fail">復元に失敗しました: %s</string>
     <string name="backup_import_confirm_title">このバックアップを復元しますか？</string>
     <string name="backup_import_confirm_body">現在のサークル・クイック返信・設定は上書きされます。元に戻せません。</string>

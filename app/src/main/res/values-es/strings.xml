@@ -169,6 +169,7 @@
     <string name="backup_import_ok">Copia restaurada ✓</string>
     <string name="backup_import_wrong_password">Contraseña incorrecta</string>
     <string name="backup_import_corrupt">El fichero no parece una copia de Autogram</string>
+    <string name="backup_import_unsupported">Esta copia se hizo con una versión más reciente de Autogram. Actualiza la app y vuelve a intentarlo.</string>
     <string name="backup_import_fail">Restauración fallida: %s</string>
     <string name="backup_import_confirm_title">¿Restaurar esta copia?</string>
     <string name="backup_import_confirm_body">Se sobrescribirán tus círculos, respuestas rápidas y ajustes actuales. No se puede deshacer.</string>

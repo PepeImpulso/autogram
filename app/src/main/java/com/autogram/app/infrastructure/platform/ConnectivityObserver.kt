@@ -47,10 +47,6 @@ class ConnectivityObserver @Inject constructor(
     private fun connectivityFlow(): Flow<Boolean> = callbackFlow {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
-        // Arrancar con el estado actual para que no se pierda un usuario que suscribe
-        // después de que la red cambiara.
-        trySend(currentSnapshot())
-
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 trySend(hasValidatedInternet(cm, network))
@@ -70,7 +66,11 @@ class ConnectivityObserver @Inject constructor(
         val request = NetworkRequest.Builder()
             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             .build()
+        // Audit-HIGH-7: register the callback BEFORE emitting the initial
+        // snapshot. If we emitted first and then registered, any state change
+        // that happens between the two calls would be silently lost.
         cm.registerNetworkCallback(request, callback)
+        trySend(currentSnapshot())
 
         awaitClose { runCatching { cm.unregisterNetworkCallback(callback) } }
     }

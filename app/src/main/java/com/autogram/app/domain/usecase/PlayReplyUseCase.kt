@@ -16,6 +16,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
 import java.io.File
 import java.util.UUID
@@ -46,7 +48,11 @@ class PlayReplyUseCase @Inject constructor(
 
     // BUG-43 FIX: Thread-safe list for concurrent access from multiple coroutines
     private val pendingQueue = Collections.synchronizedList(mutableListOf<Message>())
-    private var currentPlayingId: String? = null
+    // Audit-HIGH-4: serializes the "start playing" critical section so two
+    // concurrent playVoiceMessage() calls can't both see isPlaying==false
+    // and race to start MediaPlayer twice, dropping the first message.
+    private val playbackStartLock = Mutex()
+    @Volatile private var currentPlayingId: String? = null
     // BUG-12: Dedicated scope for MediaPlayer callbacks instead of runBlocking
     // BUG-50 FIX: Mutable scope so it can be recreated after stopAll()
     private var playbackScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -74,24 +80,28 @@ class PlayReplyUseCase @Inject constructor(
             return
         }
 
-        if (audioPlayer.isPlaying()) {
-            // Encolar para reproducción secuencial
-            pendingQueue.add(message)
-            _playbackStatus.value = PlaybackStatus.PendingCount(pendingQueue.size)
-            return
-        }
+        // Audit-HIGH-4: take the start-lock BEFORE inspecting isPlaying so two
+        // concurrent calls can't both pass the check. If something is already
+        // playing, this caller queues and returns without releasing until the
+        // status is persisted.
+        playbackStartLock.withLock {
+            if (audioPlayer.isPlaying()) {
+                pendingQueue.add(message)
+                _playbackStatus.value = PlaybackStatus.PendingCount(pendingQueue.size)
+                return
+            }
 
-        val audioFile = message.audioFilePath?.let { File(it) }
-        if (audioFile == null || !audioFile.exists()) {
-            Timber.e("Archivo de audio no encontrado para mensaje ${message.id}")
-            return
-        }
+            val audioFile = message.audioFilePath?.let { File(it) }
+            if (audioFile == null || !audioFile.exists()) {
+                Timber.e("Archivo de audio no encontrado para mensaje ${message.id}")
+                return
+            }
 
-        currentPlayingId = message.id
-        messageRepository.update(message.copy(state = MessageState.PLAYING))
-        _playbackStatus.value = PlaybackStatus.Playing(message.id)
+            currentPlayingId = message.id
+            messageRepository.update(message.copy(state = MessageState.PLAYING))
+            _playbackStatus.value = PlaybackStatus.Playing(message.id)
 
-        val result = audioPlayer.play(audioFile, speed = settings.playbackSpeed) { playResult ->
+            val result = audioPlayer.play(audioFile, speed = settings.playbackSpeed) { playResult ->
             // BUG-12: Use CoroutineScope instead of runBlocking in MediaPlayer callback
             // BUG-51 FIX: Check result to mark PLAYED or FAILED correctly
             playbackScope.launch {
@@ -120,15 +130,16 @@ class PlayReplyUseCase @Inject constructor(
             }
         }
 
-        if (result.isFailure) {
-            Timber.e(result.exceptionOrNull(), "Error reproduciendo mensaje ${message.id}")
-            messageRepository.update(message.copy(
-                state = MessageState.FAILED,
-                errorMessage = result.exceptionOrNull()?.message
-            ))
-            currentPlayingId = null
-            playNext()
-        }
+            if (result.isFailure) {
+                Timber.e(result.exceptionOrNull(), "Error reproduciendo mensaje ${message.id}")
+                messageRepository.update(message.copy(
+                    state = MessageState.FAILED,
+                    errorMessage = result.exceptionOrNull()?.message
+                ))
+                currentPlayingId = null
+                playNext()
+            }
+        } // end playbackStartLock.withLock
     }
 
     /**
@@ -316,7 +327,13 @@ class PlayReplyUseCase @Inject constructor(
         // PendingPlaybackEntity.id (a separate UUID). Records were never deleted,
         // so restorePendingQueue() on app restart would re-enqueue old messages.
         playbackScope.launch {
-            try { pendingPlaybackDao.deleteByMessageId(next.id) } catch (_: Exception) {}
+            try {
+                pendingPlaybackDao.deleteByMessageId(next.id)
+            } catch (e: Exception) {
+                // Don't swallow silently — if delete keeps failing the row
+                // gets re-enqueued on every app restart via restorePendingQueue().
+                Timber.w(e, "Failed to delete pending playback for ${next.id}")
+            }
         }
         // Text messages live in the same queue (see enqueuePending) but must
         // be dispatched to the TTS path — playVoiceMessage would fail looking

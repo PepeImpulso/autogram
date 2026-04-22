@@ -78,58 +78,69 @@ class AndroidOnDeviceTranscriptionEngine @Inject constructor(
     /** Decode the Opus/OGG voice note to 16kHz mono signed-16 PCM. */
     private fun decodeToMono16k(source: File): File {
         val extractor = MediaExtractor()
-        extractor.setDataSource(source.absolutePath)
-        val trackIndex = (0 until extractor.trackCount).firstOrNull { i ->
-            extractor.getTrackFormat(i).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true
-        } ?: error("no audio track in ${source.name}")
-        extractor.selectTrack(trackIndex)
-        val format = extractor.getTrackFormat(trackIndex)
-        val sourceSampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
-        val sourceChannels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
-        val mime = format.getString(MediaFormat.KEY_MIME)!!
-        val codec = MediaCodec.createDecoderByType(mime)
-        codec.configure(format, null, null, 0)
-        codec.start()
+        var codec: MediaCodec? = null
+        var pcmOut: File? = null
+        try {
+            extractor.setDataSource(source.absolutePath)
+            val trackIndex = (0 until extractor.trackCount).firstOrNull { i ->
+                extractor.getTrackFormat(i).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true
+            } ?: error("no audio track in ${source.name}")
+            extractor.selectTrack(trackIndex)
+            val format = extractor.getTrackFormat(trackIndex)
+            val sourceSampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+            val sourceChannels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+            val mime = format.getString(MediaFormat.KEY_MIME)!!
+            codec = MediaCodec.createDecoderByType(mime)
+            codec.configure(format, null, null, 0)
+            codec.start()
 
-        val pcmOut = File.createTempFile("autogram-tx-", ".pcm", context.cacheDir)
-        FileOutputStream(pcmOut).use { out ->
-            val info = MediaCodec.BufferInfo()
-            var inputDone = false
-            var outputDone = false
-            while (!outputDone) {
-                if (!inputDone) {
-                    val inIndex = codec.dequeueInputBuffer(DECODE_TIMEOUT_US)
-                    if (inIndex >= 0) {
-                        val inBuf = codec.getInputBuffer(inIndex)!!
-                        val read = extractor.readSampleData(inBuf, 0)
-                        if (read < 0) {
-                            codec.queueInputBuffer(inIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
-                            inputDone = true
-                        } else {
-                            codec.queueInputBuffer(inIndex, 0, read, extractor.sampleTime, 0)
-                            extractor.advance()
+            pcmOut = File.createTempFile("autogram-tx-", ".pcm", context.cacheDir)
+            FileOutputStream(pcmOut).use { out ->
+                val info = MediaCodec.BufferInfo()
+                var inputDone = false
+                var outputDone = false
+                while (!outputDone) {
+                    if (!inputDone) {
+                        val inIndex = codec.dequeueInputBuffer(DECODE_TIMEOUT_US)
+                        if (inIndex >= 0) {
+                            val inBuf = codec.getInputBuffer(inIndex)!!
+                            val read = extractor.readSampleData(inBuf, 0)
+                            if (read < 0) {
+                                codec.queueInputBuffer(inIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                                inputDone = true
+                            } else {
+                                codec.queueInputBuffer(inIndex, 0, read, extractor.sampleTime, 0)
+                                extractor.advance()
+                            }
                         }
                     }
-                }
-                val outIndex = codec.dequeueOutputBuffer(info, DECODE_TIMEOUT_US)
-                if (outIndex >= 0) {
-                    val outBuf = codec.getOutputBuffer(outIndex)!!
-                    outBuf.position(info.offset)
-                    outBuf.limit(info.offset + info.size)
-                    val chunk = ByteArray(info.size)
-                    outBuf.get(chunk)
-                    val mono = if (sourceChannels == 2) downmixStereoToMono(chunk) else chunk
-                    val resampled = if (sourceSampleRate != TARGET_SAMPLE_RATE)
-                        resampleLinear(mono, sourceSampleRate, TARGET_SAMPLE_RATE)
-                    else mono
-                    out.write(resampled)
-                    codec.releaseOutputBuffer(outIndex, false)
-                    if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) outputDone = true
+                    val outIndex = codec.dequeueOutputBuffer(info, DECODE_TIMEOUT_US)
+                    if (outIndex >= 0) {
+                        val outBuf = codec.getOutputBuffer(outIndex)!!
+                        outBuf.position(info.offset)
+                        outBuf.limit(info.offset + info.size)
+                        val chunk = ByteArray(info.size)
+                        outBuf.get(chunk)
+                        val mono = if (sourceChannels == 2) downmixStereoToMono(chunk) else chunk
+                        val resampled = if (sourceSampleRate != TARGET_SAMPLE_RATE)
+                            resampleLinear(mono, sourceSampleRate, TARGET_SAMPLE_RATE)
+                        else mono
+                        out.write(resampled)
+                        codec.releaseOutputBuffer(outIndex, false)
+                        if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) outputDone = true
+                    }
                 }
             }
+            return pcmOut
+        } catch (t: Throwable) {
+            // Don't leak a half-written PCM temp file if we throw mid-decode.
+            pcmOut?.let { runCatching { it.delete() } }
+            throw t
+        } finally {
+            runCatching { codec?.stop() }
+            runCatching { codec?.release() }
+            runCatching { extractor.release() }
         }
-        codec.stop(); codec.release(); extractor.release()
-        return pcmOut
     }
 
     private fun downmixStereoToMono(interleaved: ByteArray): ByteArray {
@@ -167,60 +178,75 @@ class AndroidOnDeviceTranscriptionEngine @Inject constructor(
     @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     private suspend fun runRecognition(pcmFile: File, locale: Locale): TranscriptionEngine.Result {
         return suspendCancellableCoroutine { cont ->
-            val recognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
-            val pfd = ParcelFileDescriptor.open(pcmFile, ParcelFileDescriptor.MODE_READ_ONLY)
-            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, locale.toLanguageTag())
-                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-                putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE, pfd)
-                putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_SAMPLING_RATE, TARGET_SAMPLE_RATE)
-                putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_CHANNEL_COUNT, 1)
-                putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_ENCODING, android.media.AudioFormat.ENCODING_PCM_16BIT)
-                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+            // Allocate recognizer + pfd inside a guarded block: if
+            // startListening() throws, we must still close the fd, otherwise
+            // we'd leak a file descriptor per failed attempt.
+            var recognizer: SpeechRecognizer? = null
+            var pfd: ParcelFileDescriptor? = null
+            // All callbacks + the cancellation handler race to settle first.
+            // An @Volatile+CAS guarantees close() runs exactly once even if
+            // multiple paths fire concurrently (e.g. cancel racing with result).
+            val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+            val cleanup = {
+                if (settled.compareAndSet(false, true)) {
+                    runCatching { pfd?.close() }
+                    runCatching { recognizer?.destroy() }
+                }
             }
-            val listener = object : RecognitionListener {
-                private var settled = false
-                private fun settle(result: TranscriptionEngine.Result) {
-                    if (settled) return
-                    settled = true
-                    runCatching { pfd.close() }
-                    recognizer.destroy()
-                    if (cont.isActive) cont.resume(result)
+            try {
+                recognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+                pfd = ParcelFileDescriptor.open(pcmFile, ParcelFileDescriptor.MODE_READ_ONLY)
+                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, locale.toLanguageTag())
+                    putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+                    putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE, pfd)
+                    putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_SAMPLING_RATE, TARGET_SAMPLE_RATE)
+                    putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_CHANNEL_COUNT, 1)
+                    putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_ENCODING, android.media.AudioFormat.ENCODING_PCM_16BIT)
+                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
                 }
-                override fun onResults(results: Bundle?) {
-                    val list = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                    val text = list?.firstOrNull().orEmpty()
-                    settle(
-                        if (text.isBlank()) TranscriptionEngine.Result.Error("empty result")
-                        else TranscriptionEngine.Result.Success(text.trim())
-                    )
-                }
-                override fun onError(errorCode: Int) {
-                    val mapped = when (errorCode) {
-                        SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED,
-                        SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE ->
-                            TranscriptionEngine.Result.LanguageUnavailable
-                        SpeechRecognizer.ERROR_NO_MATCH,
-                        SpeechRecognizer.ERROR_SPEECH_TIMEOUT ->
-                            TranscriptionEngine.Result.Error("no speech detected")
-                        else -> TranscriptionEngine.Result.Error("recognizer error $errorCode")
+                val listener = object : RecognitionListener {
+                    private fun settleWith(result: TranscriptionEngine.Result) {
+                        cleanup()
+                        if (cont.isActive) cont.resume(result)
                     }
-                    settle(mapped)
+                    override fun onResults(results: Bundle?) {
+                        val list = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        val text = list?.firstOrNull().orEmpty()
+                        settleWith(
+                            if (text.isBlank()) TranscriptionEngine.Result.Error("empty result")
+                            else TranscriptionEngine.Result.Success(text.trim())
+                        )
+                    }
+                    override fun onError(errorCode: Int) {
+                        val mapped = when (errorCode) {
+                            SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED,
+                            SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE ->
+                                TranscriptionEngine.Result.LanguageUnavailable
+                            SpeechRecognizer.ERROR_NO_MATCH,
+                            SpeechRecognizer.ERROR_SPEECH_TIMEOUT ->
+                                TranscriptionEngine.Result.Error("no speech detected")
+                            else -> TranscriptionEngine.Result.Error("recognizer error $errorCode")
+                        }
+                        settleWith(mapped)
+                    }
+                    override fun onReadyForSpeech(params: Bundle?) {}
+                    override fun onBeginningOfSpeech() {}
+                    override fun onRmsChanged(rmsdB: Float) {}
+                    override fun onBufferReceived(buffer: ByteArray?) {}
+                    override fun onEndOfSpeech() {}
+                    override fun onPartialResults(partialResults: Bundle?) {}
+                    override fun onEvent(eventType: Int, params: Bundle?) {}
                 }
-                override fun onReadyForSpeech(params: Bundle?) {}
-                override fun onBeginningOfSpeech() {}
-                override fun onRmsChanged(rmsdB: Float) {}
-                override fun onBufferReceived(buffer: ByteArray?) {}
-                override fun onEndOfSpeech() {}
-                override fun onPartialResults(partialResults: Bundle?) {}
-                override fun onEvent(eventType: Int, params: Bundle?) {}
-            }
-            recognizer.setRecognitionListener(listener)
-            recognizer.startListening(intent)
-            cont.invokeOnCancellation {
-                runCatching { pfd.close() }
-                recognizer.destroy()
+                recognizer.setRecognitionListener(listener)
+                recognizer.startListening(intent)
+                cont.invokeOnCancellation { cleanup() }
+            } catch (t: Throwable) {
+                cleanup()
+                if (cont.isActive) cont.resume(
+                    TranscriptionEngine.Result.Error("recognizer setup: ${t.message}")
+                )
             }
         }
     }

@@ -67,8 +67,14 @@ class RetryWorker @AssistedInject constructor(
 
     private suspend fun sendOne(msg: Message, maxRetries: Int) {
         val target = conversationRepository.getById(msg.conversationId) ?: run {
-            Timber.w("RetryWorker: conversation ${msg.conversationId} gone, marking permanently failed")
-            messageRepository.update(msg.copy(state = MessageState.PERMANENTLY_FAILED))
+            // Audit-MED-12: permanent fail (not retry) when the target chat
+            // was deleted while the message was queued. Logging explicitly
+            // so a user reporting "message stuck" finds the cause in logcat.
+            Timber.w("RetryWorker: conversation ${msg.conversationId} gone (deleted while queued), message ${msg.id} → PERMANENTLY_FAILED")
+            messageRepository.update(msg.copy(
+                state = MessageState.PERMANENTLY_FAILED,
+                errorMessage = "Target conversation no longer exists"
+            ))
             return
         }
 

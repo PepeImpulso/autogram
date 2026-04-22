@@ -162,6 +162,7 @@
     <string name="backup_import_ok">Backup restored ✓</string>
     <string name="backup_import_wrong_password">Wrong password</string>
     <string name="backup_import_corrupt">File doesn\'t look like an Autogram backup</string>
+    <string name="backup_import_unsupported">This backup was made by a newer version of Autogram. Update the app and try again.</string>
     <string name="backup_import_fail">Restore failed: %s</string>
     <string name="backup_import_confirm_title">Restore this backup?</string>
     <string name="backup_import_confirm_body">Your current circles, quick replies and settings will be overwritten. This can\'t be undone.</string>

@@ -71,10 +71,22 @@ class MtprotoReceiverService : Service() {
     private var scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var supervisorJob: Job? = null
     private var activeCollectorJob: Job? = null
+    // Audit-HIGH-6: guards against onCreate running after onDestroy on
+    // Android's service lifecycle (rare but happens when the system rebinds).
+    // Without the flag, the onCreate here would cancel the current scope and
+    // spawn a fresh one that the already-run onDestroy never cleans up.
+    @Volatile private var destroyed = false
 
     override fun onCreate() {
         super.onCreate()
-        scope.cancel(); scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        destroyed = false
+        // Don't blindly cancel+recreate: if we're already alive (rebind),
+        // reuse the scope. Only allocate a fresh one when it was previously
+        // cancelled.
+        val job = scope.coroutineContext[Job]
+        if (job == null || !job.isActive) {
+            scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        }
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification("Conectando…"))
         callStateMonitor.start()
@@ -97,8 +109,10 @@ class MtprotoReceiverService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        if (destroyed) { super.onDestroy(); return }
+        destroyed = true
         stopSupervisor()
-        callStateMonitor.stop()
+        runCatching { callStateMonitor.stop() }
         scope.cancel()
         isRunning = false
         Timber.i("MtprotoReceiverService destroyed")

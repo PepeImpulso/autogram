@@ -7,6 +7,7 @@ import androidx.core.os.LocaleListCompat
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import com.autogram.app.domain.repository.SettingsRepository
+import com.autogram.app.infrastructure.audio.TtsPlayer
 import com.autogram.app.infrastructure.platform.LocaleHelper
 import com.autogram.app.infrastructure.platform.PendingReplyNotifier
 import com.autogram.app.infrastructure.retry.RetentionCleanupWorker
@@ -27,6 +28,7 @@ class AutogramApplication : Application(), Configuration.Provider {
 
     @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var settingsRepository: SettingsRepository
+    @Inject lateinit var ttsPlayer: TtsPlayer
 
     private val appScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
@@ -63,6 +65,18 @@ class AutogramApplication : Application(), Configuration.Provider {
                 // Attach screenshots/ANR context to crashes in release builds.
                 options.isAttachScreenshot = !BuildConfig.DEBUG
                 options.isAnrEnabled = true
+                // PII scrubbing: the default integration sends user identifiers
+                // (device id, locale) which we don't need. Also opt out of
+                // automatically capturing the phone number / chat id that can
+                // leak into TDLib error messages.
+                options.isSendDefaultPii = false
+                options.beforeSend = io.sentry.SentryOptions.BeforeSendCallback { event, _ ->
+                    scrubSentryEvent(event); event
+                }
+                options.beforeBreadcrumb = io.sentry.SentryOptions.BeforeBreadcrumbCallback { crumb, _ ->
+                    crumb.message = crumb.message?.let { scrubPii(it) }
+                    crumb
+                }
             }
             Timber.plant(Timber.DebugTree().takeIf { BuildConfig.DEBUG } ?: ReleaseTree())
         } else if (BuildConfig.DEBUG) {
@@ -85,6 +99,19 @@ class AutogramApplication : Application(), Configuration.Provider {
         // Drain any messages left in the outbox from a previous process. Worker
         // is network-constrained so this is safe even if we're offline now.
         RetryWorker.enqueueOnce(this)
+    }
+
+    /**
+     * Audit-HIGH-5: release the TextToSpeech engine when the system says we're
+     * short on memory. `Application.onTerminate()` is only called in emulators,
+     * so we hook onTrimMemory instead — fired on real devices when the system
+     * backgrounds or is under pressure.
+     */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= TRIM_MEMORY_UI_HIDDEN) {
+            runCatching { ttsPlayer.shutdown() }
+        }
     }
 
     private suspend fun applyStoredLocale() {
@@ -114,6 +141,28 @@ class AutogramApplication : Application(), Configuration.Provider {
             if (priority >= android.util.Log.ERROR) {
                 android.util.Log.e(tag, message, t)
             }
+        }
+    }
+
+    companion object {
+        // Patterns that match PII likely to sneak into log messages: phone
+        // numbers, Telegram chat/message ids, long numeric tokens. We replace
+        // in-place rather than dropping the event so the stack trace + code
+        // path is still useful for debugging.
+        private val PHONE_RE = Regex("""\+?\d[\d\s\-()]{7,}""")
+        private val LONG_ID_RE = Regex("""\b-?\d{9,}\b""")
+
+        internal fun scrubPii(s: String): String =
+            s.replace(PHONE_RE, "[phone]").replace(LONG_ID_RE, "[id]")
+
+        internal fun scrubSentryEvent(event: io.sentry.SentryEvent) {
+            event.message?.let { m ->
+                m.message = m.message?.let { scrubPii(it) }
+                m.formatted = m.formatted?.let { scrubPii(it) }
+            }
+            // Drop anything user-identifiable that leaks in through integrations.
+            event.user = null
+            event.request = null
         }
     }
 }
