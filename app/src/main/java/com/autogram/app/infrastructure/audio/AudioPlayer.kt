@@ -153,23 +153,29 @@ class AudioPlayer @Inject constructor(
     // BUG-38: minSdk=29, so we always have API O. Removed dead < O branches.
     private fun requestAudioFocus(): Boolean {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        audioFocusRequest = AudioFocusRequest.Builder(
-            android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
-        )
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .build()
+        val request = try {
+            AudioFocusRequest.Builder(
+                android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
             )
-            .setWillPauseWhenDucked(false)
-            .setOnAudioFocusChangeListener { focusChange ->
-                if (focusChange == android.media.AudioManager.AUDIOFOCUS_LOSS) {
-                    pause()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .build()
+                )
+                .setWillPauseWhenDucked(false)
+                .setOnAudioFocusChangeListener { focusChange ->
+                    if (focusChange == android.media.AudioManager.AUDIOFOCUS_LOSS) {
+                        pause()
+                    }
                 }
-            }
-            .build()
-        return audioManager.requestAudioFocus(audioFocusRequest!!) ==
+                .build()
+        } catch (e: Exception) {
+            Timber.w(e, "AudioFocusRequest build failed; treating as denied")
+            return false
+        }
+        audioFocusRequest = request
+        return audioManager.requestAudioFocus(request) ==
             android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED
     }
 

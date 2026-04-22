@@ -9,7 +9,7 @@ import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.domain.usecase.ManageHistoryUseCase
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import timber.log.Timber
 import java.io.File
 import java.util.concurrent.TimeUnit
@@ -61,7 +61,10 @@ class RetentionCleanupWorker @AssistedInject constructor(
      * file that's gone, which would have shown a broken play button.
      */
     private suspend fun repairMissingAudioPaths() {
-        val all = messageRepository.observeAllAcrossConversations().first()
+        // Room always emits at least an empty list, but guard with
+        // firstOrNull to survive any future repository change that might
+        // produce an empty cold flow.
+        val all = messageRepository.observeAllAcrossConversations().firstOrNull().orEmpty()
         var repaired = 0
         for (msg in all) {
             val path = msg.audioFilePath ?: continue
@@ -82,7 +85,7 @@ class RetentionCleanupWorker @AssistedInject constructor(
      */
     private suspend fun sweepOrphanAudios() {
         // One snapshot is enough — grab first emission from the cold Flow.
-        val all = messageRepository.observeAllAcrossConversations().first()
+        val all = messageRepository.observeAllAcrossConversations().firstOrNull().orEmpty()
         val known = all.mapNotNull { it.audioFilePath }.toSet()
         val dirs = listOf(
             File(context.filesDir, "audio_incoming"),

@@ -7,6 +7,7 @@ import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.infrastructure.telegram.mtproto.AuthState
 import com.autogram.app.infrastructure.telegram.mtproto.TdLibSender
+import com.autogram.app.infrastructure.telegram.mtproto.toForumTopicOrNull
 import org.drinkless.tdlib.TdApi
 import timber.log.Timber
 import java.io.File
@@ -90,7 +91,7 @@ class OutboxRetryUseCase @Inject constructor(
             val result = tdLibClient.send(
                 TdApi.SendMessage().apply {
                     chatId = target.targetChatId.toLong()
-                    topicId = target.topicId?.let { TdApi.MessageTopicForum(it.toInt()) }
+                    topicId = target.topicId.toForumTopicOrNull()
                     inputMessageContent = content
                 }
             )

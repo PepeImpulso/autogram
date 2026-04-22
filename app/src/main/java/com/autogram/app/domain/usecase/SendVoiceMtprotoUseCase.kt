@@ -17,6 +17,7 @@ import com.autogram.app.infrastructure.platform.ConnectivityObserver
 import com.autogram.app.infrastructure.retry.RetryWorker
 import com.autogram.app.infrastructure.telegram.mtproto.AuthState
 import com.autogram.app.infrastructure.telegram.mtproto.TdLibSender
+import com.autogram.app.infrastructure.telegram.mtproto.toForumTopicOrNull
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -191,7 +192,7 @@ class SendVoiceMtprotoUseCase @Inject constructor(
             val sendResult = tdLibClient.send(
                 TdApi.SendMessage().apply {
                     this.chatId = chatId
-                    this.topicId = target.topicId?.let { TdApi.MessageTopicForum(it.toInt()) }
+                    this.topicId = target.topicId.toForumTopicOrNull()
                     this.inputMessageContent = TdApi.InputMessageVoiceNote().apply {
                         voiceNote = TdApi.InputFileLocal(audioFile.absolutePath)
                         duration = (durationMs / 1000).toInt()
@@ -250,7 +251,7 @@ class SendVoiceMtprotoUseCase @Inject constructor(
             val sendResult = tdLibClient.send(
                 TdApi.SendMessage().apply {
                     this.chatId = target.targetChatId.toLong()
-                    this.topicId = target.topicId?.let { TdApi.MessageTopicForum(it.toInt()) }
+                    this.topicId = target.topicId.toForumTopicOrNull()
                     this.inputMessageContent = TdApi.InputMessageText().apply {
                         this.text = TdApi.FormattedText(text, emptyArray())
                     }
@@ -335,7 +336,7 @@ class SendVoiceMtprotoUseCase @Inject constructor(
             val sendResult = tdLibClient.send(
                 TdApi.SendMessage().apply {
                     this.chatId = target.targetChatId.toLong()
-                    this.topicId = target.topicId?.let { TdApi.MessageTopicForum(it.toInt()) }
+                    this.topicId = target.topicId.toForumTopicOrNull()
                     this.inputMessageContent = TdApi.InputMessageVoiceNote().apply {
                         voiceNote = TdApi.InputFileLocal(audioFile.absolutePath)
                         duration = (durationMs / 1000).toInt()

@@ -193,16 +193,30 @@ interface PendingPlaybackDao {
 }
 
 @Dao
-interface CircleFolderDao {
+abstract class CircleFolderDao {
     @Query("SELECT * FROM circle_folders ORDER BY sortOrder ASC, name ASC")
-    fun observeAll(): Flow<List<com.autogram.app.infrastructure.persistence.entity.CircleFolderEntity>>
+    abstract fun observeAll(): Flow<List<com.autogram.app.infrastructure.persistence.entity.CircleFolderEntity>>
 
     @Query("SELECT * FROM circle_folders ORDER BY sortOrder ASC, name ASC")
-    suspend fun getAll(): List<com.autogram.app.infrastructure.persistence.entity.CircleFolderEntity>
+    abstract suspend fun getAll(): List<com.autogram.app.infrastructure.persistence.entity.CircleFolderEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsert(folder: com.autogram.app.infrastructure.persistence.entity.CircleFolderEntity)
+    abstract suspend fun upsert(folder: com.autogram.app.infrastructure.persistence.entity.CircleFolderEntity)
 
     @Query("DELETE FROM circle_folders WHERE id = :id")
-    suspend fun delete(id: String)
+    abstract suspend fun deleteRow(id: String)
+
+    @Query("UPDATE conversations SET folderId = NULL WHERE folderId = :folderId")
+    abstract suspend fun detachConversations(folderId: String)
+
+    /**
+     * Atomically detach member conversations and drop the folder row. Wrapped
+     * in @Transaction so a crash between the two operations can't leave
+     * conversations referencing a folder that was half-deleted.
+     */
+    @Transaction
+    open suspend fun detachAndDelete(id: String) {
+        detachConversations(id)
+        deleteRow(id)
+    }
 }

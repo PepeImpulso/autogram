@@ -922,9 +922,9 @@ private fun ExportPasswordDialog(
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
                     modifier = Modifier.fillMaxWidth()
                 )
-                if (error != null) {
+                error?.let { msg ->
                     Spacer(Modifier.height(8.dp))
-                    Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    Text(msg, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
             }
         },
@@ -976,9 +976,9 @@ private fun ImportPasswordDialog(
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
                     modifier = Modifier.fillMaxWidth()
                 )
-                if (error != null) {
+                error?.let { msg ->
                     Spacer(Modifier.height(8.dp))
-                    Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    Text(msg, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
             }
         },

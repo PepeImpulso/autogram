@@ -53,6 +53,20 @@ class MainViewModel @Inject constructor(
         _selectedFolderId.value = folderId
     }
 
+    init {
+        // Auto-clear the selected folder when it disappears (the user deleted
+        // it from Manage). Without this guard the tab filter would keep
+        // returning an empty list until the user manually taps "All".
+        viewModelScope.launch {
+            folders.collect { list ->
+                val current = _selectedFolderId.value
+                if (current != null && list.none { it.id == current }) {
+                    _selectedFolderId.value = null
+                }
+            }
+        }
+    }
+
     val showPendingBadges: StateFlow<Boolean> =
         settingsRepository.observe()
             .map { it.showPendingBadges }
