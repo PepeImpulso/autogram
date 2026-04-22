@@ -15,12 +15,17 @@
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <!-- NavigationTemplate + SurfaceCallback require this permission.
-         Signature-protected by AA's host (Gearhead is signed with a
-         Google key that grants it). Declaring it enables Autogram's
-         custom canvas rendering on the car head unit — same mechanism
-         Waze and Google Maps use. -->
+    <!-- NavigationTemplate needs this permission. Gearhead grants it
+         to any CarAppService that declares the NAVIGATION category
+         intent-filter, so this works for sideloaded apps (as long as
+         "Unknown sources" is enabled in AA → Developer Settings). -->
     <uses-permission android:name="androidx.car.app.NAVIGATION_TEMPLATES" />
+    <!-- setSurfaceCallback() needs a SECOND permission: ACCESS_SURFACE.
+         Required for the raw-canvas rendering path (same one Waze /
+         Google Maps use). Without it Gearhead refuses the surface
+         handoff with "trying to access surface when the permission
+         was not granted" in logcat. -->
+    <uses-permission android:name="androidx.car.app.ACCESS_SURFACE" />
 
     <uses-feature
         android:name="android.hardware.type.automotive"
