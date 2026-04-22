@@ -121,6 +121,13 @@
     <string name="settings_language_de">Deutsch</string>
     <string name="settings_language_zh">中文</string>
     <string name="settings_language_ja">日本語</string>
+    <string name="settings_transcribe">转写语音消息</string>
+    <string name="settings_transcribe_sub">使用设备端语音识别自动转写收到的语音。需要 Android 14+ 并安装 Google 语音语言包。</string>
+    <string name="settings_transcribe_unsupported">此设备需要 Android 14+</string>
+    <string name="history_transcription_in_progress">转写中…</string>
+    <string name="history_transcription_unavailable">无法转写（未安装语言包）</string>
+    <string name="history_transcription_failed">无法转写</string>
+
     <string name="onboarding_welcome_title">欢迎使用 Autogram</string>
     <string name="onboarding_welcome_body">在 Telegram 上免手操作发送语音消息。用四个快速步骤完成设置。</string>
     <string name="onboarding_record_title">按住录音</string>

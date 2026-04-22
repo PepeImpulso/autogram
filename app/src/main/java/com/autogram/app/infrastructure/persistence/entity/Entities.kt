@@ -7,6 +7,7 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.autogram.app.domain.model.MessageDirection
 import com.autogram.app.domain.model.MessageState
+import com.autogram.app.domain.model.TranscriptionState
 
 /**
  * Entidad Room para mensajes.
@@ -41,7 +42,9 @@ data class MessageEntity(
     val playedAt: Long? = null,
     val errorMessage: String? = null,
     val retryCount: Int = 0,
-    val quickReplyId: String? = null
+    val quickReplyId: String? = null,
+    val transcription: String? = null,
+    val transcriptionState: TranscriptionState = TranscriptionState.NONE
 )
 
 @Entity(tableName = "conversations")
@@ -138,5 +141,6 @@ data class SettingsEntity(
     val hapticEnabled: Boolean = true,
     val previewBeforeSend: Boolean = false,
     val biometricLockEnabled: Boolean = false,
-    val onboardingCompleted: Boolean = false
+    val onboardingCompleted: Boolean = false,
+    val transcribeIncomingVoice: Boolean = false
 )

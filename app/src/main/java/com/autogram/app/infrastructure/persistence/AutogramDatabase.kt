@@ -26,7 +26,7 @@ import javax.inject.Singleton
         QuickReplyEntity::class,
         SettingsEntity::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -99,6 +99,17 @@ object DatabaseModule {
         }
     }
 
+    // v9 → v10: transcription of incoming voice notes. Two columns on
+    // messages (transcription text + state machine) and one toggle on
+    // settings. All default to "off" / NONE so existing rows stay untouched.
+    private val MIGRATION_9_10 = object : Migration(9, 10) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE messages ADD COLUMN transcription TEXT DEFAULT NULL")
+            db.execSQL("ALTER TABLE messages ADD COLUMN transcriptionState TEXT NOT NULL DEFAULT 'NONE'")
+            db.execSQL("ALTER TABLE settings ADD COLUMN transcribeIncomingVoice INTEGER NOT NULL DEFAULT 0")
+        }
+    }
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AutogramDatabase {
@@ -107,7 +118,7 @@ object DatabaseModule {
             AutogramDatabase::class.java,
             "autogram.db"
         )
-            .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+            .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
             // Fallback for any earlier schema (v1 / v2) that has no proper path
             // forward — those versions predate the stable 1.2 line and already
             // wiped once, so destroying from them is acceptable.

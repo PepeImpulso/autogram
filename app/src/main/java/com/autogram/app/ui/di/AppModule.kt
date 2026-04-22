@@ -2,6 +2,8 @@ package com.autogram.app.ui.di
 
 import com.autogram.app.domain.repository.*
 import com.autogram.app.infrastructure.persistence.repository.*
+import com.autogram.app.infrastructure.transcription.AndroidOnDeviceTranscriptionEngine
+import com.autogram.app.infrastructure.transcription.TranscriptionEngine
 import com.autogram.app.BuildConfig
 import dagger.Binds
 import dagger.Module
@@ -28,6 +30,9 @@ abstract class AppModule {
 
     @Binds @Singleton
     abstract fun bindQuickReplyRepository(impl: QuickReplyRepositoryImpl): QuickReplyRepository
+
+    @Binds @Singleton
+    abstract fun bindTranscriptionEngine(impl: AndroidOnDeviceTranscriptionEngine): TranscriptionEngine
 
     companion object {
         @dagger.Provides

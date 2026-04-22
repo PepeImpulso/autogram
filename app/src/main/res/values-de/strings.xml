@@ -122,6 +122,13 @@
     <string name="settings_language_de">Deutsch</string>
     <string name="settings_language_zh">中文</string>
     <string name="settings_language_ja">日本語</string>
+    <string name="settings_transcribe">Sprachnachrichten transkribieren</string>
+    <string name="settings_transcribe_sub">Transkribiert eingehende Sprachnachrichten automatisch mit der On-Device-Spracherkennung. Erfordert Android 14+ und das Google-Sprachpaket.</string>
+    <string name="settings_transcribe_unsupported">Erfordert Android 14+ auf diesem Gerät</string>
+    <string name="history_transcription_in_progress">Transkribiere…</string>
+    <string name="history_transcription_unavailable">Transkription nicht verfügbar (Sprachpaket fehlt)</string>
+    <string name="history_transcription_failed">Konnte nicht transkribiert werden</string>
+
     <string name="onboarding_welcome_title">Willkommen bei Autogram</string>
     <string name="onboarding_welcome_body">Die freihändige Art, Sprachnachrichten auf Telegram zu senden. In vier schnellen Schritten richten wir alles ein.</string>
     <string name="onboarding_record_title">Gedrückt halten zum Aufnehmen</string>

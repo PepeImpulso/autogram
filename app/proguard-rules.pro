@@ -9,6 +9,12 @@
 }
 -keep class com.google.gson.** { *; }
 
+# Backup payload serialized with Gson — field names must survive R8.
+-keep class com.autogram.app.domain.usecase.ExportImportUseCase$BackupPayload { *; }
+-keep class com.autogram.app.domain.model.AppSettings { *; }
+-keep class com.autogram.app.domain.model.Conversation { *; }
+-keep class com.autogram.app.domain.model.QuickReply { *; }
+
 # OkHttp
 -dontwarn okhttp3.**
 -dontwarn okio.**

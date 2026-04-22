@@ -18,6 +18,7 @@ import com.autogram.app.R
 import com.autogram.app.domain.model.Message
 import com.autogram.app.domain.model.MessageDirection
 import com.autogram.app.domain.model.MessageState
+import com.autogram.app.domain.model.TranscriptionState
 import com.autogram.app.domain.usecase.PlayReplyUseCase
 import java.text.SimpleDateFormat
 import java.util.*
@@ -123,6 +124,7 @@ fun MessageCard(
                     style = MaterialTheme.typography.labelSmall,
                     color = stateColor(message.state)
                 )
+                TranscriptionRow(message)
             }
             if (hasAudio && !isOutgoing) {
                 PlaybackButton(
@@ -186,4 +188,58 @@ private fun stateColor(state: MessageState) = when (state) {
     MessageState.SENT, MessageState.PLAYED -> MaterialTheme.colorScheme.primary
     MessageState.FAILED, MessageState.PERMANENTLY_FAILED -> MaterialTheme.colorScheme.error
     else -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
+@Composable
+private fun TranscriptionRow(message: Message) {
+    // Only voice notes get transcribed — text messages are already text.
+    if (message.audioFilePath == null) return
+    when (message.transcriptionState) {
+        TranscriptionState.NONE -> Unit
+        TranscriptionState.PENDING,
+        TranscriptionState.IN_PROGRESS -> {
+            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(10.dp),
+                    strokeWidth = 1.5.dp
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    stringResource(R.string.history_transcription_in_progress),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        TranscriptionState.DONE -> message.transcription?.let { text ->
+            Spacer(Modifier.height(6.dp))
+            Surface(
+                color = MaterialTheme.colorScheme.surface,
+                shape = MaterialTheme.shapes.small
+            ) {
+                Text(
+                    text = "“$text”",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                )
+            }
+        }
+        TranscriptionState.UNAVAILABLE -> {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                stringResource(R.string.history_transcription_unavailable),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        TranscriptionState.FAILED -> {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                stringResource(R.string.history_transcription_failed),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+    }
 }

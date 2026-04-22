@@ -4,6 +4,7 @@ import androidx.room.TypeConverter
 import com.autogram.app.domain.model.MessageDirection
 import com.autogram.app.domain.model.MessageState
 import com.autogram.app.domain.model.PendingReason
+import com.autogram.app.domain.model.TranscriptionState
 
 /**
  * Conversores de tipos para Room (enums ↔ String, timestamps ↔ Long).
@@ -26,4 +27,10 @@ class Converters {
 
     @TypeConverter
     fun toPendingReason(value: String): PendingReason = PendingReason.valueOf(value)
+
+    @TypeConverter
+    fun fromTranscriptionState(value: TranscriptionState): String = value.name
+
+    @TypeConverter
+    fun toTranscriptionState(value: String): TranscriptionState = TranscriptionState.valueOf(value)
 }

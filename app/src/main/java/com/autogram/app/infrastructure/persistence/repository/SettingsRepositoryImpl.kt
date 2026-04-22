@@ -35,7 +35,8 @@ class SettingsRepositoryImpl @Inject constructor(
         languageTag = languageTag, autoDeletePlayed = autoDeletePlayed,
         hapticEnabled = hapticEnabled, previewBeforeSend = previewBeforeSend,
         biometricLockEnabled = biometricLockEnabled,
-        onboardingCompleted = onboardingCompleted
+        onboardingCompleted = onboardingCompleted,
+        transcribeIncomingVoice = transcribeIncomingVoice
     )
 
     private fun AppSettings.toEntity() = SettingsEntity(
@@ -47,6 +48,7 @@ class SettingsRepositoryImpl @Inject constructor(
         languageTag = languageTag, autoDeletePlayed = autoDeletePlayed,
         hapticEnabled = hapticEnabled, previewBeforeSend = previewBeforeSend,
         biometricLockEnabled = biometricLockEnabled,
-        onboardingCompleted = onboardingCompleted
+        onboardingCompleted = onboardingCompleted,
+        transcribeIncomingVoice = transcribeIncomingVoice
     )
 }

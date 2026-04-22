@@ -70,7 +70,9 @@ class MessageRepositoryImpl @Inject constructor(
         playedAt = playedAt,
         errorMessage = errorMessage,
         retryCount = retryCount,
-        quickReplyId = quickReplyId
+        quickReplyId = quickReplyId,
+        transcription = transcription,
+        transcriptionState = transcriptionState
     )
 
     private fun Message.toEntity() = MessageEntity(
@@ -87,6 +89,8 @@ class MessageRepositoryImpl @Inject constructor(
         playedAt = playedAt,
         errorMessage = errorMessage,
         retryCount = retryCount,
-        quickReplyId = quickReplyId
+        quickReplyId = quickReplyId,
+        transcription = transcription,
+        transcriptionState = transcriptionState
     )
 }

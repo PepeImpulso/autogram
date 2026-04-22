@@ -129,6 +129,13 @@
     <string name="settings_language_de">Deutsch</string>
     <string name="settings_language_zh">中文</string>
     <string name="settings_language_ja">日本語</string>
+    <string name="settings_transcribe">Transcribir mensajes de voz</string>
+    <string name="settings_transcribe_sub">Transcribe automáticamente las notas de voz entrantes con reconocimiento en el dispositivo. Requiere Android 14+ y el paquete de voz de Google.</string>
+    <string name="settings_transcribe_unsupported">Requiere Android 14+ en este dispositivo</string>
+    <string name="history_transcription_in_progress">Transcribiendo…</string>
+    <string name="history_transcription_unavailable">Transcripción no disponible (falta paquete de idioma)</string>
+    <string name="history_transcription_failed">No se pudo transcribir</string>
+
     <string name="onboarding_welcome_title">Bienvenido a Autogram</string>
     <string name="onboarding_welcome_body">La forma manos libres de enviar mensajes de voz por Telegram. Vamos a configurarlo en cuatro pasos rápidos.</string>
     <string name="onboarding_record_title">Pulsa y mantén para grabar</string>

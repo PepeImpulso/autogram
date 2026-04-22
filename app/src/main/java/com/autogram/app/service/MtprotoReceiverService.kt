@@ -16,6 +16,7 @@ import com.autogram.app.domain.model.MessageState
 import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.domain.usecase.PlayReplyUseCase
+import com.autogram.app.domain.usecase.TranscribeVoiceUseCase
 import com.autogram.app.infrastructure.platform.CallStateMonitor
 import com.autogram.app.infrastructure.platform.IncomingMessageNotifier
 import com.autogram.app.infrastructure.telegram.mtproto.AuthState
@@ -65,6 +66,7 @@ class MtprotoReceiverService : Service() {
     @Inject lateinit var playReplyUseCase: PlayReplyUseCase
     @Inject lateinit var callStateMonitor: CallStateMonitor
     @Inject lateinit var incomingMessageNotifier: IncomingMessageNotifier
+    @Inject lateinit var transcribeVoiceUseCase: TranscribeVoiceUseCase
 
     private var scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var supervisorJob: Job? = null
@@ -200,6 +202,10 @@ class MtprotoReceiverService : Service() {
             conversation = target,
             timestampMs = message.createdAt
         )
+        // Kick off transcription in the service's own scope so playback and
+        // recognition run in parallel. The use case no-ops if the feature
+        // toggle is off, so it's safe to always call.
+        scope.launch { transcribeVoiceUseCase.transcribe(message.id) }
         playReplyUseCase.playVoiceMessage(
             message = message,
             isCallActive = callStateMonitor.isInCall.value

@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -268,6 +269,24 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                     supporting = stringResource(R.string.settings_preview_before_send_sub),
                     checked = state.previewBeforeSend,
                     onCheckedChange = viewModel::updatePreviewBeforeSend
+                )
+            }
+
+            SectionCard(
+                icon = Icons.Filled.TextFields,
+                title = stringResource(R.string.settings_transcribe),
+                subtitle = stringResource(R.string.settings_transcribe_sub)
+            ) {
+                val transcribeSupported =
+                    com.autogram.app.infrastructure.transcription.AndroidOnDeviceTranscriptionEngine.isSupportedHere(context)
+                SwitchRow(
+                    label = stringResource(R.string.settings_transcribe),
+                    supporting = if (transcribeSupported) stringResource(R.string.settings_transcribe_sub)
+                                 else stringResource(R.string.settings_transcribe_unsupported),
+                    checked = state.transcribeIncomingVoice && transcribeSupported,
+                    onCheckedChange = { enabled ->
+                        if (transcribeSupported) viewModel.updateTranscribe(enabled)
+                    }
                 )
             }
 

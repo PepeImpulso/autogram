@@ -25,6 +25,15 @@ enum class MessageDirection {
     INCOMING
 }
 
+enum class TranscriptionState {
+    NONE,          // not attempted (default for non-voice messages or when disabled)
+    PENDING,       // queued for the transcription engine
+    IN_PROGRESS,
+    DONE,
+    FAILED,
+    UNAVAILABLE    // on-device engine not installed (e.g. user hasn't downloaded the language pack)
+}
+
 data class Message(
     val id: String,
     val conversationId: String,
@@ -39,7 +48,12 @@ data class Message(
     val playedAt: Long? = null,
     val errorMessage: String? = null,
     val retryCount: Int = 0,
-    val quickReplyId: String? = null
+    val quickReplyId: String? = null,
+    // Automatic transcription of incoming voice notes. Text that Merlin (or
+    // any human) sent as a voice message — filled in by TranscribeVoiceUseCase
+    // when settings.transcribeIncomingVoice is on.
+    val transcription: String? = null,
+    val transcriptionState: TranscriptionState = TranscriptionState.NONE
 )
 
 data class Conversation(
@@ -94,7 +108,11 @@ data class AppSettings(
     // Gate the app behind fingerprint/face unlock when re-entering.
     val biometricLockEnabled: Boolean = false,
     // Set to true once the user finishes the first-run onboarding wizard.
-    val onboardingCompleted: Boolean = false
+    val onboardingCompleted: Boolean = false,
+    // Automatic on-device transcription of incoming voice notes. Default off
+    // so users opt in consciously — the engine downloads language packs on
+    // first run which can take a few minutes.
+    val transcribeIncomingVoice: Boolean = false
 )
 
 data class DeliveryAttempt(
