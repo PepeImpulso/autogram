@@ -33,6 +33,15 @@ class TtsPlayer @Inject constructor(
     @Volatile private var engine: TextToSpeech? = null
     @Volatile private var initialized = false
 
+    // Tracks the callback for the utterance currently in flight. Android
+    // TTS does NOT invoke onDone when the engine is `stop()`ed — it
+    // silently drops the utterance. Without this bookkeeping, calling
+    // stop() between successive speak() calls (which we do to flush the
+    // queue) would lose the onDone callback forever. The pending queue
+    // in PlayReplyUseCase relies on that callback to fire playNext,
+    // so a lost callback = queue stuck forever.
+    @Volatile private var pendingOnDone: (() -> Unit)? = null
+
     /**
      * Reads [text] aloud. By default picks the voice for the UI locale, but
      * callers that know the text's actual language (e.g. a summary generated
@@ -67,26 +76,56 @@ class TtsPlayer @Inject constructor(
         // this means only one utterance is ever in flight — prevents
         // the "two voices overlapping" bug where a late-arriving reply
         // started speaking before the previous one finished.
+        //
+        // Android's TTS swallows onDone on explicit stop(), so the old
+        // pending callback has to be fired manually here — otherwise
+        // PlayReplyUseCase.playNext never runs and the queue freezes.
+        val previousOnDone = pendingOnDone
+        pendingOnDone = null
         runCatching { tts.stop() }
+        previousOnDone?.invoke()
 
+        pendingOnDone = onDone
         val utteranceId = UUID.randomUUID().toString()
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(id: String?) {}
-            override fun onDone(id: String?) { onDone() }
+            override fun onDone(id: String?) {
+                val cb = pendingOnDone
+                pendingOnDone = null
+                cb?.invoke()
+            }
             @Deprecated("Deprecated in API 21", ReplaceWith(""))
-            override fun onError(id: String?) { onDone() }
-            override fun onError(id: String?, errorCode: Int) { onDone() }
+            override fun onError(id: String?) {
+                val cb = pendingOnDone
+                pendingOnDone = null
+                cb?.invoke()
+            }
+            override fun onError(id: String?, errorCode: Int) {
+                val cb = pendingOnDone
+                pendingOnDone = null
+                cb?.invoke()
+            }
         })
         runCatching {
             tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
         }.onFailure {
             Timber.w(it, "TtsPlayer.speak failed")
-            onDone()
+            val cb = pendingOnDone
+            pendingOnDone = null
+            cb?.invoke()
         }
     }
 
     fun stop() {
+        // Mirror the callback-reclaim dance from speak() so external
+        // callers (PlayReplyUseCase.stopAll, recording start) don't
+        // strand a pending onDone. If the utterance had already
+        // finished organically, pendingOnDone is already null and this
+        // is a no-op.
+        val previousOnDone = pendingOnDone
+        pendingOnDone = null
         runCatching { engine?.stop() }
+        previousOnDone?.invoke()
     }
 
     /** True when the engine currently has an utterance in flight. */

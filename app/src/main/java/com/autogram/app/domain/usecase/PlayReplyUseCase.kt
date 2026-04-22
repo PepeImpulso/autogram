@@ -137,7 +137,12 @@ class PlayReplyUseCase @Inject constructor(
                     errorMessage = result.exceptionOrNull()?.message
                 ))
                 currentPlayingId = null
-                playNext()
+                // Dispatch playNext outside this withLock block — it
+                // re-enters playVoiceMessage / playTextMessage which
+                // try to acquire the same mutex. kotlinx.coroutines
+                // Mutex is NOT reentrant, so calling playNext from
+                // inside withLock would deadlock the coroutine.
+                playbackScope.launch { playNext() }
             }
         } // end playbackStartLock.withLock
     }
@@ -332,6 +337,10 @@ class PlayReplyUseCase @Inject constructor(
      */
     fun stopAll() {
         audioPlayer.stop()
+        // Also stop TTS — a summary/transcription TTS in flight when
+        // the user starts recording would otherwise keep speaking into
+        // the mic (audio contamination of the new recording).
+        ttsPlayer.stop()
         synchronized(pendingQueue) { pendingQueue.clear() }
         currentPlayingId = null
         _playbackStatus.value = PlaybackStatus.Idle
@@ -427,10 +436,22 @@ class PlayReplyUseCase @Inject constructor(
      * Reproduce todos los mensajes pendientes (cuando se desactiva el modo silencio o termina la llamada).
      */
     suspend fun playAllPending() {
-        val messages = synchronized(pendingQueue) { pendingQueue.toList() }
-        synchronized(pendingQueue) { pendingQueue.clear() }
-        for (msg in messages) {
-            playVoiceMessage(msg)
+        // DON'T drain the queue with a for-loop calling playVoiceMessage:
+        // audioPlayer.play is asynchronous and returns immediately, so
+        // the second iteration's playVoiceMessage sees isPlaying()==true
+        // and re-enqueues the message — every item after the first was
+        // effectively re-queued in the exact same order, so nothing
+        // ever drained. Instead, kick off the first message and let the
+        // audio-completion → playNext() chain drain the rest the same
+        // way an incoming reply drains the queue.
+        val first: Message? = synchronized(pendingQueue) {
+            if (pendingQueue.isEmpty()) null else pendingQueue.removeAt(0)
+        }
+        if (first == null) return
+        if (first.audioFilePath != null) {
+            playVoiceMessage(first)
+        } else if (!first.textContent.isNullOrBlank()) {
+            playTextMessage(first)
         }
     }
 

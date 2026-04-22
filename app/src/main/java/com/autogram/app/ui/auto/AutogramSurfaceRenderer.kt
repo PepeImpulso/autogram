@@ -19,10 +19,15 @@ import com.autogram.app.domain.model.QuickReply
 import com.autogram.app.domain.model.QuickReplyKind
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Custom canvas renderer for the Autogram Android Auto home screen.
@@ -94,7 +99,42 @@ class AutogramSurfaceRenderer(
     // Photo bitmap cache: loading from disk on every frame would burn
     // CPU and jank the scroll. Keyed by `(path, file.lastModified)` so
     // the cache auto-invalidates when the user sets a new photo.
-    private val photoCache: MutableMap<String, Bitmap> = HashMap()
+    //
+    // ConcurrentHashMap because `drawIfReady` may run on multiple
+    // worker threads before we coalesce (see the drawChannel below),
+    // and an unsynchronised HashMap would race on write and eventually
+    // throw ConcurrentModificationException.
+    //
+    // LinkedHashMap wrapped with access-order + bounded eviction keeps
+    // the cache from growing unbounded: a conversation history with
+    // 20+ pinned contacts would otherwise pin ~20×2MB = 40MB of
+    // bitmaps in memory forever.
+    private val photoCache: MutableMap<String, Bitmap> =
+        java.util.Collections.synchronizedMap(
+            object : LinkedHashMap<String, Bitmap>(PHOTO_CACHE_MAX, 0.75f, true) {
+                override fun removeEldestEntry(eldest: Map.Entry<String, Bitmap>?): Boolean =
+                    size > PHOTO_CACHE_MAX
+            }
+        )
+
+    // Rasterised-drawable cache for ic_mic / ic_bolt / ic_person glyphs
+    // used inside `drawDrawableCentered`. Without this we'd allocate a
+    // fresh Bitmap per-glyph per-frame (~30 bitmaps/frame × redraws per
+    // state change = sustained GC pressure on cheaper head units).
+    private val drawableRasterCache: ConcurrentHashMap<Long, Bitmap> = ConcurrentHashMap()
+
+    // Conflated draw pipeline. Multiple upstream signals (pinned flow,
+    // shortcuts flow, recording state, visible-area change) emit in
+    // close succession — without coalescing each would spawn a new
+    // drawIfReady coroutine, three or four of which then race to
+    // lockCanvas on the same Surface (lockCanvas isn't thread-safe
+    // and returns null / throws on concurrent call). Conflated channel
+    // buffers at most one pending draw; a burst of render requests
+    // collapses to a single frame.
+    private val drawChannel: Channel<Unit> = Channel(
+        capacity = Channel.CONFLATED,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
 
     // Hit-test regions computed during the last `drawFrame`. `onClick`
     // walks this list in reverse so chips on top of circles win.
@@ -135,12 +175,34 @@ class AutogramSurfaceRenderer(
         this.surfaceContainer = null
     }
 
+    /**
+     * Called from MainScreen.onDestroy. Frees the rasterised-drawable
+     * and photo caches so the renderer instance doesn't keep Bitmap
+     * memory alive beyond the screen's lifetime. The draw channel is
+     * closed so the worker coroutine exits cleanly.
+     */
+    fun dispose() {
+        drawChannel.close()
+        drawableRasterCache.clear()
+        synchronized(photoCache) { photoCache.clear() }
+    }
+
     override fun onClick(x: Float, y: Float) {
         // During a recording, ANY tap on the surface stops and sends.
         // This is the closest thing to "release to send" that AA
         // allows us — onClick is the only touch event SurfaceCallback
         // delivers (no onPressDown / onPressUp).
+        //
+        // Guard against accidental double-taps: once we've fired
+        // onStopAndSend the send path in SendVoiceMtprotoUseCase
+        // nulls currentAudioFile immediately, so a second tap arriving
+        // a few ms later would hit IllegalStateException ("No hay
+        // grabación en curso") and surface as a spurious Error pill.
+        // Clearing isRecording synchronously short-circuits the second
+        // tap; the real value gets re-pushed from the state flow a
+        // few ms later.
         if (isRecording) {
+            isRecording = false
             onStopAndSend()
             return
         }
@@ -148,8 +210,18 @@ class AutogramSurfaceRenderer(
         regions.asReversed().firstOrNull { it.rect.contains(x, y) }?.action?.invoke()
     }
 
+    init {
+        // Single long-running draw worker — each channel receive is one
+        // frame, the channel's CONFLATED buffer collapses bursts into
+        // one. Lives for the life of the screen; cancelled when
+        // screenScope is cancelled.
+        screenScope.launch(Dispatchers.Default) {
+            for (signal in drawChannel) drawIfReady()
+        }
+    }
+
     private fun requestRender() {
-        screenScope.launch(Dispatchers.Default) { drawIfReady() }
+        drawChannel.trySend(Unit)
     }
 
     private fun drawIfReady() {
@@ -505,17 +577,33 @@ class AutogramSurfaceRenderer(
         cy: Float,
         sizePx: Float
     ) {
-        val drawable = ContextCompat.getDrawable(carContext, resId)?.mutate() ?: return
         val intSize = sizePx.toInt().coerceAtLeast(1)
-        val bitmap = Bitmap.createBitmap(intSize, intSize, Bitmap.Config.ARGB_8888)
-        val tmpCanvas = Canvas(bitmap)
-        drawable.setTint(tint)
-        drawable.setBounds(0, 0, intSize, intSize)
-        drawable.draw(tmpCanvas)
+        // Cache key: pack resId (up to 20 bits in practice), tint (full
+        // 32 bits) and intSize (bounded) into a Long so we reuse the
+        // same rasterised bitmap across frames for the same glyph.
+        val key = (resId.toLong() and 0xFFFFF shl 44) or
+            (intSize.toLong() and 0x3FFF shl 30) or
+            (tint.toLong() and 0x3FFFFFFF)
+        val bitmap = drawableRasterCache.getOrPut(key) {
+            val drawable = ContextCompat.getDrawable(carContext, resId)?.mutate()
+                ?: return@getOrPut Bitmap.createBitmap(intSize, intSize, Bitmap.Config.ARGB_8888)
+            val bmp = Bitmap.createBitmap(intSize, intSize, Bitmap.Config.ARGB_8888)
+            val tmpCanvas = Canvas(bmp)
+            drawable.setTint(tint)
+            drawable.setBounds(0, 0, intSize, intSize)
+            drawable.draw(tmpCanvas)
+            bmp
+        }
         canvas.drawBitmap(bitmap, cx - intSize / 2f, cy - intSize / 2f, null)
     }
 
     companion object {
+        // Cap photo bitmap cache so accumulated pinned conversations
+        // don't pin tens of MBs of bitmaps. 12 is comfortably more than
+        // any car-budget grid will show at once (primary + up to ~8
+        // secondaries + a handful of shortcut overflow).
+        private const val PHOTO_CACHE_MAX: Int = 12
+
         // AA's dark tile background. Near-black with a whisper of warmth
         // so the gold ring reads against it without flattening to pure
         // #000 (which looks like a display glitch on some OLED cars).

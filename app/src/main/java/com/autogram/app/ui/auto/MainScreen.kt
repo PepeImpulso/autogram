@@ -113,22 +113,40 @@ class MainScreen(
             }
 
             override fun onDestroy(owner: androidx.lifecycle.LifecycleOwner) {
+                // Defensive: also clear the surface callback here in case
+                // onStop wasn't fired before destroy (can happen in some
+                // AA reconnect paths). Leaving it set would let the car
+                // host retain CarContext via this Screen instance.
+                runCatching {
+                    carContext.getCarService(androidx.car.app.AppManager::class.java)
+                        .setSurfaceCallback(null)
+                }
+                surfaceRenderer.dispose()
                 screenJob.cancel()
                 iconCache.clear()
             }
         })
+        // Combine both state flows into a single observer so the
+        // renderer never sees an interim (isRecording=true, activeId=null)
+        // frame during the brief window between the two flows' emits.
         screenScope.launch {
-            sendMessageUseCase.status.collect { status ->
+            kotlinx.coroutines.flow.combine(
+                sendMessageUseCase.status,
+                sendMessageUseCase.activeTargetId
+            ) { status, activeId -> status to activeId }.collect { (status, activeId) ->
                 val isRecording = status is SendVoiceMtprotoUseCase.SendStatus.Recording
-                val activeId = sendMessageUseCase.activeTargetId.value
                 surfaceRenderer.updateRecordingState(isRecording, activeId)
+                // Auto-clear a lingering Sent state after 3s. Moved here
+                // from onGetTemplate (which had a side effect every time
+                // AA re-requested the template — not idempotent-safe).
+                if (status is SendVoiceMtprotoUseCase.SendStatus.Sent) {
+                    resetJob?.cancel()
+                    resetJob = screenScope.launch {
+                        delay(3000)
+                        sendMessageUseCase.reset()
+                    }
+                }
                 invalidate()
-            }
-        }
-        screenScope.launch {
-            sendMessageUseCase.activeTargetId.collect { activeId ->
-                val isRecording = sendMessageUseCase.status.value is SendVoiceMtprotoUseCase.SendStatus.Recording
-                surfaceRenderer.updateRecordingState(isRecording, activeId)
             }
         }
         screenScope.launch {
@@ -167,15 +185,11 @@ class MainScreen(
             // down the surface and lose our custom canvas mid-recording.
             is SendVoiceMtprotoUseCase.SendStatus.Recording -> buildHomeTemplate()
             is SendVoiceMtprotoUseCase.SendStatus.Sending -> buildStatusTemplate(carContext.getString(R.string.status_sending))
-            is SendVoiceMtprotoUseCase.SendStatus.Sent -> {
-                resetJob?.cancel()
-                resetJob = screenScope.launch {
-                    delay(3000)
-                    sendMessageUseCase.reset()
-                    invalidate()
-                }
-                buildStatusTemplate(carContext.getString(R.string.status_sent))
-            }
+            // Auto-reset after Sent is scheduled by the flow collector
+            // in init {} — onGetTemplate stays pure (no side effects)
+            // so AA can re-request the template any number of times
+            // without accumulating delayed coroutines.
+            is SendVoiceMtprotoUseCase.SendStatus.Sent -> buildStatusTemplate(carContext.getString(R.string.status_sent))
             is SendVoiceMtprotoUseCase.SendStatus.Discarded -> buildStatusTemplate(
                 carContext.getString(R.string.status_discarded, status.reason)
             )
