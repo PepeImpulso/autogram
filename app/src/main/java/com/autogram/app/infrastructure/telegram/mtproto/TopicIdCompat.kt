@@ -23,3 +23,15 @@ internal fun Long?.toForumTopicOrNull(): TdApi.MessageTopicForum? {
     }
     return TdApi.MessageTopicForum(tid.toInt())
 }
+
+/**
+ * Safe Long→Int narrowing for forum topic IDs. Returns null if the value
+ * is outside int32 range instead of silently overflowing via `.toInt()`.
+ * Useful when comparing [com.autogram.app.domain.model.Conversation.topicId]
+ * (Long) against [com.autogram.app.infrastructure.telegram.mtproto.TopicSummary.forumTopicId]
+ * (Int).
+ */
+internal fun Long?.asInt32OrNull(): Int? {
+    val v = this ?: return null
+    return if (v in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong()) v.toInt() else null
+}

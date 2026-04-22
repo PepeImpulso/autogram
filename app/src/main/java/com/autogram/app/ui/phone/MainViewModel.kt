@@ -53,19 +53,8 @@ class MainViewModel @Inject constructor(
         _selectedFolderId.value = folderId
     }
 
-    init {
-        // Auto-clear the selected folder when it disappears (the user deleted
-        // it from Manage). Without this guard the tab filter would keep
-        // returning an empty list until the user manually taps "All".
-        viewModelScope.launch {
-            folders.collect { list ->
-                val current = _selectedFolderId.value
-                if (current != null && list.none { it.id == current }) {
-                    _selectedFolderId.value = null
-                }
-            }
-        }
-    }
+    // Init block lives at the bottom of the constructor once `suggestedChips`
+    // and `activeTargetId` are declared.
 
     val showPendingBadges: StateFlow<Boolean> =
         settingsRepository.observe()
@@ -127,8 +116,20 @@ class MainViewModel @Inject constructor(
             .stateIn(viewModelScope, SharingStarted.Eagerly, defaultQuickReplies())
 
     init {
+        // Auto-clear the selected folder when it disappears (the user deleted
+        // it from Manage). Without this the tab filter would keep returning
+        // an empty list until the user manually taps "All".
+        viewModelScope.launch {
+            folders.collect { list ->
+                val current = _selectedFolderId.value
+                if (current != null && list.none { it.id == current }) {
+                    _selectedFolderId.value = null
+                }
+            }
+        }
+
         // Watch incoming messages across the active conversation and compute
-        // chip suggestions. We use observeAllAcrossConversations because the
+        // chip suggestions. Uses observeAllAcrossConversations because the
         // active target may change while we're running; `activeTargetId`
         // gates which messages are relevant.
         viewModelScope.launch {

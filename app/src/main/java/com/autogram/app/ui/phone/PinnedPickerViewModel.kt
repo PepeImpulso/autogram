@@ -7,6 +7,7 @@ import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.infrastructure.telegram.mtproto.ChatSummary
 import com.autogram.app.infrastructure.telegram.mtproto.TdLibChatDirectory
 import com.autogram.app.infrastructure.telegram.mtproto.TopicSummary
+import com.autogram.app.infrastructure.telegram.mtproto.asInt32OrNull
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -92,9 +93,12 @@ class PinnedPickerViewModel @Inject constructor(
                 val topics = chatDirectory.listForumTopics(chat.chatId)
                 val alreadyPinned = conversationRepository.getPinned()
                     .filter { it.targetChatId == chat.chatId.toString() && it.topicId != null }
-                val alreadyPinnedIds = alreadyPinned.mapNotNull { it.topicId?.toInt() }.toSet()
+                val alreadyPinnedIds = alreadyPinned
+                    .mapNotNull { it.topicId.asInt32OrNull() }
+                    .toSet()
                 val primaryIds = alreadyPinned.filter { it.isActive }
-                    .mapNotNull { it.topicId?.toInt() }.toSet()
+                    .mapNotNull { it.topicId.asInt32OrNull() }
+                    .toSet()
                 _state.value = _state.value.copy(
                     loading = false,
                     topics = topics,

@@ -165,7 +165,7 @@ private fun PinnedPickerScreen(
             Box(modifier = Modifier.fillMaxSize()) {
                 when {
                     state.loading -> CenteredSpinner()
-                    state.error != null -> ErrorBlock(state.error!!)
+                    state.error != null -> state.error?.let { ErrorBlock(it) }
                     state.step is PinnedPickerViewModel.Step.Chats -> ChatList(
                         chats = state.chats.filter {
                             query.isBlank() || it.title.contains(query, ignoreCase = true)

@@ -177,7 +177,7 @@ private fun TargetPickerScreen(
             Box(modifier = Modifier.fillMaxSize()) {
                 when {
                     state.loading -> CenteredSpinner()
-                    state.error != null -> ErrorBlock(state.error!!)
+                    state.error != null -> state.error?.let { ErrorBlock(it) }
                     state.step is TargetPickerViewModel.Step.Chats -> ChatList(
                         chats = state.chats.filter {
                             query.isBlank() || it.title.contains(query, ignoreCase = true)
