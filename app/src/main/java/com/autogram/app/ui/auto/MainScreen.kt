@@ -136,14 +136,22 @@ class MainScreen(
             ) { status, activeId -> status to activeId }.collect { (status, activeId) ->
                 val isRecording = status is SendVoiceMtprotoUseCase.SendStatus.Recording
                 surfaceRenderer.updateRecordingState(isRecording, activeId)
-                // Auto-clear a lingering Sent state after 3s. Moved here
+                // Auto-clear any terminal status after 5 s so the pill /
+                // status banner doesn't linger indefinitely. Moved here
                 // from onGetTemplate (which had a side effect every time
                 // AA re-requested the template — not idempotent-safe).
-                if (status is SendVoiceMtprotoUseCase.SendStatus.Sent) {
+                // 5 s matches the phone's HeroHeader pill auto-dismiss.
+                val terminal = status is SendVoiceMtprotoUseCase.SendStatus.Sent ||
+                    status is SendVoiceMtprotoUseCase.SendStatus.Error ||
+                    status is SendVoiceMtprotoUseCase.SendStatus.Discarded ||
+                    status is SendVoiceMtprotoUseCase.SendStatus.QueuedOffline
+                if (terminal) {
                     resetJob?.cancel()
                     resetJob = screenScope.launch {
-                        delay(3000)
-                        sendMessageUseCase.reset()
+                        delay(5000)
+                        if (sendMessageUseCase.status.value === status) {
+                            sendMessageUseCase.reset()
+                        }
                     }
                 }
                 invalidate()

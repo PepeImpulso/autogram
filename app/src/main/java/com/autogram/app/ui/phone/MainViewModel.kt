@@ -105,6 +105,33 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch { playReplyUseCase.playManually(msg) }
     }
 
+    /**
+     * Tap-to-play, tap-again-to-stop. Called from the always-visible
+     * HeroHeader button. If the last original is the thing currently
+     * playing, stop. Otherwise start playback of the most-recent
+     * incoming voice on the active target — `stopAll` first so a
+     * summary TTS or unrelated audio doesn't stack over the original.
+     * No-op when there's no audio to play.
+     */
+    fun toggleLastOriginal() {
+        val st = playbackStatus.value
+        val lastId = lastIncomingWithAudio.value?.id
+        val isPlayingLast = st is PlayReplyUseCase.PlaybackStatus.Playing &&
+            st.messageId == lastId
+        if (isPlayingLast) {
+            playReplyUseCase.stopAll()
+            return
+        }
+        val msg = lastIncomingWithAudio.value ?: return
+        viewModelScope.launch {
+            // Ensure a clean slate: if a TTS summary or another
+            // message is already playing, tapping the button should
+            // REPLACE it with the original — not double-audio.
+            playReplyUseCase.stopAll()
+            playReplyUseCase.playManually(msg)
+        }
+    }
+
     val pinned: StateFlow<List<Conversation>> =
         conversationRepository.observePinned()
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -135,6 +162,11 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    // Terminal-state auto-dismiss Job. Cancelled + restarted when the
+    // status changes so a rapid Sent→Error transition doesn't keep the
+    // old timer alive.
+    private var statusDismissJob: kotlinx.coroutines.Job? = null
+
     init {
         // Auto-clear the selected folder when it disappears (the user deleted
         // it from Manage). Without this the tab filter would keep returning
@@ -144,6 +176,33 @@ class MainViewModel @Inject constructor(
                 val current = _selectedFolderId.value
                 if (current != null && list.none { it.id == current }) {
                     _selectedFolderId.value = null
+                }
+            }
+        }
+
+        // Auto-dismiss the HeroHeader status pill after the user has had
+        // time to read it (5 s). Terminal states only — Recording /
+        // Sending / Validating must stay visible because they represent
+        // ongoing work. Idle / PreviewReady / PreviewPlaying also stay
+        // since they're either the default or a user-driven state.
+        viewModelScope.launch {
+            sendMessageUseCase.status.collect { st ->
+                statusDismissJob?.cancel()
+                val shouldDismiss = st is SendVoiceMtprotoUseCase.SendStatus.Sent ||
+                    st is SendVoiceMtprotoUseCase.SendStatus.Error ||
+                    st is SendVoiceMtprotoUseCase.SendStatus.Discarded ||
+                    st is SendVoiceMtprotoUseCase.SendStatus.QueuedOffline
+                if (shouldDismiss) {
+                    statusDismissJob = viewModelScope.launch {
+                        kotlinx.coroutines.delay(5_000)
+                        // Re-check: user may have started a new action
+                        // inside the delay window, which would have moved
+                        // status off the terminal state — in that case
+                        // don't clobber it.
+                        if (sendMessageUseCase.status.value === st) {
+                            sendMessageUseCase.reset()
+                        }
+                    }
                 }
             }
         }

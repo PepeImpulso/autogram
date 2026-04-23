@@ -10,6 +10,7 @@
     <string name="common_back">Volver</string>
     <string name="common_dismiss">Cerrar</string>
     <string name="main_play_last_original">Reproducir original</string>
+    <string name="main_stop_last_original">Detener reproducción</string>
     <string name="tile_record_label">Voz a Merlin</string>
     <string name="tile_no_primary">Elige un destinatario principal en Ajustes</string>
     <string name="common_cancel">Cancelar</string>
@@ -130,7 +131,8 @@
     <string name="settings_silent">Modo silencio</string>
     <string name="settings_silent_sub">Los audios entrantes se encolan en vez de sonar.</string>
     <string name="settings_playback_speed">Velocidad de reproducción</string>
-    <string name="settings_recording_cues">Sonido al grabar</string>
+    <string name="settings_recording_cues">Pitido de grabación</string>
+    <string name="settings_recording_cues_sub">Tono breve que suena al empezar y terminar una grabación para confirmar que el micrófono se abrió — aviso acústico sin mirar la pantalla.</string>
     <string name="settings_recording_cues_off">Desactivado</string>
     <string name="settings_auto_delete_played">Borrar audios tras reproducirlos</string>
     <string name="settings_auto_delete_played_sub">Ahorra espacio. La transcripción (cuando exista) se mantiene.</string>

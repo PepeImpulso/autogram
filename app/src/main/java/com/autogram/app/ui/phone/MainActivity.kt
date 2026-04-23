@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -45,6 +46,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -65,6 +67,12 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+// Minimum press duration that counts as a hold-to-record. Shorter
+// presses silently cancel the just-started recording instead of
+// firing stopAndSend on an empty MediaRecorder frame (which throws
+// "stop failed" and briefly flashes an Error pill). See RecordCircle.
+private const val MIN_RECORD_HOLD_MS: Long = 350L
 
 @AndroidEntryPoint
 class MainActivity : BaseLocaleActivity() {
@@ -307,7 +315,17 @@ private fun MainScreen(
                 .fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            HeroHeader(sendStatus = sendStatus, playback = playback, outboxCount = outboxCount, online = isOnline)
+            val isPlayingLast = (playback as? PlayReplyUseCase.PlaybackStatus.Playing)?.messageId ==
+                lastIncomingAudio?.id && lastIncomingAudio != null
+            HeroHeader(
+                sendStatus = sendStatus,
+                playback = playback,
+                outboxCount = outboxCount,
+                online = isOnline,
+                hasLastOriginal = lastIncomingAudio != null,
+                isPlayingLast = isPlayingLast,
+                onToggleLastOriginal = viewModel::toggleLastOriginal
+            )
 
             if (folders.isNotEmpty()) {
                 FolderTabRow(
@@ -327,14 +345,6 @@ private fun MainScreen(
                     },
                     onDismiss = { viewModel.dismissSuggestions() }
                 )
-                Spacer(Modifier.height(16.dp))
-            }
-
-            // Play-last-original button. Uses tertiaryContainer + a headphone
-            // icon so it can't be confused with the quick-reply attajos (which
-            // are filled-tonal buttons in the primary colour scheme).
-            lastIncomingAudio?.let {
-                PlayLastOriginalButton(onClick = viewModel::playLastOriginal)
                 Spacer(Modifier.height(16.dp))
             }
 
@@ -451,7 +461,10 @@ private fun HeroHeader(
     sendStatus: SendVoiceMtprotoUseCase.SendStatus,
     playback: PlayReplyUseCase.PlaybackStatus,
     outboxCount: Int,
-    online: Boolean
+    online: Boolean,
+    hasLastOriginal: Boolean,
+    isPlayingLast: Boolean,
+    onToggleLastOriginal: () -> Unit
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -477,6 +490,54 @@ private fun HeroHeader(
         )
         Spacer(Modifier.weight(1f))
         StatusPill(sendStatus, playback, outboxCount, online)
+        // Always-visible "play last original" toggle. Disabled when the
+        // active target has no incoming audio to play back; shows Stop
+        // while playback is in flight so a single tap kills it. Moved
+        // from the body into the hero header so a driver / glance-only
+        // user always knows where to find it, regardless of what's on
+        // screen right now.
+        PlayLastOriginalToggle(
+            enabled = hasLastOriginal,
+            isPlaying = isPlayingLast,
+            onClick = onToggleLastOriginal
+        )
+    }
+}
+
+@Composable
+private fun PlayLastOriginalToggle(
+    enabled: Boolean,
+    isPlaying: Boolean,
+    onClick: () -> Unit
+) {
+    val container = when {
+        isPlaying -> MaterialTheme.colorScheme.errorContainer
+        enabled -> MaterialTheme.colorScheme.tertiaryContainer
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    val content = when {
+        isPlaying -> MaterialTheme.colorScheme.onErrorContainer
+        enabled -> MaterialTheme.colorScheme.onTertiaryContainer
+        else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+    }
+    Surface(
+        onClick = onClick,
+        enabled = enabled || isPlaying,
+        shape = CircleShape,
+        color = container,
+        contentColor = content,
+        modifier = Modifier.size(40.dp)
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            Icon(
+                imageVector = if (isPlaying) Icons.Filled.Stop else Icons.Filled.Headphones,
+                contentDescription = stringResource(
+                    if (isPlaying) R.string.main_stop_last_original
+                    else R.string.main_play_last_original
+                ),
+                modifier = Modifier.size(20.dp)
+            )
+        }
     }
 }
 
@@ -490,7 +551,7 @@ private fun StatusPill(
     data class Pill(val text: String, val container: Color, val onContainer: Color)
     val scheme = MaterialTheme.colorScheme
     val ctx = LocalContext.current
-    val pill = when (sendStatus) {
+    val pill: Pill? = when (sendStatus) {
         is SendVoiceMtprotoUseCase.SendStatus.Recording ->
             Pill(ctx.getString(R.string.status_recording), scheme.errorContainer, scheme.onErrorContainer)
         is SendVoiceMtprotoUseCase.SendStatus.Validating ->
@@ -504,12 +565,11 @@ private fun StatusPill(
             // send while offline; RetryWorker later drains the outbox but
             // has no channel back to reset this field. So instead of
             // trusting SendStatus alone, we gate on the outbox count:
-            //   - outbox == 0 → worker finished, fall through to Idle.
+            //   - outbox == 0 → worker finished, hide the pill entirely.
             //   - outbox > 0 && !online → still queued.
             //   - outbox > 0 && online → worker is retrying right now.
             when {
-                outboxCount == 0 ->
-                    Pill(ctx.getString(R.string.status_idle), scheme.surfaceVariant, scheme.onSurfaceVariant)
+                outboxCount == 0 -> null
                 !online ->
                     Pill(ctx.getString(R.string.status_queued_offline_count, outboxCount), scheme.tertiaryContainer, scheme.onTertiaryContainer)
                 else ->
@@ -521,7 +581,11 @@ private fun StatusPill(
         is SendVoiceMtprotoUseCase.SendStatus.Error ->
             Pill(ctx.getString(R.string.status_error_generic, sendStatus.message), scheme.errorContainer, scheme.onErrorContainer)
         else -> {
-            // Idle priority: outbox count > pending playback count > just "ready".
+            // Idle: only show the pill when there's information the user
+            // needs (outbox count, pending playback count). Otherwise
+            // render nothing so the header actually empties out 5 s after
+            // a Sent / Error / Discarded auto-dismiss instead of
+            // reverting to a persistent "Ready" tag.
             when {
                 outboxCount > 0 ->
                     Pill(ctx.getString(R.string.status_outbox_count, outboxCount), scheme.tertiaryContainer, scheme.onTertiaryContainer)
@@ -529,21 +593,32 @@ private fun StatusPill(
                     val c = (playback as PlayReplyUseCase.PlaybackStatus.PendingCount).count
                     Pill(ctx.getString(R.string.status_pending_count, c), scheme.tertiaryContainer, scheme.onTertiaryContainer)
                 }
-                else -> Pill(ctx.getString(R.string.status_idle), scheme.surfaceVariant, scheme.onSurfaceVariant)
+                else -> null
             }
         }
     }
+    if (pill == null) return
     Surface(
         color = pill.container,
         contentColor = pill.onContainer,
         shape = RoundedCornerShape(20.dp),
-        modifier = Modifier.padding(horizontal = 24.dp)
+        modifier = Modifier.padding(horizontal = 8.dp)
     ) {
         Text(
             text = pill.text,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                // Cap the pill width so a long Telegram error can't
+                // push the always-visible play-last-original toggle
+                // off the right edge of the HeroHeader row on narrow
+                // phones. 160 dp fits the common short statuses
+                // verbatim ("Sent", "Offline: 3", "Recording") and
+                // ellipsizes only the worst cases.
+                .widthIn(max = 160.dp),
             style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Medium
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
@@ -586,47 +661,6 @@ private fun FolderTabRow(
                         modifier = Modifier.size(androidx.compose.material3.FilterChipDefaults.IconSize)
                     )
                 }
-            )
-        }
-    }
-}
-
-/**
- * Outlined pill showing "Play last original" — appears when summary mode is
- * on or when a previously-received voice note is still on disk. Deliberately
- * styled with tertiaryContainer so it reads as a secondary affordance, not
- * a quick-reply attajo.
- */
-@Composable
-private fun PlayLastOriginalButton(onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.tertiaryContainer,
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.tertiary.copy(alpha = 0.4f)
-        ),
-        modifier = Modifier
-            .padding(horizontal = 24.dp)
-            .fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-        ) {
-            Icon(
-                Icons.Filled.Headphones,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onTertiaryContainer
-            )
-            Spacer(Modifier.width(10.dp))
-            Text(
-                stringResource(R.string.main_play_last_original),
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onTertiaryContainer
             )
         }
     }
@@ -786,6 +820,7 @@ private fun RecordCircle(
                     }
                     awaitEachGesture {
                         awaitFirstDown()
+                        val downTimeMs = System.currentTimeMillis()
                         onStart()
                         var cancelled = false
                         while (true) {
@@ -801,7 +836,21 @@ private fun RecordCircle(
                                 break
                             }
                         }
-                        if (!cancelled) onSend()
+                        // Brief-tap guard. Small (72 dp) secondary circles
+                        // are easy to tap-and-release in under ~250 ms
+                        // instead of holding; MediaRecorder.stop() on such
+                        // a fresh start throws "stop failed" and surfaces
+                        // as a flash of the Error pill ("No se pudo
+                        // guardar el audio"). Treat presses shorter than
+                        // MIN_HOLD_MS as accidental taps and cancel the
+                        // recording we just started — same UX as dragging
+                        // out of the circle. 350 ms is comfortable for a
+                        // deliberate hold on a phone and rules out
+                        // incidental taps.
+                        if (!cancelled) {
+                            val heldMs = System.currentTimeMillis() - downTimeMs
+                            if (heldMs < MIN_RECORD_HOLD_MS) onCancel() else onSend()
+                        }
                     }
                 },
             contentAlignment = Alignment.Center

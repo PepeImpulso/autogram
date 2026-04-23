@@ -9,6 +9,7 @@
     <string name="common_back">Zurück</string>
     <string name="common_dismiss">Schließen</string>
     <string name="main_play_last_original">Original abspielen</string>
+    <string name="main_stop_last_original">Wiedergabe stoppen</string>
     <string name="tile_record_label">Sprache an Merlin</string>
     <string name="tile_no_primary">Wählen Sie zuerst ein Hauptziel in den Einstellungen</string>
     <string name="common_cancel">Abbrechen</string>
@@ -123,7 +124,8 @@
     <string name="settings_silent">Lautlos-Modus</string>
     <string name="settings_silent_sub">Eingehende Audios werden statt abgespielt in die Warteschlange gesetzt.</string>
     <string name="settings_playback_speed">Wiedergabegeschwindigkeit</string>
-    <string name="settings_recording_cues">Aufnahmeton</string>
+    <string name="settings_recording_cues">Aufnahme-Piepton</string>
+    <string name="settings_recording_cues_sub">Kurzer Ton zu Beginn und am Ende einer Aufnahme, um zu bestätigen, dass das Mikrofon offen ist — akustische Bestätigung, ohne auf den Bildschirm zu sehen.</string>
     <string name="settings_recording_cues_off">Aus</string>
     <string name="settings_auto_delete_played">Audios nach Wiedergabe löschen</string>
     <string name="settings_auto_delete_played_sub">Spart Speicher. Transkripte (sofern vorhanden) bleiben erhalten.</string>

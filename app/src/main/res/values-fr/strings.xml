@@ -9,6 +9,7 @@
     <string name="common_back">Retour</string>
     <string name="common_dismiss">Fermer</string>
     <string name="main_play_last_original">Écouter l\'original</string>
+    <string name="main_stop_last_original">Arrêter la lecture</string>
     <string name="tile_record_label">Vocal pour Merlin</string>
     <string name="tile_no_primary">Choisissez d\'abord un destinataire principal dans les Réglages</string>
     <string name="common_cancel">Annuler</string>
@@ -123,7 +124,8 @@
     <string name="settings_silent">Mode silencieux</string>
     <string name="settings_silent_sub">Les audios entrants sont mis en file d\'attente au lieu d\'être lus.</string>
     <string name="settings_playback_speed">Vitesse de lecture</string>
-    <string name="settings_recording_cues">Son d\'enregistrement</string>
+    <string name="settings_recording_cues">Bip d\'enregistrement</string>
+    <string name="settings_recording_cues_sub">Tonalité brève émise au début et à la fin d\'un enregistrement pour confirmer que le micro s\'est ouvert — confirmation sonore sans regarder l\'écran.</string>
     <string name="settings_recording_cues_off">Désactivé</string>
     <string name="settings_auto_delete_played">Supprimer les audios après lecture</string>
     <string name="settings_auto_delete_played_sub">Économise de l\'espace. La transcription (quand disponible) est conservée.</string>

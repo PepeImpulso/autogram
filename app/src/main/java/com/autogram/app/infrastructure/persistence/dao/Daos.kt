@@ -180,8 +180,14 @@ interface SettingsDao {
 
 @Dao
 interface QuickReplyDao {
+    // Home-screen feed: only enabled entries. The Settings → Shortcuts
+    // editor uses `observeAllIncludingDisabled` instead so the user can
+    // re-enable a hidden shortcut without losing it.
     @Query("SELECT * FROM quick_replies WHERE isEnabled = 1 ORDER BY position ASC")
     fun observeAll(): Flow<List<com.autogram.app.infrastructure.persistence.entity.QuickReplyEntity>>
+
+    @Query("SELECT * FROM quick_replies ORDER BY position ASC")
+    fun observeAllIncludingDisabled(): Flow<List<com.autogram.app.infrastructure.persistence.entity.QuickReplyEntity>>
 
     @Query("SELECT * FROM quick_replies ORDER BY position ASC")
     suspend fun getAll(): List<com.autogram.app.infrastructure.persistence.entity.QuickReplyEntity>

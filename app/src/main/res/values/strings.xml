@@ -9,6 +9,7 @@
     <string name="common_back">Back</string>
     <string name="common_dismiss">Dismiss</string>
     <string name="main_play_last_original">Play last original</string>
+    <string name="main_stop_last_original">Stop playback</string>
     <string name="tile_record_label">Voice to Merlin</string>
     <string name="tile_no_primary">Pick a primary target first in Settings</string>
     <string name="common_cancel">Cancel</string>
@@ -123,7 +124,8 @@
     <string name="settings_silent">Silent mode</string>
     <string name="settings_silent_sub">Incoming audio is queued instead of played.</string>
     <string name="settings_playback_speed">Playback speed</string>
-    <string name="settings_recording_cues">Recording sound</string>
+    <string name="settings_recording_cues">Recording beep</string>
+    <string name="settings_recording_cues_sub">Short tone that plays when a recording starts and ends so you know the mic opened — audible confirmation without looking at the screen.</string>
     <string name="settings_recording_cues_off">Off</string>
     <string name="settings_auto_delete_played">Delete audios after playing</string>
     <string name="settings_auto_delete_played_sub">Saves space. Played messages keep their transcript (when available).</string>

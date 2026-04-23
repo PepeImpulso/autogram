@@ -244,6 +244,7 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 SettingsDivider()
                 SliderRow(
                     label = stringResource(R.string.settings_recording_cues),
+                    supporting = stringResource(R.string.settings_recording_cues_sub),
                     value = state.recordingCuesVolume.toFloat(),
                     valueLabel = if (state.recordingCuesVolume == 0) stringResource(R.string.settings_recording_cues_off)
                                  else "${state.recordingCuesVolume}%",
@@ -667,7 +668,8 @@ private fun SliderRow(
     onValueChange: (Float) -> Unit,
     valueRange: ClosedFloatingPointRange<Float>,
     steps: Int,
-    valueLabelDim: Boolean = false
+    valueLabelDim: Boolean = false,
+    supporting: String? = null
 ) {
     Column(
         modifier = Modifier
@@ -686,6 +688,14 @@ private fun SliderRow(
                 fontWeight = FontWeight.Medium,
                 color = if (valueLabelDim) MaterialTheme.colorScheme.onSurfaceVariant
                         else MaterialTheme.colorScheme.primary
+            )
+        }
+        if (!supporting.isNullOrBlank()) {
+            Text(
+                supporting,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp)
             )
         }
         Slider(

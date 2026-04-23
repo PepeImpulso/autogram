@@ -9,6 +9,7 @@
     <string name="common_back">戻る</string>
     <string name="common_dismiss">閉じる</string>
     <string name="main_play_last_original">オリジナルを再生</string>
+    <string name="main_stop_last_original">再生を停止</string>
     <string name="tile_record_label">Merlin に音声</string>
     <string name="tile_no_primary">先に設定でメイン送信先を選んでください</string>
     <string name="common_cancel">キャンセル</string>
@@ -122,7 +123,8 @@
     <string name="settings_silent">サイレントモード</string>
     <string name="settings_silent_sub">受信音声は再生せずキューに入ります。</string>
     <string name="settings_playback_speed">再生速度</string>
-    <string name="settings_recording_cues">録音音</string>
+    <string name="settings_recording_cues">録音ビープ音</string>
+    <string name="settings_recording_cues_sub">録音の開始と終了時に鳴る短い音。マイクが開いたことを画面を見ずに音で確認できます。</string>
     <string name="settings_recording_cues_off">オフ</string>
     <string name="settings_auto_delete_played">再生後に音声を削除</string>
     <string name="settings_auto_delete_played_sub">容量を節約。文字起こし（ある場合）は保持されます。</string>

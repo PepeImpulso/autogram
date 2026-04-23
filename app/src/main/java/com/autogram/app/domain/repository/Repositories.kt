@@ -51,7 +51,10 @@ interface SettingsRepository {
 }
 
 interface QuickReplyRepository {
+    /** Home-screen feed: only shortcuts the user has left enabled. */
     fun observeAll(): Flow<List<QuickReply>>
+    /** Editor feed: includes disabled shortcuts so they can be re-shown later. */
+    fun observeAllIncludingDisabled(): Flow<List<QuickReply>>
     suspend fun getAll(): List<QuickReply>
     suspend fun upsert(reply: QuickReply)
     suspend fun delete(id: String)

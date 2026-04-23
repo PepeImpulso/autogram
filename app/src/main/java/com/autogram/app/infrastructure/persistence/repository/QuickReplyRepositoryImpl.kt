@@ -19,6 +19,10 @@ class QuickReplyRepositoryImpl @Inject constructor(
         return quickReplyDao.observeAll().map { it.map { e -> e.toDomain() } }
     }
 
+    override fun observeAllIncludingDisabled(): Flow<List<QuickReply>> {
+        return quickReplyDao.observeAllIncludingDisabled().map { it.map { e -> e.toDomain() } }
+    }
+
     override suspend fun getAll(): List<QuickReply> {
         return quickReplyDao.getAll().map { it.toDomain() }
     }

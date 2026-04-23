@@ -26,6 +26,18 @@ class RecordingSounds @Inject constructor(
     // A two-tone end cue contrasts with the single-beep start.
     suspend fun playEnd() = playTone(ToneGenerator.TONE_PROP_BEEP2, durationMs = 150)
 
+    // Short ACK chime after a shortcut reaches Telegram — gives the driver
+    // audible confirmation ("yes, that actually went out") without needing
+    // to look at the status pill. Uses PROP_ACK which is a pleasant
+    // two-note rising chirp on most devices.
+    suspend fun playSent() = playTone(ToneGenerator.TONE_PROP_ACK, durationMs = 200)
+
+    // Distinct error tone — TONE_PROP_NACK is a descending/harsh buzzer
+    // across OEM implementations, so it reads as "something went wrong"
+    // even without context. Longer than the ACK so a driver hears it
+    // over road noise.
+    suspend fun playError() = playTone(ToneGenerator.TONE_PROP_NACK, durationMs = 350)
+
     private suspend fun playTone(tone: Int, durationMs: Int) {
         val volume = settingsRepository.get().recordingCuesVolume
         if (volume <= 0) return   // user disabled the cues

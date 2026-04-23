@@ -323,12 +323,16 @@ class SendVoiceMtprotoUseCase @Inject constructor(
             )
             if (out.isSuccess) {
                 conversationRepository.setLastRepliedAt(target.id, System.currentTimeMillis())
+                recordingSounds.playSent()
+            } else {
+                recordingSounds.playError()
             }
             out
         } catch (e: Exception) {
             Timber.e(e, "MTProto voice-shortcut send failed")
             _status.value = SendStatus.Error(e.message ?: "Error enviando")
             persistOutgoing(target, Result.failure(e), audioFile = null, audioDurationMs, textContent = null)
+            recordingSounds.playError()
             Result.failure(e)
         } finally {
             _activeTargetId.value = null
@@ -371,12 +375,16 @@ class SendVoiceMtprotoUseCase @Inject constructor(
             persistOutgoing(target, out, audioFile = null, audioDurationMs = 0L, textContent = text)
             if (out.isSuccess) {
                 conversationRepository.setLastRepliedAt(target.id, System.currentTimeMillis())
+                recordingSounds.playSent()
+            } else {
+                recordingSounds.playError()
             }
             out
         } catch (e: Exception) {
             Timber.e(e, "MTProto text send failed")
             _status.value = SendStatus.Error(e.message ?: "Error enviando")
             persistOutgoing(target, Result.failure(e), audioFile = null, audioDurationMs = 0L, textContent = text)
+            recordingSounds.playError()
             Result.failure(e)
         } finally {
             _activeTargetId.value = null

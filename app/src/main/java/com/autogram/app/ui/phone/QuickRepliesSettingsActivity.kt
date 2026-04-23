@@ -21,7 +21,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
@@ -94,8 +93,11 @@ class QuickRepliesSettingsViewModel @Inject constructor(
     private val recorder: AudioRecorder
 ) : ViewModel() {
 
+    // Editor must see ALL shortcuts including disabled ones, so the
+    // user can toggle visibility without losing the entry. The home
+    // screen's own observeAll() still filters to enabled-only.
     val replies: StateFlow<List<QuickReply>> =
-        repo.observeAll().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+        repo.observeAllIncludingDisabled().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     // Standalone MediaPlayer for the in-editor preview. Bypasses the
     // app's AudioPlayer abstraction on purpose: AudioPlayer prefers BT
@@ -228,6 +230,21 @@ class QuickRepliesSettingsViewModel @Inject constructor(
                 reply.audioFilePath?.let { runCatching { File(it).delete() } }
             }
             repo.delete(reply.id)
+        }
+    }
+
+    /**
+     * Show/hide a shortcut on the home screen without deleting it.
+     * [QuickReplyDao.observeAll] already filters out `isEnabled = 0`
+     * rows, so flipping this flag is all the main screen needs to
+     * stop showing it. The row stays in the editor list so the user
+     * can re-enable it later or edit the label without losing the
+     * audio file.
+     */
+    fun setEnabled(reply: QuickReply, enabled: Boolean) {
+        if (reply.isEnabled == enabled) return
+        viewModelScope.launch {
+            repo.upsert(reply.copy(isEnabled = enabled))
         }
     }
 
@@ -423,7 +440,8 @@ private fun QuickRepliesScreen(
                         target = if (r.kind == QuickReplyKind.VOICE) EditorTarget.Voice(r)
                                  else EditorTarget.Text(r)
                     },
-                    onDelete = { viewModel.delete(r) }
+                    onDelete = { viewModel.delete(r) },
+                    onEnabledChange = { viewModel.setEnabled(r, it) }
                 )
             }
             item { Spacer(Modifier.height(72.dp)) }
@@ -494,7 +512,8 @@ private fun QuickRepliesEmptyState(modifier: Modifier = Modifier) {
 private fun QuickReplyCard(
     reply: QuickReply,
     onTap: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onEnabledChange: (Boolean) -> Unit
 ) {
     val isVoice = reply.kind == QuickReplyKind.VOICE
     ElevatedCard(
@@ -502,7 +521,11 @@ private fun QuickReplyCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            // Greyed container when disabled so the user sees at a
+            // glance which shortcuts are hidden from the home screen
+            // without having to read the switch state.
+            containerColor = if (reply.isEnabled) MaterialTheme.colorScheme.surface
+                             else MaterialTheme.colorScheme.surfaceVariant
         ),
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp)
     ) {
@@ -535,7 +558,9 @@ private fun QuickReplyCard(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    color = if (reply.isEnabled) MaterialTheme.colorScheme.onSurface
+                            else MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
@@ -547,13 +572,13 @@ private fun QuickReplyCard(
                 )
             }
             Spacer(Modifier.width(8.dp))
-            Icon(
-                Icons.Filled.Edit,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(18.dp)
+            // Show/hide on home switch. Pre-empts the card's own click
+            // handler so toggling doesn't also open the editor.
+            Switch(
+                checked = reply.isEnabled,
+                onCheckedChange = onEnabledChange,
+                modifier = Modifier.padding(end = 4.dp)
             )
-            Spacer(Modifier.width(4.dp))
             IconButton(onClick = onDelete) {
                 Icon(
                     Icons.Filled.Delete,

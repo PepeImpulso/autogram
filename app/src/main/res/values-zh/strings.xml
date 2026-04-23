@@ -9,6 +9,7 @@
     <string name="common_back">返回</string>
     <string name="common_dismiss">关闭</string>
     <string name="main_play_last_original">播放原始音频</string>
+    <string name="main_stop_last_original">停止播放</string>
     <string name="tile_record_label">向 Merlin 发语音</string>
     <string name="tile_no_primary">请先在设置中选择主要对象</string>
     <string name="common_cancel">取消</string>
@@ -123,6 +124,7 @@
     <string name="settings_silent_sub">收到的音频会排队而非立即播放。</string>
     <string name="settings_playback_speed">播放速度</string>
     <string name="settings_recording_cues">录音提示音</string>
+    <string name="settings_recording_cues_sub">录音开始和结束时播放的短音，用于确认麦克风已开启——无需查看屏幕即可获得听觉提示。</string>
     <string name="settings_recording_cues_off">关闭</string>
     <string name="settings_auto_delete_played">播放后删除音频</string>
     <string name="settings_auto_delete_played_sub">节省空间。转录内容（如有）会保留。</string>
