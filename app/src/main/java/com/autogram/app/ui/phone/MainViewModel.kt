@@ -107,27 +107,23 @@ class MainViewModel @Inject constructor(
 
     /**
      * Tap-to-play, tap-again-to-stop. Called from the always-visible
-     * HeroHeader button. If the last original is the thing currently
-     * playing, stop. Otherwise start playback of the most-recent
-     * incoming voice on the active target — `stopAll` first so a
-     * summary TTS or unrelated audio doesn't stack over the original.
-     * No-op when there's no audio to play.
+     * HeroHeader button. If ANY playback is currently in flight
+     * (original, summary TTS, queued reply), stop everything — the
+     * button mirrors whatever the user is hearing. If nothing is
+     * playing, start the most-recent incoming voice on the active
+     * target. No-op when there's no audio to play AND nothing to
+     * stop (button is disabled in that combined state).
      */
     fun toggleLastOriginal() {
         val st = playbackStatus.value
-        val lastId = lastIncomingWithAudio.value?.id
-        val isPlayingLast = st is PlayReplyUseCase.PlaybackStatus.Playing &&
-            st.messageId == lastId
-        if (isPlayingLast) {
+        val isAnyPlaying = st is PlayReplyUseCase.PlaybackStatus.Playing ||
+            st is PlayReplyUseCase.PlaybackStatus.Paused
+        if (isAnyPlaying) {
             playReplyUseCase.stopAll()
             return
         }
         val msg = lastIncomingWithAudio.value ?: return
         viewModelScope.launch {
-            // Ensure a clean slate: if a TTS summary or another
-            // message is already playing, tapping the button should
-            // REPLACE it with the original — not double-audio.
-            playReplyUseCase.stopAll()
             playReplyUseCase.playManually(msg)
         }
     }

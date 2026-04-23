@@ -40,8 +40,8 @@ android {
         applicationId = "com.autogram.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 64
-        versionName = "1.19.7"
+        versionCode = 65
+        versionName = "1.19.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

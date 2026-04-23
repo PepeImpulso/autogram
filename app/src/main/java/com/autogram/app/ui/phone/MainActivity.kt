@@ -315,15 +315,15 @@ private fun MainScreen(
                 .fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            val isPlayingLast = (playback as? PlayReplyUseCase.PlaybackStatus.Playing)?.messageId ==
-                lastIncomingAudio?.id && lastIncomingAudio != null
+            val isAnyPlaying = playback is PlayReplyUseCase.PlaybackStatus.Playing ||
+                playback is PlayReplyUseCase.PlaybackStatus.Paused
             HeroHeader(
                 sendStatus = sendStatus,
                 playback = playback,
                 outboxCount = outboxCount,
                 online = isOnline,
                 hasLastOriginal = lastIncomingAudio != null,
-                isPlayingLast = isPlayingLast,
+                isPlayingLast = isAnyPlaying,
                 onToggleLastOriginal = viewModel::toggleLastOriginal
             )
 
