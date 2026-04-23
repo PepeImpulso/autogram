@@ -138,7 +138,16 @@ class SendVoiceMtprotoUseCase @Inject constructor(
         hapticCues.playEnd()
     }
 
-    suspend fun stopAndSend(): Result<Long> {
+    /**
+     * @param skipPreview If true, the caller's `previewBeforeSend` setting is
+     * bypassed and the recording goes straight to the send path. AA passes
+     * true because NavigationTemplate has no preview sheet — honoring the
+     * setting there would silently park the file with no UI to confirm /
+     * cancel, and the user would think their voice note was sent when it
+     * wasn't. Phone UI passes the default (false) so the phone preview
+     * sheet still appears when the user has it enabled.
+     */
+    suspend fun stopAndSend(skipPreview: Boolean = false): Result<Long> {
         val startedFile = currentAudioFile
             ?: return Result.failure(IllegalStateException("No hay grabación en curso"))
         val targetId = currentTargetId
@@ -173,8 +182,9 @@ class SendVoiceMtprotoUseCase @Inject constructor(
 
         // Preview-before-send: park the file + target, let the UI drive the
         // decision. confirmPreview() picks up exactly where we left off;
-        // cancelPreview() discards.
-        if (settingsRepository.get().previewBeforeSend) {
+        // cancelPreview() discards. Skipped when the caller is a
+        // preview-less context (AA).
+        if (!skipPreview && settingsRepository.get().previewBeforeSend) {
             previewFile = audioFile
             previewTargetId = target.id
             previewDurationMs = durationMs

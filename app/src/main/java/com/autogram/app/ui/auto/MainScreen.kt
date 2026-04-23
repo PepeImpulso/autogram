@@ -444,7 +444,11 @@ class MainScreen(
     private fun stopAndSend() {
         resetJob?.cancel()
         screenScope.launch {
-            val result = sendMessageUseCase.stopAndSend()
+            // skipPreview = true: AA has no preview sheet, so honoring the
+            // phone's `previewBeforeSend` setting from the car would park
+            // the file with no UI to confirm and the voice note would be
+            // silently lost. Car sessions send directly.
+            val result = sendMessageUseCase.stopAndSend(skipPreview = true)
             if (result.isFailure) {
                 Timber.e(result.exceptionOrNull(), "Error al enviar")
             }
