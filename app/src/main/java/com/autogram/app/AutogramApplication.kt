@@ -171,6 +171,23 @@ class AutogramApplication : Application(), Configuration.Provider {
                 m.message = m.message?.let { scrubPii(it) }
                 m.formatted = m.formatted?.let { scrubPii(it) }
             }
+            // Exception messages frequently contain TDLib error strings like
+            // "CHAT_NOT_FOUND for 1234567890" — the numeric chat id would
+            // otherwise sail past the earlier .message-only scrub and land
+            // in Sentry unredacted. Scrub every attached exception's
+            // `value` (visible text) so PII never escapes the device.
+            event.exceptions?.forEach { ex ->
+                ex.value = ex.value?.let { scrubPii(it) }
+            }
+            // Breadcrumbs reach Sentry through `beforeBreadcrumb` already, but
+            // an event may also carry its own `event.breadcrumbs` list — scrub
+            // the `data` map entries (string values only) for good measure.
+            event.breadcrumbs?.forEach { bc ->
+                bc.message = bc.message?.let { scrubPii(it) }
+                bc.data.forEach { (k, v) ->
+                    if (v is String) bc.setData(k, scrubPii(v))
+                }
+            }
             // Drop anything user-identifiable that leaks in through integrations.
             event.user = null
             event.request = null
