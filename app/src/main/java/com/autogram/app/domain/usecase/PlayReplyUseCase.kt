@@ -102,22 +102,25 @@ class PlayReplyUseCase @Inject constructor(
             _playbackStatus.value = PlaybackStatus.Playing(message.id)
 
             val result = audioPlayer.play(audioFile, speed = settings.playbackSpeed) { playResult ->
-            // BUG-12: Use CoroutineScope instead of runBlocking in MediaPlayer callback
-            // BUG-51 FIX: Check result to mark PLAYED or FAILED correctly
+            // Use a scoped coroutine (not runBlocking) so the MediaPlayer
+            // callback thread doesn't block on DB writes.
             playbackScope.launch {
                 if (playResult.isSuccess) {
-                    val played = message.copy(
+                    // Keep audioFilePath + file intact after play. The user
+                    // must always be able to replay the last incoming voice
+                    // via the HeroHeader toggle, so we NO LONGER delete on
+                    // play-completion. Deferred cleanup lives in
+                    // MtprotoReceiverService.handleVoiceNote: when a NEW
+                    // incoming voice arrives on this conversation, the
+                    // previously-played file on the same conversation is
+                    // the one that gets deleted (if autoDeletePlayed is
+                    // on) — it's no longer "the last one". This preserves
+                    // the user's space-saving setting while guaranteeing
+                    // the latest message is always replayable.
+                    messageRepository.update(message.copy(
                         state = MessageState.PLAYED,
-                        playedAt = System.currentTimeMillis(),
-                        // If auto-delete is on, drop the file pointer too so we
-                        // don't show a stale path in History.
-                        audioFilePath = if (settings.autoDeletePlayed) null else message.audioFilePath
-                    )
-                    messageRepository.update(played)
-                    if (settings.autoDeletePlayed) {
-                        runCatching { audioFile.delete() }
-                            .onFailure { Timber.w(it, "Failed to delete played audio ${audioFile.absolutePath}") }
-                    }
+                        playedAt = System.currentTimeMillis()
+                    ))
                 } else {
                     Timber.e(playResult.exceptionOrNull(), "Error reproduciendo mensaje ${message.id}")
                     messageRepository.update(message.copy(
@@ -158,6 +161,15 @@ class PlayReplyUseCase @Inject constructor(
         val audioFile = message.audioFilePath?.let { File(it) }
         if (audioFile == null || !audioFile.exists()) {
             Timber.w("playManually: missing audio for ${message.id}")
+            // Null out the stale path so the "last incoming with
+            // audio" flow stops pointing at this row — otherwise the
+            // HeroHeader toggle would keep looking enabled and each
+            // tap would silently fall into this branch. One row nulled
+            // here also prompts the UI to pick the NEXT-most-recent
+            // voice (if any) as the replay target.
+            if (!message.audioFilePath.isNullOrBlank()) {
+                runCatching { messageRepository.update(message.copy(audioFilePath = null)) }
+            }
             return
         }
         currentPlayingId = message.id

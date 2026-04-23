@@ -226,6 +226,17 @@ class MtprotoReceiverService : Service() {
             createdAt = tdMsg.date.toLong() * 1000L
         )
         messageRepository.insert(message)
+        // Deferred auto-delete: this new voice becomes the "last original"
+        // on this conversation, so any previously-played voice here is
+        // eligible for cleanup (if the user opted into auto-delete).
+        // Moved out of PlayReplyUseCase so the LATEST message is always
+        // preserved for the HeroHeader replay button — files are only
+        // dropped once a newer message supersedes them.
+        val settings = settingsRepository.get()
+        if (settings.autoDeletePlayed) {
+            runCatching { cleanupPriorPlayedAudio(target.id, keepMessageId = message.id) }
+                .onFailure { Timber.w(it, "Deferred autoDelete cleanup failed") }
+        }
         // Surface a MessagingStyle+CarAppExtender notification so Android Auto
         // shows the message on the head unit and lets the user tap Listen/Reply.
         incomingMessageNotifier.postVoiceReceived(
@@ -233,7 +244,6 @@ class MtprotoReceiverService : Service() {
             timestampMs = message.createdAt,
             messageId = message.id
         )
-        val settings = settingsRepository.get()
         val inCall = callStateMonitor.isInCall.value
         Timber.i(
             "Incoming voice ${message.id} — autoPlay=${settings.autoPlayReplies} " +
@@ -293,6 +303,30 @@ class MtprotoReceiverService : Service() {
             message = message,
             isCallActive = callStateMonitor.isInCall.value
         )
+    }
+
+    /**
+     * Deferred auto-delete: drops the file + nulls audioFilePath on any
+     * INCOMING voice messages on [conversationId] that have already been
+     * played and whose arrival predates [keepMessageId]. The new message
+     * becomes the single preserved "last original" on the conversation.
+     *
+     * We skip anything not yet played (queued, pending, failed) — those
+     * files are still the best-available representation for that row and
+     * may still be needed. Only already-heard audios are safe to drop.
+     */
+    private suspend fun cleanupPriorPlayedAudio(conversationId: String, keepMessageId: String) {
+        val all = messageRepository.getAll()
+        for (m in all) {
+            if (m.conversationId != conversationId) continue
+            if (m.id == keepMessageId) continue
+            if (m.direction != com.autogram.app.domain.model.MessageDirection.INCOMING) continue
+            if (m.state != com.autogram.app.domain.model.MessageState.PLAYED) continue
+            val path = m.audioFilePath
+            if (path.isNullOrBlank()) continue
+            runCatching { java.io.File(path).delete() }
+            messageRepository.update(m.copy(audioFilePath = null))
+        }
     }
 
     /** Blocks until TDLib has the file on disk, or returns null on failure. */

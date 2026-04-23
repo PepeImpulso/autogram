@@ -81,24 +81,26 @@ class MainViewModel @Inject constructor(
     val activeTargetId: StateFlow<String?> = sendMessageUseCase.activeTargetId
 
     /**
-     * Most-recent incoming message *with a playable audio file* for the
-     * currently-active target. When summarize mode is on the user never
-     * hears the original by default — this flow feeds the "Play original"
-     * button on Main so they can tap into the raw audio whenever they want
-     * more detail than the 1-2 sentence summary.
+     * Most-recent incoming voice with a playable audio file, across
+     * ALL pinned conversations. Feeds the always-visible top-right
+     * "play last original" toggle in the HeroHeader: the user wants
+     * the button to always point at the last thing they received,
+     * regardless of whether they're currently targeting any circle.
+     *
+     * Not gated on `activeTargetId` — the previous version was, which
+     * caused the button to go dark the moment a send completed and
+     * `activeTargetId` reverted to null. "Last message" is a global
+     * concept for replay purposes.
      */
     val lastIncomingWithAudio: StateFlow<Message?> =
-        combine(
-            messageRepository.observeAllAcrossConversations(),
-            activeTargetId
-        ) { messages, activeId ->
-            if (activeId == null) null
-            else messages.asSequence()
-                .filter { it.conversationId == activeId }
-                .filter { it.direction == MessageDirection.INCOMING }
-                .filter { !it.audioFilePath.isNullOrBlank() }
-                .maxByOrNull { it.createdAt }
-        }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+        messageRepository.observeAllAcrossConversations()
+            .map { messages ->
+                messages.asSequence()
+                    .filter { it.direction == MessageDirection.INCOMING }
+                    .filter { !it.audioFilePath.isNullOrBlank() }
+                    .maxByOrNull { it.createdAt }
+            }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     fun playLastOriginal() {
         val msg = lastIncomingWithAudio.value ?: return
