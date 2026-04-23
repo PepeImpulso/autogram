@@ -19,7 +19,6 @@ import com.autogram.app.domain.model.QuickReply
 import com.autogram.app.domain.model.QuickReplyKind
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collect
@@ -143,10 +142,15 @@ class AutogramSurfaceRenderer(
     // and returns null / throws on concurrent call). Conflated channel
     // buffers at most one pending draw; a burst of render requests
     // collapses to a single frame.
-    private val drawChannel: Channel<Unit> = Channel(
-        capacity = Channel.CONFLATED,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST
-    )
+    //
+    // NOTE: `Channel.CONFLATED` already implies its own
+    // overflow-handling semantics ("keep latest, drop older"), so
+    // passing an explicit `onBufferOverflow` parameter alongside it
+    // throws `IllegalArgumentException("CONFLATED capacity cannot be
+    // used with non-default onBufferOverflow")` immediately on
+    // construction — every AA session would crash before the renderer
+    // even drew anything (Sentry id 44821d8d, v1.19.1+).
+    private val drawChannel: Channel<Unit> = Channel(capacity = Channel.CONFLATED)
 
     // Hit-test regions computed during the last `drawFrame`. `onClick`
     // walks this list in reverse so chips on top of circles win.
