@@ -6,6 +6,8 @@ import kotlinx.coroutines.flow.Flow
 interface MessageRepository {
     fun observeAll(conversationId: String): Flow<List<Message>>
     fun observeAllAcrossConversations(): Flow<List<Message>>
+    /** Latest incoming voice with a file — targeted query for the replay button. */
+    fun observeLatestIncomingVoice(): Flow<Message?>
     /** Unbounded one-shot snapshot for retention + lifetime stats. */
     suspend fun getAll(): List<Message>
     suspend fun getById(id: String): Message?

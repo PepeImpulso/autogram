@@ -26,6 +26,10 @@ class MessageRepositoryImpl @Inject constructor(
         }
     }
 
+    override fun observeLatestIncomingVoice(): Flow<Message?> {
+        return messageDao.observeLatestIncomingVoice().map { it?.toDomain() }
+    }
+
     override suspend fun getAll(): List<Message> {
         return messageDao.getAll().map { it.toDomain() }
     }

@@ -82,24 +82,17 @@ class MainViewModel @Inject constructor(
 
     /**
      * Most-recent incoming voice with a playable audio file, across
-     * ALL pinned conversations. Feeds the always-visible top-right
-     * "play last original" toggle in the HeroHeader: the user wants
-     * the button to always point at the last thing they received,
-     * regardless of whether they're currently targeting any circle.
+     * ALL conversations. Feeds the always-visible top-right "play
+     * last original" toggle in the HeroHeader.
      *
-     * Not gated on `activeTargetId` — the previous version was, which
-     * caused the button to go dark the moment a send completed and
-     * `activeTargetId` reverted to null. "Last message" is a global
-     * concept for replay purposes.
+     * Backed by a dedicated `LIMIT 1` DAO query rather than filtering
+     * `observeAllAcrossConversations` — the latter is capped at the
+     * most recent 500 rows to keep UI latency flat, which for power
+     * users sending many text shortcuts can push the last incoming
+     * voice off the window and silently disable the replay button.
      */
     val lastIncomingWithAudio: StateFlow<Message?> =
-        messageRepository.observeAllAcrossConversations()
-            .map { messages ->
-                messages.asSequence()
-                    .filter { it.direction == MessageDirection.INCOMING }
-                    .filter { !it.audioFilePath.isNullOrBlank() }
-                    .maxByOrNull { it.createdAt }
-            }
+        messageRepository.observeLatestIncomingVoice()
             .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     fun playLastOriginal() {

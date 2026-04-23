@@ -34,6 +34,21 @@ interface MessageDao {
     @Query("SELECT * FROM messages")
     suspend fun getAll(): List<MessageEntity>
 
+    // Dedicated query for the HeroHeader's "play last original" button.
+    // We can't reuse [observeAllAcrossConversations] because its 500-row
+    // cap can hide the most recent INCOMING voice behind a flood of
+    // OUTGOING messages (power users sending many text shortcuts). This
+    // LIMIT 1 query is O(log N) with the createdAt index.
+    @Query("""
+        SELECT * FROM messages
+        WHERE direction = 'INCOMING'
+          AND audioFilePath IS NOT NULL
+          AND audioFilePath != ''
+        ORDER BY createdAt DESC
+        LIMIT 1
+    """)
+    fun observeLatestIncomingVoice(): Flow<MessageEntity?>
+
     @Query("SELECT * FROM messages WHERE id = :id LIMIT 1")
     suspend fun getById(id: String): MessageEntity?
 
