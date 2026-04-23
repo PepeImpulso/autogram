@@ -187,6 +187,23 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Pulled to the top of Settings per user request: the first thing
+            // the user should see is whether their app is up to date. Title +
+            // installed version share a single line; only the "Check for
+            // updates" button lives below it.
+            val updateViewModel: UpdateViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+            SectionCard(
+                icon = Icons.Filled.SystemUpdate,
+                title = stringResource(R.string.settings_updates_section) +
+                    " - " +
+                    stringResource(
+                        R.string.settings_updates_current_version,
+                        updateViewModel.currentVersion
+                    )
+            ) {
+                UpdatesRow(updateViewModel)
+            }
+
             SectionCard(
                 icon = Icons.Filled.ChatBubble,
                 title = stringResource(R.string.settings_section_destination),
@@ -439,13 +456,6 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 title = stringResource(R.string.settings_battery_section)
             ) {
                 BatteryOptimizationRow(context)
-            }
-
-            SectionCard(
-                icon = Icons.Filled.SystemUpdate,
-                title = stringResource(R.string.settings_updates_section)
-            ) {
-                UpdatesRow()
             }
 
             // Only expose the Sentry-test affordance when a DSN is actually
@@ -787,12 +797,9 @@ private fun UpdatesRow(viewModel: UpdateViewModel = androidx.hilt.navigation.com
     val ctx = LocalContext.current
     val state by viewModel.state.collectAsState()
     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-        Text(
-            ctx.getString(R.string.settings_updates_current_version, viewModel.currentVersion),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.height(8.dp))
+        // The installed version moved into the section card's title
+        // (rendered as "Updates - Installed version: X.Y.Z"), so this
+        // row only needs the transient status + the Check button.
         when (val s = state) {
             is UpdateViewModel.State.UpToDate -> {
                 Text(
