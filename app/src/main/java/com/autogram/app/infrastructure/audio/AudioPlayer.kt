@@ -183,13 +183,34 @@ class AudioPlayer @Inject constructor(
      * Route MediaPlayer output through a connected Bluetooth A2DP (stereo) or
      * wired headset when available — otherwise fall back to whatever the OS
      * selects. Safe no-op on API < 28 where setPreferredDevice was added.
+     *
+     * **Android Auto skip**: when the phone is connected to AA over USB,
+     * the phone exposes a `TYPE_BUS` / `TYPE_USB_*` output that is the
+     * ACTIVE media route; BT A2DP to the same car is often still
+     * "available" (paired) but not the route AA is playing through.
+     * Forcing `setPreferredDevice(BT_A2DP)` in that state makes the
+     * MediaPlayer write to a BT channel the car isn't monitoring —
+     * audio focus ducks other media, but the user hears nothing
+     * because our bytes went to the wrong sink. Detect any car-type
+     * output and let the OS handle routing instead.
      */
     private fun preferBluetoothRoute(player: MediaPlayer) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
         try {
             val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             val devices = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-            // Priority: A2DP (stereo BT headset / car) → wired headset → SCO (voice BT).
+            val hasCarOutput = devices.any { d ->
+                d.type == AudioDeviceInfo.TYPE_BUS ||
+                    d.type == AudioDeviceInfo.TYPE_USB_ACCESSORY ||
+                    d.type == AudioDeviceInfo.TYPE_USB_DEVICE ||
+                    d.type == AudioDeviceInfo.TYPE_USB_HEADSET ||
+                    d.type == AudioDeviceInfo.TYPE_HDMI
+            }
+            if (hasCarOutput) {
+                Timber.d("Car output detected — deferring to OS routing (AA/USB path)")
+                return
+            }
+            // Priority: A2DP (stereo BT headset / wireless-AA car) → wired → SCO.
             val preferred = devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP }
                 ?: devices.firstOrNull {
                     it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
