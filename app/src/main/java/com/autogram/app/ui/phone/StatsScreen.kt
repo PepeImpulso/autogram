@@ -6,8 +6,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CallMade
-import androidx.compose.material.icons.filled.CallReceived
+import androidx.compose.material.icons.automirrored.filled.CallMade
+import androidx.compose.material.icons.automirrored.filled.CallReceived
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Timer
@@ -66,8 +66,10 @@ fun StatsScreen(onBack: () -> Unit, viewModel: StatsViewModel = hiltViewModel())
                 .fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            StatsSummaryGrid(s!!)
-            ChartSection(s.last7Days)
+            s?.let {
+                StatsSummaryGrid(it)
+                ChartSection(it.last7Days)
+            }
         }
     }
 }
@@ -121,7 +123,7 @@ private fun StatsSummaryGrid(s: Stats) {
             StatCard(
                 label = stringResource(R.string.stats_total_sent),
                 value = sent.toString(),
-                icon = Icons.Filled.CallMade,
+                icon = Icons.AutoMirrored.Filled.CallMade,
                 accent = MaterialTheme.colorScheme.primaryContainer,
                 accentOn = MaterialTheme.colorScheme.onPrimaryContainer,
                 modifier = Modifier.weight(1f)
@@ -129,7 +131,7 @@ private fun StatsSummaryGrid(s: Stats) {
             StatCard(
                 label = stringResource(R.string.stats_total_received),
                 value = received.toString(),
-                icon = Icons.Filled.CallReceived,
+                icon = Icons.AutoMirrored.Filled.CallReceived,
                 accent = MaterialTheme.colorScheme.secondaryContainer,
                 accentOn = MaterialTheme.colorScheme.onSecondaryContainer,
                 modifier = Modifier.weight(1f)

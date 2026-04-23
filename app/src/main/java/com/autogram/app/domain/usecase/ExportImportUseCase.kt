@@ -109,14 +109,7 @@ class ExportImportUseCase @Inject constructor(
             out.write(ciphertext)
             return out.toByteArray()
         } finally {
-            // SecretKeySpec exposes encoded key material; best-effort scrub so
-            // it isn't sitting in the heap waiting for GC.
             runCatching { java.util.Arrays.fill(json, 0.toByte()) }
-            runCatching {
-                val field = SecretKeySpec::class.java.getDeclaredField("key")
-                field.isAccessible = true
-                (field.get(key) as? ByteArray)?.let { java.util.Arrays.fill(it, 0.toByte()) }
-            }
         }
     }
 
@@ -175,11 +168,8 @@ class ExportImportUseCase @Inject constructor(
                 return ImportResult.Corrupt
             }
         } finally {
-            runCatching {
-                val field = SecretKeySpec::class.java.getDeclaredField("key")
-                field.isAccessible = true
-                (field.get(key) as? ByteArray)?.let { java.util.Arrays.fill(it, 0.toByte()) }
-            }
+            // Key bytes are scrubbed in deriveKey(); avoid private-field
+            // reflection on SecretKeySpec, which Android 15 blocks.
         }
         val payload = try {
             Gson().fromJson(String(plaintext, Charsets.UTF_8), BackupPayload::class.java)
@@ -219,7 +209,16 @@ class ExportImportUseCase @Inject constructor(
         val writtenFiles = mutableListOf<File>()
         for ((convId, b64) in payload.photos) {
             runCatching {
+                val estimatedBytes = b64.length.toLong() * 3L / 4L
+                if (estimatedBytes > MAX_EXPORTED_PHOTO_BYTES) {
+                    Timber.w("Skipping restored photo for $convId: base64 payload beyond cap")
+                    return@runCatching
+                }
                 val bytes = android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
+                if (bytes.size.toLong() > MAX_EXPORTED_PHOTO_BYTES) {
+                    Timber.w("Skipping restored photo for $convId: decoded bytes beyond cap")
+                    return@runCatching
+                }
                 val dst = File(photoDir, "$convId-restored.img")
                 dst.writeBytes(bytes)
                 restoredPhotoPaths[convId] = dst.absolutePath
@@ -286,11 +285,17 @@ class ExportImportUseCase @Inject constructor(
     private fun deriveKey(password: CharArray, salt: ByteArray, iterations: Int): SecretKeySpec {
         val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
         val spec: KeySpec = PBEKeySpec(password, salt, iterations, 256)
-        val secret = factory.generateSecret(spec)
+        val secret = try {
+            factory.generateSecret(spec)
+        } finally {
+            runCatching { (spec as? PBEKeySpec)?.clearPassword() }
+        }
         val keyBytes = secret.encoded
-        val out = SecretKeySpec(keyBytes, "AES")
-        // Caller owns zeroization; we don't own the bytes anymore.
-        return out
+        return try {
+            SecretKeySpec(keyBytes.copyOf(), "AES")
+        } finally {
+            java.util.Arrays.fill(keyBytes, 0.toByte())
+        }
     }
 
     private fun randomBytes(size: Int): ByteArray {

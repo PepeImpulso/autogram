@@ -3,9 +3,4 @@
     <!-- template: required for androidx.car.app projected apps (screens
          rendered on the car head unit). -->
     <uses name="template" />
-    <!-- notification: signals that the app also routes messaging
-         notifications into Android Auto via NotificationCompat +
-         CarAppExtender, so AA surfaces Listen / Reply actions on the
-         car head unit for incoming-message notifications. -->
-    <uses name="notification" />
 </automotiveApp>

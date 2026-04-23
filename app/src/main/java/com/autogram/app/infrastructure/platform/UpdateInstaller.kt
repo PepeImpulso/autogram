@@ -45,6 +45,10 @@ class UpdateInstaller @Inject constructor(
      */
     fun downloadAndInstall(apkUrl: String, filename: String) {
         val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        currentReceiver?.let { old ->
+            runCatching { context.unregisterReceiver(old) }
+            currentReceiver = null
+        }
 
         // Clean up any previous APK with the same filename to avoid "Unable to
         // open APK" errors when DownloadManager can't overwrite.

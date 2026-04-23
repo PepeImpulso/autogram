@@ -3,9 +3,13 @@ package com.autogram.app.infrastructure.platform
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.car.app.notification.CarAppExtender
+import androidx.core.content.ContextCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
@@ -20,9 +24,11 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Posts an incoming-voice notification with MessagingStyle + CarAppExtender
- * so Android Auto can surface the message on the head unit and offer
- * Listen / Reply actions.
+ * Posts an incoming-voice notification with MessagingStyle + CarAppExtender.
+ * The extender is kept as a best-effort path for hosts that consume it, but
+ * Autogram's Android Auto descriptor intentionally declares only `template`
+ * so the launcher opens our NAVIGATION surface instead of AA's empty
+ * messaging inbox.
  *
  * The notification ID is the absolute-value hash of the conversation id, so
  * each circle keeps its own notification row (tap to open Autogram; Android
@@ -123,10 +129,10 @@ class IncomingMessageNotifier @Inject constructor(
                 listenAction?.let { addAction(it) }
                 addAction(replyAction)
             }
-            // CarAppExtender is what makes Android Auto surface this notification
-            // with "Listen" / "Reply" on the car screen. The extender duplicates
-            // the actions so AA renders them as car-sized buttons instead of
-            // falling back to the phone-style compact actions.
+            // Best-effort car extension: do not add `uses name="notification"`
+            // to automotive_app_desc.xml unless Autogram grows a separate real
+            // templated-messaging surface; doing so makes some AA hosts launch
+            // the built-in empty messaging inbox instead of our home screen.
             .extend(
                 CarAppExtender.Builder()
                     .setContentTitle(senderName)
@@ -144,6 +150,12 @@ class IncomingMessageNotifier @Inject constructor(
             )
 
         runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+                    PackageManager.PERMISSION_GRANTED
+            ) {
+                return
+            }
             NotificationManagerCompat.from(context).notify(notificationId, builder.build())
         }.onFailure { Timber.w(it, "Failed to post MessagingStyle notification") }
     }

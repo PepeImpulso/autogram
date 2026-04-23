@@ -73,17 +73,22 @@ class PlayReplyUseCase @Inject constructor(
      * Reproduce un mensaje de voz recibido. Si hay reproducción en curso,
      * lo encola para reproducción secuencial.
      */
-    suspend fun playVoiceMessage(message: Message, isCallActive: Boolean = false) {
-        if (isCallActive) {
+    suspend fun playVoiceMessage(
+        message: Message,
+        isCallActive: Boolean = false,
+        respectUserGates: Boolean = true
+    ) {
+        if (respectUserGates && isCallActive) {
             enqueuePending(message, PendingReason.IN_CALL)
             return
         }
 
         val settings = settingsRepository.get()
-        if (settings.silentMode) {
+        if (respectUserGates && settings.silentMode) {
             enqueuePending(message, PendingReason.SILENT_MODE)
             return
         }
+        if (respectUserGates && !settings.autoPlayReplies) return
 
         // Audit-HIGH-4: take the start-lock BEFORE inspecting isPlaying so two
         // concurrent calls can't both pass the check. If something is already
@@ -162,9 +167,15 @@ class PlayReplyUseCase @Inject constructor(
      * over instead of being queued behind pending replies.
      */
     suspend fun playManually(message: Message) {
+        val audioPath = message.audioFilePath
+        if (audioPath.isNullOrBlank()) {
+            playTextManually(message)
+            return
+        }
         if (audioPlayer.isPlaying()) audioPlayer.stop()
-        val audioFile = message.audioFilePath?.let { File(it) }
-        if (audioFile == null || !audioFile.exists()) {
+        ttsPlayer.stop()
+        val audioFile = File(audioPath)
+        if (!audioFile.exists()) {
             Timber.w("playManually: missing audio for ${message.id}")
             // Null out the stale path so the "last incoming with
             // audio" flow stops pointing at this row — otherwise the
@@ -175,6 +186,7 @@ class PlayReplyUseCase @Inject constructor(
             if (!message.audioFilePath.isNullOrBlank()) {
                 runCatching { messageRepository.update(message.copy(audioFilePath = null)) }
             }
+            playTextManually(message.copy(audioFilePath = null))
             return
         }
         currentPlayingId = message.id
@@ -209,6 +221,38 @@ class PlayReplyUseCase @Inject constructor(
     }
 
     /**
+     * User-initiated text playback from notification actions / history-like
+     * affordances. Unlike autoplay, this bypasses silentMode + autoPlayReplies
+     * because the user explicitly pressed Listen.
+     */
+    suspend fun playTextManually(message: Message) {
+        val text = message.summary?.takeIf { it.isNotBlank() }
+            ?: message.transcription?.takeIf { it.isNotBlank() }
+            ?: message.textContent?.takeIf { it.isNotBlank() }
+            ?: return
+        if (audioPlayer.isPlaying()) audioPlayer.stop()
+        ttsPlayer.stop()
+        val settings = settingsRepository.get()
+        currentPlayingId = message.id
+        messageRepository.update(message.copy(state = MessageState.PLAYING))
+        _playbackStatus.value = PlaybackStatus.Playing(message.id)
+        val uiLocale = if (settings.languageTag.isNotBlank())
+            java.util.Locale.forLanguageTag(settings.languageTag)
+        else java.util.Locale.getDefault()
+        val detected = TtsPlayer.detectLocale(text, uiLocale)
+        ttsPlayer.speak(text, locale = detected) {
+            playbackScope.launch {
+                messageRepository.update(message.copy(
+                    state = MessageState.PLAYED,
+                    playedAt = System.currentTimeMillis()
+                ))
+                currentPlayingId = null
+                _playbackStatus.value = PlaybackStatus.Idle
+            }
+        }
+    }
+
+    /**
      * Read an incoming text reply aloud via Android's TextToSpeech. The engine
      * picks the voice matching the user's current UI locale so a Merlin reply
      * in English plays back in an English voice regardless of the device
@@ -221,19 +265,23 @@ class PlayReplyUseCase @Inject constructor(
      * audio playback. TTS picks its voice based on the text's detected
      * script so a Spanish summary isn't read with an English voice.
      */
-    suspend fun playSummaryOrTranscription(message: Message, isCallActive: Boolean = false) {
+    suspend fun playSummaryOrTranscription(
+        message: Message,
+        isCallActive: Boolean = false,
+        respectUserGates: Boolean = true
+    ) {
         val text = message.summary?.takeIf { it.isNotBlank() }
             ?: message.transcription?.takeIf { it.isNotBlank() }
             ?: message.textContent?.takeIf { it.isNotBlank() }
             ?: return
         val settings = settingsRepository.get()
-        if (isCallActive) {
+        if (respectUserGates && isCallActive) {
             enqueuePending(message, PendingReason.IN_CALL); return
         }
-        if (settings.silentMode) {
+        if (respectUserGates && settings.silentMode) {
             enqueuePending(message, PendingReason.SILENT_MODE); return
         }
-        if (!settings.autoPlayReplies) return
+        if (respectUserGates && !settings.autoPlayReplies) return
 
         // Same coordination as playTextMessage: refuse to speak over an
         // in-flight audio/TTS playback; enqueue the message instead so
@@ -267,7 +315,11 @@ class PlayReplyUseCase @Inject constructor(
         }
     }
 
-    suspend fun playTextMessage(message: Message, isCallActive: Boolean = false) {
+    suspend fun playTextMessage(
+        message: Message,
+        isCallActive: Boolean = false,
+        respectUserGates: Boolean = true
+    ) {
         val text = message.textContent ?: return
         if (text.isBlank()) return
         // Same gates as playVoiceMessage: in a call, silent mode, or autoplay
@@ -276,15 +328,15 @@ class PlayReplyUseCase @Inject constructor(
         // playAllPending()/playNext() already handle them via playVoiceMessage
         // but text rows have no audioFilePath → fall through to TTS there.
         val settings = settingsRepository.get()
-        if (isCallActive) {
+        if (respectUserGates && isCallActive) {
             enqueuePending(message, PendingReason.IN_CALL)
             return
         }
-        if (settings.silentMode) {
+        if (respectUserGates && settings.silentMode) {
             enqueuePending(message, PendingReason.SILENT_MODE)
             return
         }
-        if (!settings.autoPlayReplies) {
+        if (respectUserGates && !settings.autoPlayReplies) {
             // User opted out of auto-play. Leave the row RECEIVED so the
             // History screen shows it as unread; they'll tap play themselves.
             return
@@ -451,11 +503,7 @@ class PlayReplyUseCase @Inject constructor(
         // Text messages live in the same queue (see enqueuePending) but must
         // be dispatched to the TTS path — playVoiceMessage would fail looking
         // for an audio file that never existed.
-        if (next.audioFilePath != null) {
-            playVoiceMessage(next)
-        } else if (!next.textContent.isNullOrBlank()) {
-            playTextMessage(next)
-        }
+        playQueued(next)
     }
 
     /**
@@ -474,15 +522,36 @@ class PlayReplyUseCase @Inject constructor(
             if (pendingQueue.isEmpty()) null else pendingQueue.removeAt(0)
         }
         if (first == null) return
-        if (first.audioFilePath != null) {
-            playVoiceMessage(first)
-        } else if (!first.textContent.isNullOrBlank()) {
-            playTextMessage(first)
+        pendingReplyNotifier.notifyPending(pendingCount())
+        playbackScope.launch {
+            try {
+                pendingPlaybackDao.deleteByMessageId(first.id)
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to delete pending playback for ${first.id}")
+            }
         }
+        playQueued(first)
     }
 
     /**
      * Devuelve el número de mensajes pendientes de reproducción.
      */
     fun pendingCount(): Int = synchronized(pendingQueue) { pendingQueue.size }
+
+    private suspend fun playQueued(message: Message) {
+        val settings = settingsRepository.get()
+        val hasReadableSummary = !message.summary.isNullOrBlank() ||
+            !message.transcription.isNullOrBlank() ||
+            !message.textContent.isNullOrBlank()
+        if (settings.summarizeLongMessages &&
+            settings.summaryEngine != SummaryEngineType.NONE &&
+            hasReadableSummary
+        ) {
+            playSummaryOrTranscription(message, respectUserGates = false)
+        } else if (!message.audioFilePath.isNullOrBlank()) {
+            playVoiceMessage(message, respectUserGates = false)
+        } else if (!message.textContent.isNullOrBlank()) {
+            playTextMessage(message, respectUserGates = false)
+        }
+    }
 }

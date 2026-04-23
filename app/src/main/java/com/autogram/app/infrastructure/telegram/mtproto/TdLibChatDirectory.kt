@@ -28,7 +28,10 @@ class TdLibChatDirectory @Inject constructor(private val client: TdLibClient) {
             Timber.w("GetChats failed: ${chatsObj.code} ${chatsObj.message}")
             return emptyList()
         }
-        val chats = chatsObj as TdApi.Chats
+        val chats = chatsObj as? TdApi.Chats ?: run {
+            Timber.w("GetChats returned unexpected ${chatsObj.javaClass.simpleName}")
+            return emptyList()
+        }
         val out = mutableListOf<ChatSummary>()
         for (id in chats.chatIds) {
             resolveChatSummary(id)?.let { out += it }
@@ -42,7 +45,10 @@ class TdLibChatDirectory @Inject constructor(private val client: TdLibClient) {
             Timber.w("GetForumTopics failed for chatId=$chatId: ${res.code} ${res.message}")
             return emptyList()
         }
-        val topics = res as TdApi.ForumTopics
+        val topics = res as? TdApi.ForumTopics ?: run {
+            Timber.w("GetForumTopics returned unexpected ${res.javaClass.simpleName}")
+            return emptyList()
+        }
         return topics.topics.map { t ->
             TopicSummary(
                 forumTopicId = t.info.forumTopicId,

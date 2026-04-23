@@ -23,7 +23,7 @@
 
     <string name="notification_channel_polling">Autogram Polling</string>
     <string name="notification_channel_incoming_voice">Eingehende Sprachnachricht</string>
-    <string name="notification_channel_incoming_voice_desc">Eine Sprachnachricht ist eingegangen. Erforderlich damit Android Auto sie im Auto anzeigt.</string>
+    <string name="notification_channel_incoming_voice_desc">Eine Sprachnachricht ist eingegangen.</string>
     <string name="notification_incoming_voice_body">Neue Sprachnachricht</string>
     <string name="notification_action_listen">Anhören</string>
     <string name="notification_action_reply">Antworten</string>

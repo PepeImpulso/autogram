@@ -60,6 +60,7 @@ import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.domain.usecase.SendVoiceMtprotoUseCase
 import com.autogram.app.infrastructure.platform.BiometricGate
+import com.autogram.app.infrastructure.platform.CallStateMonitor
 import com.autogram.app.infrastructure.telegram.mtproto.AuthState
 import com.autogram.app.infrastructure.telegram.mtproto.TdLibClient
 import com.autogram.app.service.MtprotoReceiverService
@@ -74,14 +75,23 @@ import javax.inject.Inject
 // firing stopAndSend on an empty MediaRecorder frame (which throws
 // "stop failed" and briefly flashes an Error pill). See RecordCircle.
 private const val MIN_RECORD_HOLD_MS: Long = 350L
+private const val REQUEST_COMPANION_PERMISSIONS: Int = 4201
 
 @AndroidEntryPoint
 class MainActivity : BaseLocaleActivity() {
 
     @Inject lateinit var settingsRepository: SettingsRepository
     @Inject lateinit var tdLibClient: TdLibClient
+    @Inject lateinit var callStateMonitor: CallStateMonitor
 
     private val mainViewModel: MainViewModel by viewModels()
+
+    // One-shot guard. Without it, every onResume re-fires the permission
+    // request — annoying for the user (re-prompts every time they bounce
+    // back to Main from Settings) and noisy in logcat. Once we've asked
+    // in this Activity instance, leave it alone; the user can grant later
+    // via system settings if they declined.
+    private var companionPermissionsRequested: Boolean = false
 
     override fun onResume() {
         super.onResume()
@@ -131,6 +141,7 @@ class MainActivity : BaseLocaleActivity() {
                 startActivity(Intent(this@MainActivity, OnboardingActivity::class.java))
             }
             startMtprotoReceiverService()
+            requestCompanionRuntimePermissions()
         }
     }
 
@@ -142,6 +153,53 @@ class MainActivity : BaseLocaleActivity() {
             ContextCompat.startForegroundService(this, serviceIntent)
         } catch (e: Exception) {
             timber.log.Timber.e(e, "Error starting MtprotoReceiverService")
+        }
+    }
+
+    private fun requestCompanionRuntimePermissions() {
+        if (companionPermissionsRequested) return
+        val missing = mutableListOf<String>()
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+                PackageManager.PERMISSION_GRANTED
+        ) {
+            missing += Manifest.permission.POST_NOTIFICATIONS
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) !=
+                PackageManager.PERMISSION_GRANTED
+        ) {
+            missing += Manifest.permission.BLUETOOTH_CONNECT
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            missing += Manifest.permission.READ_PHONE_STATE
+        }
+        if (missing.isNotEmpty()) {
+            companionPermissionsRequested = true
+            androidx.core.app.ActivityCompat.requestPermissions(
+                this,
+                missing.toTypedArray(),
+                REQUEST_COMPANION_PERMISSIONS
+            )
+        } else {
+            // All permissions already granted; mark requested so we don't
+            // re-evaluate on every onResume (saves a tiny bit of work).
+            companionPermissionsRequested = true
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQUEST_COMPANION_PERMISSIONS) return
+        val phoneIndex = permissions.indexOf(Manifest.permission.READ_PHONE_STATE)
+        if (phoneIndex >= 0 && grantResults.getOrNull(phoneIndex) == PackageManager.PERMISSION_GRANTED) {
+            callStateMonitor.start()
         }
     }
 
@@ -211,8 +269,10 @@ class MainActivity : BaseLocaleActivity() {
             // one entry with isActive=true — happens as soon as the
             // repository's Room flow settles, typically within a few ms
             // of the activity attaching.
-            val target = mainViewModel.pinned.first { list -> list.any { it.isActive } }
-                .firstOrNull { it.isActive } ?: return@launch
+            val target = kotlinx.coroutines.withTimeoutOrNull(2_000) {
+                mainViewModel.pinned.first { list -> list.any { it.isActive } }
+            }
+                ?.firstOrNull { it.isActive } ?: return@launch
             mainViewModel.startRecording(target.id)
         }
     }

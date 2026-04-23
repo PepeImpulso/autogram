@@ -1,5 +1,6 @@
 package com.autogram.app.ui.phone
 
+import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
@@ -38,6 +39,7 @@ import kotlin.math.max
  *   2. Coloured circle with the first letter of the title, deterministic per id.
  */
 @Composable
+@SuppressLint("ProduceStateDoesNotAssignValue")
 fun CircleAvatar(
     conv: Conversation,
     size: Dp,

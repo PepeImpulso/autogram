@@ -23,7 +23,7 @@
 
     <string name="notification_channel_polling">Autogram Polling</string>
     <string name="notification_channel_incoming_voice">Incoming voice</string>
-    <string name="notification_channel_incoming_voice_desc">A voice message just arrived. Needed so Android Auto can surface it on the car screen.</string>
+    <string name="notification_channel_incoming_voice_desc">A voice message just arrived.</string>
     <string name="notification_incoming_voice_body">New voice message</string>
     <string name="notification_action_listen">Listen</string>
     <string name="notification_action_reply">Reply</string>

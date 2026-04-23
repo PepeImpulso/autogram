@@ -184,7 +184,7 @@ interface ConversationDao {
 @Dao
 interface SettingsDao {
     @Query("SELECT * FROM settings WHERE id = 1 LIMIT 1")
-    fun observe(): Flow<com.autogram.app.infrastructure.persistence.entity.SettingsEntity>
+    fun observe(): Flow<com.autogram.app.infrastructure.persistence.entity.SettingsEntity?>
 
     @Query("SELECT * FROM settings WHERE id = 1 LIMIT 1")
     suspend fun get(): com.autogram.app.infrastructure.persistence.entity.SettingsEntity?

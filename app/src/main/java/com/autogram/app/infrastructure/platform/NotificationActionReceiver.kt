@@ -65,11 +65,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
             Timber.w("Listen: message $messageId not found")
             return
         }
-        if (!message.audioFilePath.isNullOrBlank()) {
-            playReplyUseCase.playManually(message)
-        } else if (!message.textContent.isNullOrBlank()) {
-            playReplyUseCase.playTextMessage(message)
-        }
+        playReplyUseCase.playManually(message)
     }
 
     private suspend fun handleReply(context: Context, intent: Intent, notificationId: Int) {

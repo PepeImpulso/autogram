@@ -1,0 +1,74 @@
+package com.autogram.app.infrastructure.audio
+
+import android.media.AudioDeviceInfo
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * Pure route-priority tests for the Android Auto playback bug. The Android
+ * framework objects are hard to instantiate in local JVM tests, so the
+ * production selector is intentionally factored down to device-type ints.
+ */
+class AudioPlayerRouteTest {
+
+    @Test fun `projected car output beats paired bluetooth`() {
+        val selected = AudioPlayer.choosePreferredOutputType(
+            routedTypes = listOf(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP),
+            outputTypes = listOf(
+                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+                AudioDeviceInfo.TYPE_USB_ACCESSORY
+            )
+        )
+
+        assertEquals(AudioDeviceInfo.TYPE_USB_ACCESSORY, selected)
+    }
+
+    @Test fun `routed bus output wins first`() {
+        val selected = AudioPlayer.choosePreferredOutputType(
+            routedTypes = listOf(AudioDeviceInfo.TYPE_BUS, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP),
+            outputTypes = listOf(AudioDeviceInfo.TYPE_USB_DEVICE)
+        )
+
+        assertEquals(AudioDeviceInfo.TYPE_BUS, selected)
+    }
+
+    @Test fun `bluetooth is preferred when no car output exists`() {
+        val selected = AudioPlayer.choosePreferredOutputType(
+            routedTypes = emptyList(),
+            outputTypes = listOf(
+                AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
+                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+            )
+        )
+
+        assertEquals(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, selected)
+    }
+
+    @Test fun `wired headset beats sco when no car or a2dp output exists`() {
+        val selected = AudioPlayer.choosePreferredOutputType(
+            routedTypes = emptyList(),
+            outputTypes = listOf(
+                AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                AudioDeviceInfo.TYPE_WIRED_HEADSET
+            )
+        )
+
+        assertEquals(AudioDeviceInfo.TYPE_WIRED_HEADSET, selected)
+    }
+
+    @Test fun `no useful external output leaves routing to the os`() {
+        val selected = AudioPlayer.choosePreferredOutputType(
+            routedTypes = listOf(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER),
+            outputTypes = listOf(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER)
+        )
+
+        assertNull(selected)
+    }
+
+    @Test fun `projected car output detection excludes plain usb headset`() {
+        assertTrue(AudioPlayer.isProjectedCarOutputType(AudioDeviceInfo.TYPE_USB_ACCESSORY))
+        assertTrue(!AudioPlayer.isProjectedCarOutputType(AudioDeviceInfo.TYPE_USB_HEADSET))
+    }
+}

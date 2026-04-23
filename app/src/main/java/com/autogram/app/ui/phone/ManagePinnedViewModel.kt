@@ -105,20 +105,14 @@ class ManagePinnedViewModel @Inject constructor(
                     // and keeps the stored file comfortably under ~500 KB.
                     val bitmap = ctx.contentResolver.openInputStream(source)?.use { input ->
                         decodeSampledStream(input, TARGET_LONG_SIDE_PX)
+                    } ?: run {
+                        runCatching { file.delete() }
+                        error("Unsupported or oversized image")
                     }
-                    if (bitmap != null) {
-                        file.outputStream().use { out ->
-                            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out)
-                        }
-                        runCatching { bitmap.recycle() }
-                    } else {
-                        // Decode failed — fall back to the raw byte copy so the
-                        // user still gets *something* on-screen rather than a
-                        // silent no-op.
-                        ctx.contentResolver.openInputStream(source)?.use { input ->
-                            file.outputStream().use { output -> input.copyTo(output) }
-                        }
+                    file.outputStream().use { out ->
+                        bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out)
                     }
+                    runCatching { bitmap.recycle() }
                     file
                 }
                 // Remove any previous image file for this circle.

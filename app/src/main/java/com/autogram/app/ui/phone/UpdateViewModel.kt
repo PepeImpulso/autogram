@@ -61,8 +61,12 @@ class UpdateViewModel @Inject constructor(
                     if (userInitiated) State.Error(result.exceptionOrNull()?.message ?: "Error de red")
                     else State.Idle
                 }
-                result.getOrThrow().isUpdateAvailable -> State.Available(result.getOrThrow())
-                else -> if (userInitiated) State.UpToDate(result.getOrThrow().latestVersion) else State.Idle
+                else -> {
+                    val info = result.getOrThrow()
+                    if (info.isUpdateAvailable) State.Available(info)
+                    else if (userInitiated) State.UpToDate(info.latestVersion)
+                    else State.Idle
+                }
             }
         }
     }

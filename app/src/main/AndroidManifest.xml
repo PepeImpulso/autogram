@@ -21,6 +21,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
@@ -131,22 +132,20 @@
             android:name="androidx.car.app.theme"
             android:resource="@style/Theme.Autogram.Car" />
 
-        <!-- CarAppService for Android Auto. DECLARE ONLY **ONE** category
-             (NAVIGATION) per the Gearhead host contract.
+        <!-- CarAppService for Android Auto. This APK is exposed to the
+             Android Auto launcher as a templated NAVIGATION app only.
 
              History: v1.18.1..v1.19.12 declared MESSAGING + IOT + NAVIGATION
              together. Gearhead classified the app primarily as MESSAGING,
              so the user landed on AA's built-in empty-messaging surface
              ("No se han recibido mensajes mientras se conducía") instead
              of our NavigationTemplate + SurfaceCallback-rendered home
-             screen. AA's docs explicitly state `NavigationTemplate` is
-             only valid for apps declaring category NAVIGATION and that
-             co-declaring MESSAGING with it is unsupported.
-
-             CarAppExtender notifications for Listen/Reply on incoming
-             voices keep working — that path is a NotificationCompat
-             extender evaluated per-notification by the host, independent
-             of the CarAppService's category.
+             screen. A later fix removed those service categories but left
+             `uses name="notification"` in automotive_app_desc.xml; current
+             AA hosts can still expose that capability through the messaging
+             surface, recreating the same symptom. Keep the descriptor to
+             `template` only unless this app grows a separate, real templated
+             messaging experience with ConversationItem on Car API 7+.
 
              Explicit icon + label are required so the Auto launcher
              renders the tile. Sideloaded APKs still need "Unknown

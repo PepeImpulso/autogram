@@ -9,6 +9,8 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
 import android.graphics.RectF
+import androidx.annotation.OptIn
+import androidx.car.app.annotations.ExperimentalCarApi
 import androidx.car.app.CarContext
 import androidx.core.content.ContextCompat
 import androidx.car.app.Screen
@@ -53,6 +55,7 @@ import java.io.File
  * shortcuts than the budget allows, pinned circles win — the car is a
  * conversation-first context, the shortcuts are phone-first.
  */
+@OptIn(ExperimentalCarApi::class)
 class MainScreen(
     carContext: CarContext,
     private val sendMessageUseCase: SendVoiceMtprotoUseCase,
@@ -681,7 +684,7 @@ class MainScreen(
         if (!path.isNullOrBlank()) {
             val file = File(path)
             if (file.exists() && file.length() > 0) {
-                val decoded = runCatching { BitmapFactory.decodeFile(path) }.getOrNull()
+                val decoded = runCatching { decodeSampledPhoto(path, sizePx) }.getOrNull()
                 if (decoded != null) return decoded
             }
         }
@@ -697,6 +700,20 @@ class MainScreen(
             sizePx = sizePx * 0.55f
         )
         return fallback
+    }
+
+    private fun decodeSampledPhoto(path: String, targetPx: Int): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(path, bounds)
+        val srcLong = maxOf(bounds.outWidth, bounds.outHeight)
+        if (srcLong <= 0) return null
+        var sample = 1
+        while (srcLong / sample > targetPx * 2) sample *= 2
+        val opts = BitmapFactory.Options().apply {
+            inSampleSize = sample
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        return BitmapFactory.decodeFile(path, opts)
     }
 
     private fun toCircleBitmap(src: Bitmap, sizePx: Int): Bitmap {

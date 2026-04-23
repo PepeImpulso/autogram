@@ -142,6 +142,13 @@ class PlayReplyUseCaseTest {
         verify(exactly = 0) { audioPlayer.play(any(), any(), any()) }
     }
 
+    @Test fun `playVoiceMessage skips when autoPlayReplies is off`() = runTest {
+        coEvery { settingsRepository.get() } returns defaultSettings.copy(autoPlayReplies = false)
+        useCase.playVoiceMessage(voiceMessage(), isCallActive = false)
+        coVerify(exactly = 0) { pendingPlaybackDao.insert(any()) }
+        verify(exactly = 0) { audioPlayer.play(any(), any(), any()) }
+    }
+
     @Test fun `happy path - audioPlayer play called, status flips to Playing`() = runTest {
         val msg = voiceMessage()
         useCase.playVoiceMessage(msg, isCallActive = false)
@@ -173,6 +180,22 @@ class PlayReplyUseCaseTest {
         // Doesn't enqueue (the user opted out) and doesn't speak.
         coVerify(exactly = 0) { pendingPlaybackDao.insert(any()) }
         coVerify(exactly = 0) { ttsPlayer.speak(any(), any(), any()) }
+    }
+
+    @Test fun `playManually speaks text even when autoPlayReplies is off`() = runTest {
+        coEvery { settingsRepository.get() } returns defaultSettings.copy(autoPlayReplies = false)
+        useCase.playManually(textMessage(text = "hola"))
+        coVerify { ttsPlayer.speak("hola", any(), any()) }
+    }
+
+    @Test fun `playAllPending bypasses autoPlayReplies off`() = runTest {
+        val msg = voiceMessage("pending")
+        useCase.playVoiceMessage(msg, isCallActive = true)
+        coEvery { settingsRepository.get() } returns defaultSettings.copy(autoPlayReplies = false)
+
+        useCase.playAllPending()
+
+        verify { audioPlayer.play(any(), any(), any()) }
     }
 
     @Test fun `playTextMessage happy path calls speak`() = runTest {

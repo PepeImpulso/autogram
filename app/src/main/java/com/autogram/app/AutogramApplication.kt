@@ -7,6 +7,7 @@ import androidx.core.os.LocaleListCompat
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import com.autogram.app.domain.repository.SettingsRepository
+import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.infrastructure.audio.TtsPlayer
 import com.autogram.app.infrastructure.platform.LocaleHelper
 import com.autogram.app.infrastructure.platform.PendingReplyNotifier
@@ -29,6 +30,7 @@ class AutogramApplication : Application(), Configuration.Provider {
     @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var settingsRepository: SettingsRepository
     @Inject lateinit var ttsPlayer: TtsPlayer
+    @Inject lateinit var playReplyUseCase: PlayReplyUseCase
 
     private val appScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
@@ -95,6 +97,7 @@ class AutogramApplication : Application(), Configuration.Provider {
         }
 
         PendingReplyNotifier.ensureChannel(this)
+        appScope.launch { playReplyUseCase.restorePendingQueue() }
         RetentionCleanupWorker.schedule(this)
         // Drain any messages left in the outbox from a previous process. Worker
         // is network-constrained so this is safe even if we're offline now.

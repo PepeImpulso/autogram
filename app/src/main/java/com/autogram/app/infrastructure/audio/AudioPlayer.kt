@@ -39,6 +39,10 @@ class AudioPlayer @Inject constructor(
         return try {
             stop()
             completionHandler = onComplete
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val outputSnapshot = getOutputDevices(audioManager)
+            val hasProjectedCarOutput = outputSnapshot.any { isProjectedCarOutputType(it.type) }
+            val playbackAttributes = buildPlaybackAttributes(useNavigationGuidance = hasProjectedCarOutput)
 
             // Request audio focus. In an Android Auto session Google Maps /
             // the AA host will typically already hold focus for navigation
@@ -46,7 +50,7 @@ class AudioPlayer @Inject constructor(
             // We accept that and keep playing anyway — the platform's ducking
             // layer mixes our playback with whatever else is active instead
             // of muting us into silence like the old hard-fail did.
-            val focusGranted = requestAudioFocus()
+            val focusGranted = requestAudioFocus(audioManager, playbackAttributes)
             if (!focusGranted) {
                 Timber.w("Audio focus denied (likely AA/Maps active) — playing anyway with ducking")
             } else {
@@ -55,12 +59,7 @@ class AudioPlayer @Inject constructor(
 
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(file.absolutePath)
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .build()
-                )
+                setAudioAttributes(playbackAttributes)
                 setOnCompletionListener {
                     this@AudioPlayer.isPlaying = false
                     abandonAudioFocus()
@@ -86,8 +85,9 @@ class AudioPlayer @Inject constructor(
                 // Prefer routing to a connected Bluetooth / car output so the
                 // driver hears replies through the car speakers / headset
                 // instead of the phone's loudspeaker.
-                preferBluetoothRoute(this)
+                preferOutputRoute(this, audioManager, playbackAttributes, outputSnapshot)
                 start()
+                logRoutedDevice(this)
             }
             isPlaying = true
             Timber.d("Reproduciendo: ${file.name} (speed=${speed}x)")
@@ -151,18 +151,15 @@ class AudioPlayer @Inject constructor(
      * blurbs don't chop our message in half.
      */
     // BUG-38: minSdk=29, so we always have API O. Removed dead < O branches.
-    private fun requestAudioFocus(): Boolean {
-        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private fun requestAudioFocus(
+        audioManager: AudioManager,
+        attributes: AudioAttributes
+    ): Boolean {
         val request = try {
             AudioFocusRequest.Builder(
                 android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
             )
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .build()
-                )
+                .setAudioAttributes(attributes)
                 .setWillPauseWhenDucked(false)
                 .setOnAudioFocusChangeListener { focusChange ->
                     if (focusChange == android.media.AudioManager.AUDIOFOCUS_LOSS) {
@@ -180,54 +177,94 @@ class AudioPlayer @Inject constructor(
     }
 
     /**
-     * Route MediaPlayer output through a connected Bluetooth A2DP (stereo) or
-     * wired headset when available — otherwise fall back to whatever the OS
-     * selects. Safe no-op on API < 28 where setPreferredDevice was added.
+     * Route MediaPlayer output through the output Android is likely to use
+     * for these attributes. When AA exposes a USB/BUS/HDMI car sink, prefer
+     * that explicitly; the previous "car output exists, let the OS decide"
+     * strategy still let some hosts pick a silent paired-BT route.
      *
-     * **Android Auto skip**: when the phone is connected to AA over USB,
-     * the phone exposes a `TYPE_BUS` / `TYPE_USB_*` output that is the
-     * ACTIVE media route; BT A2DP to the same car is often still
-     * "available" (paired) but not the route AA is playing through.
-     * Forcing `setPreferredDevice(BT_A2DP)` in that state makes the
-     * MediaPlayer write to a BT channel the car isn't monitoring —
-     * audio focus ducks other media, but the user hears nothing
-     * because our bytes went to the wrong sink. Detect any car-type
-     * output and let the OS handle routing instead.
+     * The priority is: routed car output -> available car output -> routed
+     * headset/BT -> available headset/BT -> OS default.
      */
-    private fun preferBluetoothRoute(player: MediaPlayer) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
+    private fun preferOutputRoute(
+        player: MediaPlayer,
+        audioManager: AudioManager,
+        attributes: AudioAttributes,
+        outputSnapshot: List<AudioDeviceInfo>
+    ) {
         try {
-            val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            val devices = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-            val hasCarOutput = devices.any { d ->
-                d.type == AudioDeviceInfo.TYPE_BUS ||
-                    d.type == AudioDeviceInfo.TYPE_USB_ACCESSORY ||
-                    d.type == AudioDeviceInfo.TYPE_USB_DEVICE ||
-                    d.type == AudioDeviceInfo.TYPE_USB_HEADSET ||
-                    d.type == AudioDeviceInfo.TYPE_HDMI
-            }
-            if (hasCarOutput) {
-                Timber.d("Car output detected — deferring to OS routing (AA/USB path)")
+            val routedDevices = getRoutedDevices(audioManager, attributes)
+            val preferredType = choosePreferredOutputType(
+                routedTypes = routedDevices.map { it.type },
+                outputTypes = outputSnapshot.map { it.type }
+            )
+            if (preferredType == null) {
+                Timber.d(
+                    "AudioPlayer routing: OS default (routed=${routedDevices.typeSummary()}, " +
+                        "outputs=${outputSnapshot.typeSummary()})"
+                )
                 return
             }
-            // Priority: A2DP (stereo BT headset / wireless-AA car) → wired → SCO.
-            val preferred = devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP }
-                ?: devices.firstOrNull {
-                    it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
-                        it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
-                }
-                ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
-            if (preferred != null) {
-                player.setPreferredDevice(preferred)
-                Timber.d("AudioPlayer routing to ${preferred.productName} (type=${preferred.type})")
+            val preferred = (routedDevices + outputSnapshot)
+                .distinctBy { it.id }
+                .firstOrNull { it.type == preferredType }
+            if (preferred == null) {
+                Timber.d("AudioPlayer routing: preferred type $preferredType disappeared")
+                return
             }
+            val accepted = player.setPreferredDevice(preferred)
+            Timber.i(
+                "AudioPlayer preferred output type=${preferred.type} accepted=$accepted " +
+                    "(routed=${routedDevices.typeSummary()}, outputs=${outputSnapshot.typeSummary()})"
+            )
         } catch (e: SecurityException) {
             // BLUETOOTH_CONNECT not granted on API 31+ yet — fall back to OS default.
-            Timber.d("BT route unavailable (no permission): ${e.message}")
+            Timber.d("Preferred audio route unavailable (permission): ${e.message}")
         } catch (e: Exception) {
-            Timber.w(e, "preferBluetoothRoute failed; falling back to default route")
+            Timber.w(e, "preferOutputRoute failed; falling back to default route")
         }
     }
+
+    private fun buildPlaybackAttributes(useNavigationGuidance: Boolean): AudioAttributes {
+        return AudioAttributes.Builder()
+            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+            .setUsage(
+                if (useNavigationGuidance) {
+                    AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE
+                } else {
+                    AudioAttributes.USAGE_MEDIA
+                }
+            )
+            .build()
+    }
+
+    private fun getOutputDevices(audioManager: AudioManager): List<AudioDeviceInfo> {
+        return runCatching {
+            audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).toList()
+        }.onFailure {
+            Timber.d(it, "Audio output device scan failed")
+        }.getOrDefault(emptyList())
+    }
+
+    private fun getRoutedDevices(
+        audioManager: AudioManager,
+        attributes: AudioAttributes
+    ): List<AudioDeviceInfo> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return emptyList()
+        return runCatching {
+            audioManager.getAudioDevicesForAttributes(attributes)
+        }.onFailure {
+            Timber.d(it, "Audio routed-device scan failed")
+        }.getOrDefault(emptyList())
+    }
+
+    private fun logRoutedDevice(player: MediaPlayer) {
+        runCatching {
+            Timber.i("AudioPlayer started on routed output type=${player.routedDevice?.type}")
+        }
+    }
+
+    private fun List<AudioDeviceInfo>.typeSummary(): String =
+        joinToString(prefix = "[", postfix = "]") { it.type.toString() }
 
     // BUG-38: minSdk=29, always API O+
     private fun abandonAudioFocus() {
@@ -237,5 +274,47 @@ class AudioPlayer @Inject constructor(
         } catch (_: Exception) {
         }
         audioFocusRequest = null
+    }
+
+    companion object {
+        private val PROJECTED_CAR_OUTPUT_PRIORITY = listOf(
+            AudioDeviceInfo.TYPE_BUS,
+            AudioDeviceInfo.TYPE_USB_ACCESSORY,
+            AudioDeviceInfo.TYPE_USB_DEVICE,
+            AudioDeviceInfo.TYPE_HDMI,
+            AudioDeviceInfo.TYPE_HDMI_ARC,
+            AudioDeviceInfo.TYPE_HDMI_EARC
+        )
+
+        private val CAR_OUTPUT_PRIORITY = PROJECTED_CAR_OUTPUT_PRIORITY +
+            AudioDeviceInfo.TYPE_USB_HEADSET
+
+        private val PERSONAL_OUTPUT_PRIORITY = listOf(
+            AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+            AudioDeviceInfo.TYPE_BLE_SPEAKER,
+            AudioDeviceInfo.TYPE_BLE_HEADSET,
+            AudioDeviceInfo.TYPE_WIRED_HEADSET,
+            AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+            AudioDeviceInfo.TYPE_LINE_ANALOG,
+            AudioDeviceInfo.TYPE_LINE_DIGITAL,
+            AudioDeviceInfo.TYPE_AUX_LINE,
+            AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+        )
+
+        internal fun choosePreferredOutputType(
+            routedTypes: List<Int>,
+            outputTypes: List<Int>
+        ): Int? {
+            return firstByPriority(routedTypes, CAR_OUTPUT_PRIORITY)
+                ?: firstByPriority(outputTypes, CAR_OUTPUT_PRIORITY)
+                ?: firstByPriority(routedTypes, PERSONAL_OUTPUT_PRIORITY)
+                ?: firstByPriority(outputTypes, PERSONAL_OUTPUT_PRIORITY)
+        }
+
+        internal fun isProjectedCarOutputType(type: Int): Boolean =
+            type in PROJECTED_CAR_OUTPUT_PRIORITY
+
+        private fun firstByPriority(types: List<Int>, priority: List<Int>): Int? =
+            priority.firstOrNull { it in types }
     }
 }

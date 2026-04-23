@@ -2,6 +2,9 @@ package com.autogram.app.infrastructure.telegram.mtproto
 
 import android.content.Context
 import android.os.Build
+import android.util.Base64
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import com.autogram.app.BuildConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CompletableDeferred
@@ -20,6 +23,7 @@ import org.drinkless.tdlib.Client
 import org.drinkless.tdlib.TdApi
 import timber.log.Timber
 import java.io.File
+import java.security.SecureRandom
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -31,9 +35,10 @@ import javax.inject.Singleton
  *   - Tracks the authorization state as a Flow so UI can react
  *   - Exposes `send()` as a suspend function (not callback-based)
  *
- * The encrypted database lives under `ctx.filesDir/tdlib`. The per-session
- * encryption key is random bytes, stored alongside the database — good enough
- * for device-local protection; TDLib's threat model assumes the device is trusted.
+ * The encrypted database lives under `ctx.filesDir/tdlib`. New installs get
+ * a random database key stored in EncryptedSharedPreferences; existing installs
+ * that already created TDLib with the old empty key keep that key so upgrades
+ * do not force a Telegram relogin.
  */
 @Singleton
 class TdLibClient @Inject constructor(
@@ -53,6 +58,8 @@ class TdLibClient @Inject constructor(
         // chosen not to collide with TDLib's own positive error codes
         // (400s for user errors, 500s for server errors).
         private const val TIMEOUT_ERROR_CODE: Int = 598
+        private const val KEY_TDLIB_DB = "tdlib_database_key"
+        private const val TDLIB_DB_KEY_BYTES = 32
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -241,7 +248,7 @@ class TdLibClient @Inject constructor(
             useTestDc = false
             databaseDirectory = dbDir.absolutePath
             filesDirectory = filesDir.absolutePath
-            databaseEncryptionKey = ByteArray(0)   // TODO: persist a random key in EncryptedSharedPreferences
+            databaseEncryptionKey = tdlibDatabaseEncryptionKey(dbDir)
             useFileDatabase = true
             useChatInfoDatabase = true
             useMessageDatabase = true
@@ -254,5 +261,38 @@ class TdLibClient @Inject constructor(
             applicationVersion = BuildConfig.VERSION_NAME
         }
         sendFireAndForget(params)
+    }
+
+    private fun tdlibDatabaseEncryptionKey(dbDir: File): ByteArray {
+        return runCatching {
+            val masterKey = MasterKey.Builder(appContext)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            val prefs = EncryptedSharedPreferences.create(
+                appContext,
+                "tdlib_secure",
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+            prefs.getString(KEY_TDLIB_DB, null)?.let {
+                return@runCatching Base64.decode(it, Base64.NO_WRAP)
+            }
+
+            // Backward compatibility: existing users already have TDLib data
+            // encrypted with an empty key. Switching them to a new key here
+            // would make TDLib reject its own database and force a relogin.
+            val hasExistingTdlibData = dbDir.walkTopDown().any { it.isFile }
+            if (hasExistingTdlibData) return@runCatching ByteArray(0)
+
+            val key = ByteArray(TDLIB_DB_KEY_BYTES).also { SecureRandom().nextBytes(it) }
+            prefs.edit()
+                .putString(KEY_TDLIB_DB, Base64.encodeToString(key, Base64.NO_WRAP))
+                .apply()
+            key
+        }.getOrElse {
+            Timber.w(it, "Falling back to empty TDLib DB key")
+            ByteArray(0)
+        }
     }
 }

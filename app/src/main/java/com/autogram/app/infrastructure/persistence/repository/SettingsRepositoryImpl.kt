@@ -16,7 +16,7 @@ class SettingsRepositoryImpl @Inject constructor(
 ) : SettingsRepository {
 
     override fun observe(): Flow<AppSettings> {
-        return settingsDao.observe().map { it.toDomain() }
+        return settingsDao.observe().map { it?.toDomain() ?: AppSettings() }
     }
 
     override suspend fun get(): AppSettings {

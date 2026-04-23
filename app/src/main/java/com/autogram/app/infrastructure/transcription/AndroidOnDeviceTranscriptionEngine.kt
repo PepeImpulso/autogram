@@ -107,7 +107,11 @@ class AndroidOnDeviceTranscriptionEngine @Inject constructor(
                 return@withContext TranscriptionEngine.Result.Error("decode: ${e.message}")
             }
             try {
-                runRecognition(pcmFile, locale)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    runRecognition(pcmFile, locale)
+                } else {
+                    TranscriptionEngine.Result.NotInstalled
+                }
             } finally {
                 runCatching { pcmFile.delete() }
             }
@@ -129,7 +133,7 @@ class AndroidOnDeviceTranscriptionEngine @Inject constructor(
             val format = extractor.getTrackFormat(trackIndex)
             val sourceSampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
             val sourceChannels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
-            val mime = format.getString(MediaFormat.KEY_MIME)!!
+            val mime = format.getString(MediaFormat.KEY_MIME) ?: error("audio mime missing")
             codec = MediaCodec.createDecoderByType(mime)
             codec.configure(format, null, null, 0)
             codec.start()
@@ -143,7 +147,8 @@ class AndroidOnDeviceTranscriptionEngine @Inject constructor(
                     if (!inputDone) {
                         val inIndex = codec.dequeueInputBuffer(DECODE_TIMEOUT_US)
                         if (inIndex >= 0) {
-                            val inBuf = codec.getInputBuffer(inIndex)!!
+                            val inBuf = codec.getInputBuffer(inIndex)
+                                ?: error("decoder input buffer unavailable")
                             val read = extractor.readSampleData(inBuf, 0)
                             if (read < 0) {
                                 codec.queueInputBuffer(inIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
@@ -156,7 +161,8 @@ class AndroidOnDeviceTranscriptionEngine @Inject constructor(
                     }
                     val outIndex = codec.dequeueOutputBuffer(info, DECODE_TIMEOUT_US)
                     if (outIndex >= 0) {
-                        val outBuf = codec.getOutputBuffer(outIndex)!!
+                        val outBuf = codec.getOutputBuffer(outIndex)
+                            ?: error("decoder output buffer unavailable")
                         outBuf.position(info.offset)
                         outBuf.limit(info.offset + info.size)
                         val chunk = ByteArray(info.size)

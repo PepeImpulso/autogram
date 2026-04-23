@@ -23,7 +23,7 @@
 
     <string name="notification_channel_polling">Autogram 轮询</string>
     <string name="notification_channel_incoming_voice">语音收到</string>
-    <string name="notification_channel_incoming_voice_desc">收到语音消息。需要此通道以便 Android Auto 在车机上显示。</string>
+    <string name="notification_channel_incoming_voice_desc">收到语音消息。</string>
     <string name="notification_incoming_voice_body">新语音消息</string>
     <string name="notification_action_listen">收听</string>
     <string name="notification_action_reply">回复</string>

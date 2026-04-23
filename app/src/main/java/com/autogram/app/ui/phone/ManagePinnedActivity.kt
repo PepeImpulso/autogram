@@ -1,5 +1,6 @@
 package com.autogram.app.ui.phone
 
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -505,6 +506,7 @@ private fun PinnedRow(
  * comfortably beyond anything the user can actually perceive.
  */
 @Composable
+@SuppressLint("ProduceStateDoesNotAssignValue")
 private fun ZoomablePhotoDialog(path: String, onDismiss: () -> Unit) {
     val targetPx = with(androidx.compose.ui.platform.LocalConfiguration.current) {
         (screenWidthDp * 2).coerceAtLeast(512)

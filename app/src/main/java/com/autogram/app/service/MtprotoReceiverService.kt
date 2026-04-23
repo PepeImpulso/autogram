@@ -237,8 +237,9 @@ class MtprotoReceiverService : Service() {
             runCatching { cleanupPriorPlayedAudio(target.id, keepMessageId = message.id) }
                 .onFailure { Timber.w(it, "Deferred autoDelete cleanup failed") }
         }
-        // Surface a MessagingStyle+CarAppExtender notification so Android Auto
-        // shows the message on the head unit and lets the user tap Listen/Reply.
+        // Surface a phone notification with Listen/Reply actions. Android Auto
+        // may consume the CarAppExtender path best-effort, but the app descriptor
+        // stays template-only so AA opens Autogram's NAVIGATION surface.
         incomingMessageNotifier.postVoiceReceived(
             conversation = target,
             timestampMs = message.createdAt,

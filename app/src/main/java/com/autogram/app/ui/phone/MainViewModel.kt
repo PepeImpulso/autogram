@@ -198,15 +198,17 @@ class MainViewModel @Inject constructor(
             }
         }
 
-        // Watch incoming messages across the active conversation and compute
-        // chip suggestions. Uses observeAllAcrossConversations because the
-        // active target may change while we're running; `activeTargetId`
-        // gates which messages are relevant.
+        // Watch incoming messages for the primary conversation and compute
+        // chip suggestions. This must follow ConversationRepository's active
+        // row, not SendVoiceMtprotoUseCase.activeTargetId: that one is only
+        // non-null while the user is recording/sending, so suggestions would
+        // otherwise disappear during normal idle use.
         viewModelScope.launch {
             combine(
                 messageRepository.observeAllAcrossConversations(),
-                activeTargetId
-            ) { messages, activeId ->
+                conversationRepository.observeActive()
+            ) { messages, active ->
+                val activeId = active?.id
                 if (activeId == null) return@combine null
                 messages.asSequence()
                     .filter { it.conversationId == activeId }

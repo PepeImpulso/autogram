@@ -25,7 +25,7 @@
     <!-- Notifications -->
     <string name="notification_channel_polling">Autogram Polling</string>
     <string name="notification_channel_incoming_voice">Voz entrante</string>
-    <string name="notification_channel_incoming_voice_desc">Ha llegado un audio. Necesario para que Android Auto lo muestre en el coche.</string>
+    <string name="notification_channel_incoming_voice_desc">Ha llegado un audio.</string>
     <string name="notification_incoming_voice_body">Nuevo mensaje de voz</string>
     <string name="notification_action_listen">Escuchar</string>
     <string name="notification_action_reply">Responder</string>
