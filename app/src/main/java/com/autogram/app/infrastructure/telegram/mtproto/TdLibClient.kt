@@ -45,6 +45,14 @@ class TdLibClient @Inject constructor(
             // The .so ships in app/src/main/jniLibs/<abi>/libtdjni.so.
             System.loadLibrary("tdjni")
         }
+        // Upper bound for any single TDLib request. Prevents the
+        // WorkManager retry loop from hanging the entire 10-minute
+        // worker budget on a wedged network socket.
+        private const val SEND_TIMEOUT_MS: Long = 60_000L
+        // Error code used when we synthesise a timeout response —
+        // chosen not to collide with TDLib's own positive error codes
+        // (400s for user errors, 500s for server errors).
+        private const val TIMEOUT_ERROR_CODE: Int = 598
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -103,7 +111,19 @@ class TdLibClient @Inject constructor(
         c.send(query) { result ->
             deferred.complete(result)
         }
-        return deferred.await()
+        // Guard against wedged TDLib states (mid-reconnect, auth
+        // expired, network cutover). Without a timeout, callers like
+        // OutboxRetryUseCase run on the WorkManager 10-minute budget
+        // and would miss it entirely, returning FAILURE instead of
+        // RETRY. 60s is generous for voice-note uploads over slow
+        // connections but short enough to let the retry kick in on a
+        // genuinely dead socket.
+        return kotlinx.coroutines.withTimeoutOrNull(SEND_TIMEOUT_MS) {
+            deferred.await()
+        } ?: TdApi.Error(
+            TIMEOUT_ERROR_CODE,
+            "TDLib.send timed out after ${SEND_TIMEOUT_MS}ms (client may be wedged)"
+        )
     }
 
     /** Submits a request, ignoring the result (fire-and-forget but still logged on error). */

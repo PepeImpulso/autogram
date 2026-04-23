@@ -83,13 +83,26 @@ class MainActivity : BaseLocaleActivity() {
                 && BiometricGate.isSupported(this@MainActivity)
                 && !BiometricGate.recentlyUnlocked()
             ) {
+                // Block the onResume coroutine on the prompt outcome.
+                // The old code fired the biometric prompt and fell
+                // straight through to TDLib + MtprotoReceiverService
+                // startup regardless of the result — an attacker who
+                // picked up the phone had ~2-3 seconds of visible
+                // Autogram UI before the finish() landed, and by then
+                // the foreground service was already running and had
+                // received / potentially played notifications.
+                val authenticated = kotlinx.coroutines.CompletableDeferred<Boolean>()
                 BiometricGate.ensureUnlocked(
                     activity = this@MainActivity,
                     title = getString(R.string.app_name),
                     subtitle = getString(R.string.biometric_unlock_subtitle),
-                    onAuthenticated = { /* continues below via lifecycleScope */ },
-                    onFailed = { finish() }
+                    onAuthenticated = { authenticated.complete(true) },
+                    onFailed = { authenticated.complete(false) }
                 )
+                if (!authenticated.await()) {
+                    finish()
+                    return@launch
+                }
             }
             tdLibClient.ensureStarted()
             val auth = tdLibClient.authState.first { it !is AuthState.Uninitialized && it !is AuthState.Initializing }
@@ -214,6 +227,21 @@ private fun MainScreen(
                 false
             )
         ) return@LaunchedEffect
+        // Guard against third-party apps crafting an Intent with
+        // EXTRA_AUTO_RECORD to silently trigger voice recording on
+        // Autogram launch. MainActivity is exported (LAUNCHER), so
+        // without this check any app could start a mic session.
+        // We accept the extra only when the intent came from our own
+        // package — either our QS tile (RecordVoiceTileService) or
+        // an internal re-launch (MainActivity → MainActivity via
+        // onNewIntent). Falls back to safe (ignore extra) if we
+        // can't determine the referrer.
+        val referrer = activity.referrer?.host ?: activity.callingPackage
+        if (referrer != null && referrer != activity.packageName) {
+            timber.log.Timber.w("MainActivity: ignoring EXTRA_AUTO_RECORD from external caller '$referrer'")
+            intent.removeExtra(com.autogram.app.tiles.RecordVoiceTileService.EXTRA_AUTO_RECORD)
+            return@LaunchedEffect
+        }
         val target = pinnedForAuto.firstOrNull { it.isActive } ?: return@LaunchedEffect
         if (!hasMicPermission) {
             // Wait for the user to grant; the LaunchedEffect re-runs when

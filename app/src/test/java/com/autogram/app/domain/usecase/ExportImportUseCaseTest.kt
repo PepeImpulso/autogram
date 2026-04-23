@@ -69,11 +69,18 @@ class ExportImportUseCaseTest {
         coEvery { quickReplyRepo.getAll() } returns sampleQuickReplies
         coEvery { conversationRepo.getAll() } returns sampleConversations
 
+        // Pass-through TransactionRunner for unit tests — no Room,
+        // just runs the block directly. Production binding wraps
+        // Room's withTransaction (tested via instrumented tests).
+        val passThroughRunner = object : TransactionRunner {
+            override suspend fun <R> run(block: suspend () -> R): R = block()
+        }
         useCase = ExportImportUseCase(
             context = context,
             conversationRepository = conversationRepo,
             quickReplyRepository = quickReplyRepo,
-            settingsRepository = settingsRepo
+            settingsRepository = settingsRepo,
+            transactionRunner = passThroughRunner
         )
     }
 

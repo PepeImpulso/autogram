@@ -12,11 +12,27 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface MessageDao {
-    @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY createdAt DESC")
+    // UI-facing observe queries are bounded to the N most-recent rows.
+    // Without a LIMIT they grow unboundedly: after months of daily use
+    // a long-tail user can accumulate 10k+ rows, and the MainViewModel
+    // flow combines on top of this query → a full-table scan fires
+    // per incoming message, blocks recomposition, and heap-spikes
+    // with ≈several-KB-per-row due to transcription/summary columns.
+    // 500 comfortably covers the longest realistic History scroll.
+    // Retention + stats use the unbounded `getAll()` below since they
+    // genuinely need every row.
+    @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY createdAt DESC LIMIT 500")
     fun observeAll(conversationId: String): Flow<List<MessageEntity>>
 
-    @Query("SELECT * FROM messages ORDER BY createdAt DESC")
+    @Query("SELECT * FROM messages ORDER BY createdAt DESC LIMIT 500")
     fun observeAllAcrossConversations(): Flow<List<MessageEntity>>
+
+    // Unbounded snapshot used by the retention worker's orphan-audio
+    // sweep and by GetStatsUseCase (lifetime stats). Runs on a
+    // background thread — NOT a Flow, so it's a single one-shot query
+    // and doesn't keep an open cursor while traversing.
+    @Query("SELECT * FROM messages")
+    suspend fun getAll(): List<MessageEntity>
 
     @Query("SELECT * FROM messages WHERE id = :id LIMIT 1")
     suspend fun getById(id: String): MessageEntity?

@@ -56,9 +56,15 @@ class RetryWorker @AssistedInject constructor(
                     30, TimeUnit.SECONDS
                 )
                 .build()
+            // KEEP: if a retry worker is already queued, don't
+            // schedule another. Each worker drains ALL outbox
+            // messages in one run, so appending N times (one per
+            // quick-fire-offline voice message) just wastes
+            // battery and wakes the device N times for no reason.
+            // Previously APPEND_OR_REPLACE, which did exactly that.
             WorkManager.getInstance(context).enqueueUniqueWork(
                 UNIQUE_NAME,
-                ExistingWorkPolicy.APPEND_OR_REPLACE,
+                ExistingWorkPolicy.KEEP,
                 request
             )
             Timber.d("RetryWorker enqueued")

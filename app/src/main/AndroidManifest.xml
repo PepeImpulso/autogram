@@ -9,6 +9,15 @@
          to read connected audio device info so playback can target BT / car. -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- MtprotoReceiverService uses specialUse because "dataSync" on
+         Android 14+ has a 6-hour budget that Google is enforcing
+         progressively; our receiver is a continuous MTProto long-poll
+         and doesn't fit any of the 10 standard subtypes. specialUse
+         requires declaring a sub-type property on the service tag. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Kept for back-compat with older Android 10-13 where the type
+         is parsed but doesn't enforce a budget. Newer targets use
+         SPECIAL_USE above. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -172,11 +181,19 @@
             </intent-filter>
         </service>
 
-        <!-- Foreground Service for MTProto receive loop -->
+        <!-- Foreground Service for MTProto receive loop. specialUse
+             because Android 14+ reclaims dataSync-typed services on
+             a 6-hour budget; our receiver keeps a TDLib long-poll
+             open for the lifetime of the session, which doesn't map
+             to any of the 10 pre-baked FGS subtypes. -->
         <service
             android:name=".service.MtprotoReceiverService"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="MtprotoReceiverService continuously maintains a TDLib MTProto session for Autogram so incoming voice messages can be received, notified to Android Auto, and played aloud without requiring the user to keep the app open on the phone." />
+        </service>
 
         <!-- Handles Listen/Reply actions posted on incoming-message notifications.
              Not exported — only our own PendingIntents trigger it. -->

@@ -26,6 +26,10 @@ class MessageRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun getAll(): List<Message> {
+        return messageDao.getAll().map { it.toDomain() }
+    }
+
     override suspend fun getById(id: String): Message? {
         return messageDao.getById(id)?.toDomain()
     }

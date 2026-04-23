@@ -42,12 +42,26 @@ import javax.inject.Singleton
  *    Kept ONLY for importing existing backups. New exports must not use this.
  *  - v2 (AUGBKP02, shipped 1.8.1): 600_000 iters (NIST SP 800-132 compliant).
  */
+/**
+ * Thin seam around Room's `withTransaction` so this use case stays
+ * unit-testable without spinning up an in-memory Room database.
+ * Production binding runs inside a real SQLite transaction; tests
+ * substitute a pass-through implementation that just runs the block.
+ *
+ * Generic suspend methods aren't allowed in `fun interface` (SAM
+ * conversion), so this is a regular interface.
+ */
+interface TransactionRunner {
+    suspend fun <R> run(block: suspend () -> R): R
+}
+
 @Singleton
 class ExportImportUseCase @Inject constructor(
     @ApplicationContext private val context: Context,
     private val conversationRepository: ConversationRepository,
     private val quickReplyRepository: QuickReplyRepository,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val transactionRunner: TransactionRunner
 ) {
 
     data class BackupPayload(
@@ -196,32 +210,53 @@ class ExportImportUseCase @Inject constructor(
             magic[2] == 0x47.toByte() && magic[3] == 0x42.toByte()
 
     private suspend fun applyPayload(payload: BackupPayload) {
-        // Settings — overwrite the single row.
-        settingsRepository.update(payload.settings)
-
-        // Quick replies — delete all current, insert from backup.
-        val existingReplies = quickReplyRepository.getAll()
-        for (r in existingReplies) quickReplyRepository.delete(r.id)
-        for (r in payload.quickReplies) quickReplyRepository.upsert(r)
-
-        // Photos — restore files first so conversations can reference valid paths.
+        // Restore photo files FIRST, before any DB write, so we can
+        // roll back cleanly if the DB transaction aborts. Photo
+        // writes are best-effort: a single bad photo doesn't block
+        // the rest of the import.
         val photoDir = File(context.filesDir, "circle_photos").apply { mkdirs() }
         val restoredPhotoPaths = mutableMapOf<String, String>()
+        val writtenFiles = mutableListOf<File>()
         for ((convId, b64) in payload.photos) {
             runCatching {
                 val bytes = android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
                 val dst = File(photoDir, "$convId-restored.img")
                 dst.writeBytes(bytes)
                 restoredPhotoPaths[convId] = dst.absolutePath
+                writtenFiles += dst
             }.onFailure { Timber.w(it, "Failed to restore photo for $convId") }
         }
 
-        // Conversations — upsert. Rewrite photoLocalPath when restored.
-        for (conv in payload.conversations) {
-            val withPhoto = conv.copy(
-                photoLocalPath = restoredPhotoPaths[conv.id] ?: conv.photoLocalPath
-            )
-            conversationRepository.upsert(withPhoto)
+        // Atomic DB replace. If any of the updates throws (constraint
+        // violation, foreign key, disk full), Room rolls back — we
+        // don't end up with settings applied and quick replies wiped
+        // but not repopulated, which was the failure mode before.
+        val dbResult = runCatching {
+            // If any operation inside the block throws (constraint
+            // violation, foreign key failure, disk full, cancellation),
+            // Room rolls back the SQLite transaction, so the import
+            // is all-or-nothing at the DB level.
+            transactionRunner.run {
+                settingsRepository.update(payload.settings)
+
+                val existingReplies = quickReplyRepository.getAll()
+                for (r in existingReplies) quickReplyRepository.delete(r.id)
+                for (r in payload.quickReplies) quickReplyRepository.upsert(r)
+
+                for (conv in payload.conversations) {
+                    val withPhoto = conv.copy(
+                        photoLocalPath = restoredPhotoPaths[conv.id] ?: conv.photoLocalPath
+                    )
+                    conversationRepository.upsert(withPhoto)
+                }
+            }
+        }
+        if (dbResult.isFailure) {
+            // DB rolled back; clean the photo files we just wrote so
+            // the import is a true all-or-nothing operation.
+            Timber.w(dbResult.exceptionOrNull(), "applyPayload: DB transaction failed, rolling back photo writes")
+            writtenFiles.forEach { runCatching { it.delete() } }
+            throw dbResult.exceptionOrNull() ?: Exception("Unknown DB failure")
         }
     }
 

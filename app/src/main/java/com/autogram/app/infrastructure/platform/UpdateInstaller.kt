@@ -58,14 +58,19 @@ class UpdateInstaller @Inject constructor(
             .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, filename)
             .setMimeType("application/vnd.android.package-archive")
 
-        val id = dm.enqueue(request)
-        events.trySend(InstallEvent.Started(id))
-
-        // Register a one-shot receiver for this download id.
+        // Register the broadcast receiver BEFORE enqueueing. A fast
+        // download (tiny APK, cached DNS, disk-warm) can fire
+        // ACTION_DOWNLOAD_COMPLETE before a receiver registered
+        // afterwards has a chance to observe it — the event would
+        // be dropped and the UI stuck on "Downloading" forever.
+        //
+        // The receiver is a one-shot: it self-unregisters in the
+        // finally block once the matching download id fires.
+        val pendingIdHolder = arrayOf(-1L)
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context, intent: Intent) {
                 val completedId = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
-                if (completedId != id) return
+                if (completedId != pendingIdHolder[0]) return
                 try {
                     val apkFile = resolveDownloadedFile(dm, completedId, outFile)
                     if (apkFile == null) {
@@ -91,6 +96,12 @@ class UpdateInstaller @Inject constructor(
             @Suppress("UnspecifiedRegisterReceiverFlag")
             context.registerReceiver(receiver, filter)
         }
+
+        // Now safe to enqueue — the receiver will catch whatever
+        // completion event fires, even immediately.
+        val id = dm.enqueue(request)
+        pendingIdHolder[0] = id
+        events.trySend(InstallEvent.Started(id))
     }
 
     private fun resolveDownloadedFile(dm: DownloadManager, id: Long, fallback: File): File? {
@@ -113,6 +124,23 @@ class UpdateInstaller @Inject constructor(
     }
 
     private fun launchInstall(apkFile: File) {
+        // API 26+ requires the user to grant REQUEST_INSTALL_PACKAGES
+        // per-app. If it was previously denied, startActivity with
+        // ACTION_VIEW still launches the installer UI but it
+        // silently drops the APK when the user accepts. Catching
+        // it here gives us a clear Failed event instead of the
+        // UI hanging at "Downloaded" forever.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            !context.packageManager.canRequestPackageInstalls()
+        ) {
+            Timber.w("UpdateInstaller: REQUEST_INSTALL_PACKAGES not granted")
+            events.trySend(
+                InstallEvent.Failed(
+                    "Concede permiso de instalación a Autogram en Ajustes → Apps → Autogram → Instalar apps desconocidas, y vuelve a intentarlo."
+                )
+            )
+            return
+        }
         val uri = FileProvider.getUriForFile(
             context,
             "${context.packageName}.fileprovider",

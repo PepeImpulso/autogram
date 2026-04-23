@@ -6,6 +6,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
+import androidx.room.withTransaction
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.autogram.app.infrastructure.persistence.converter.Converters
 import com.autogram.app.infrastructure.persistence.dao.*
@@ -182,6 +183,21 @@ object DatabaseModule {
             .fallbackToDestructiveMigration()
             .build()
     }
+
+    /**
+     * Hilt binding for the transaction seam. Wraps Room's
+     * `withTransaction` so ExportImportUseCase (and future multi-row
+     * writers) can run their block atomically without holding a
+     * direct RoomDatabase reference — which would make them
+     * untestable without an in-memory DB.
+     */
+    @Provides
+    @Singleton
+    fun provideTransactionRunner(db: AutogramDatabase): com.autogram.app.domain.usecase.TransactionRunner =
+        object : com.autogram.app.domain.usecase.TransactionRunner {
+            override suspend fun <R> run(block: suspend () -> R): R =
+                db.withTransaction { block() }
+        }
 
     @Provides fun provideMessageDao(db: AutogramDatabase) = db.messageDao()
     @Provides fun provideConversationDao(db: AutogramDatabase) = db.conversationDao()

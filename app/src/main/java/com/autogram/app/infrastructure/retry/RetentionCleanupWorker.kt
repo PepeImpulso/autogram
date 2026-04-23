@@ -61,10 +61,12 @@ class RetentionCleanupWorker @AssistedInject constructor(
      * file that's gone, which would have shown a broken play button.
      */
     private suspend fun repairMissingAudioPaths() {
-        // Room always emits at least an empty list, but guard with
-        // firstOrNull to survive any future repository change that might
-        // produce an empty cold flow.
-        val all = messageRepository.observeAllAcrossConversations().firstOrNull().orEmpty()
+        // Switched from `observeAllAcrossConversations().firstOrNull()`
+        // to the one-shot `getAll()`. The observe flow is now LIMIT 500
+        // for UI latency, but retention needs every row — missing the
+        // tail-old messages would leave stale audioFilePath pointers
+        // uncorrected forever.
+        val all = messageRepository.getAll()
         var repaired = 0
         for (msg in all) {
             val path = msg.audioFilePath ?: continue
@@ -84,8 +86,10 @@ class RetentionCleanupWorker @AssistedInject constructor(
      * and delete any file in our audio directories not in that set.
      */
     private suspend fun sweepOrphanAudios() {
-        // One snapshot is enough — grab first emission from the cold Flow.
-        val all = messageRepository.observeAllAcrossConversations().firstOrNull().orEmpty()
+        // Unbounded snapshot — otherwise a recently-referenced file
+        // tied to an older message (outside the 500-row UI flow cap)
+        // would be considered orphan and wrongly deleted.
+        val all = messageRepository.getAll()
         val known = all.mapNotNull { it.audioFilePath }.toSet()
         val dirs = listOf(
             File(context.filesDir, "audio_incoming"),

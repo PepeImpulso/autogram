@@ -52,6 +52,20 @@ class OutboxRetryUseCase @Inject constructor(
             }
             Timber.i("OutboxRetry: processing ${outbox.size} outbox message(s)")
             for (msg in outbox) {
+                // Re-check auth between iterations. If TDLib drops
+                // halfway through the batch (tower handover, network
+                // cutover, session timeout), without this check every
+                // subsequent message hits `tdLibClient.send()` on a
+                // disconnected client — each call now times out at
+                // 60s instead of returning an error, so a batch of
+                // 50 could consume the whole WorkManager budget and
+                // land every row in PERMANENTLY_FAILED. Break out
+                // and let WorkManager RETRY; the next run will pick
+                // up where we left off.
+                if (tdLibClient.authState.value !is AuthState.Ready) {
+                    Timber.w("OutboxRetry: auth lost mid-batch, stopping for RETRY")
+                    return Outcome.RETRY
+                }
                 sendOne(msg, maxRetries)
             }
             Outcome.SUCCESS
@@ -76,18 +90,25 @@ class OutboxRetryUseCase @Inject constructor(
             return
         }
 
+        // Build content BEFORE flipping to SENDING. If content is
+        // missing (orphaned audio file, DB corruption, schema drift),
+        // we want the row to go directly from QUEUED_OFFLINE to
+        // PERMANENTLY_FAILED. Flipping to SENDING first and then
+        // being interrupted by process kill leaves the row stuck in
+        // SENDING forever — getOutbox only looks at QUEUED_OFFLINE /
+        // FAILED, so the row becomes invisible to future retry runs.
+        val content = buildContent(msg) ?: run {
+            Timber.w("OutboxRetry: message ${msg.id} has no sendable content, marking failed")
+            messageRepository.update(
+                msg.copy(
+                    state = MessageState.PERMANENTLY_FAILED,
+                    errorMessage = "No content to send"
+                )
+            )
+            return
+        }
         messageRepository.update(msg.copy(state = MessageState.SENDING))
         try {
-            val content = buildContent(msg) ?: run {
-                Timber.w("OutboxRetry: message ${msg.id} has no sendable content, marking failed")
-                messageRepository.update(
-                    msg.copy(
-                        state = MessageState.PERMANENTLY_FAILED,
-                        errorMessage = "No content to send"
-                    )
-                )
-                return
-            }
             val result = tdLibClient.send(
                 TdApi.SendMessage().apply {
                     chatId = target.targetChatId.toLong()
