@@ -266,6 +266,18 @@ class ExportImportUseCase @Inject constructor(
             val path = c.photoLocalPath ?: continue
             val f = File(path)
             if (!f.exists()) continue
+            // Skip oversized photos so a single pre-compression legacy file
+            // (from app versions before setPhoto started JPEG-encoding) can't
+            // blow the 50 MB backup cap by itself — readBytes is unbounded
+            // and base64 inflates by ~33 % on top of that. Modern photos
+            // picked via `setPhoto` are capped at ~500 KB, so legitimate
+            // files pass easily; a stale multi-MB file gets dropped from
+            // the backup with a warning.
+            val size = f.length()
+            if (size <= 0 || size > MAX_EXPORTED_PHOTO_BYTES) {
+                Timber.w("buildPhotosMap: skipping ${f.name} (${size} B, beyond cap ${MAX_EXPORTED_PHOTO_BYTES} B)")
+                continue
+            }
             out[c.id] = android.util.Base64.encodeToString(f.readBytes(), android.util.Base64.NO_WRAP)
         }
         return out
@@ -301,6 +313,12 @@ class ExportImportUseCase @Inject constructor(
         private const val KDF_ITERATIONS_V2 = 600_000
         private const val BACKUP_SCHEMA_VERSION = 1
         private const val MAX_BACKUP_BYTES = 50 * 1024 * 1024
+        // Hard ceiling on any single circle photo we'll include in a
+        // backup. Modern photos (after the setPhoto compression fix) are
+        // ~500 KB; 4 MB gives ample slack for hand-picked or edge-case
+        // legacy files while preventing a rogue multi-MB stale file from
+        // blowing the whole export budget on one photo.
+        private const val MAX_EXPORTED_PHOTO_BYTES: Long = 4L * 1024L * 1024L
 
         private val supportedMagics: Map<List<Byte>, Int> = mapOf(
             MAGIC_V1.toList() to KDF_ITERATIONS_V1,

@@ -1,8 +1,10 @@
 package com.autogram.app.ui.phone
 
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Bundle
+import kotlin.math.max
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -493,28 +495,37 @@ private fun PinnedRow(
 }
 
 /**
- * Fullscreen dialog that shows a pinned-circle photo at full resolution, with
- * pinch-to-zoom + pan so the user can inspect the image they set as background.
+ * Fullscreen dialog that shows a pinned-circle photo with pinch-to-zoom + pan.
  *
- * Loads the raw bitmap (not downsampled) — this is an on-demand viewer, so the
- * extra memory is fine. The dialog dismisses on back press or tap on the
- * close button.
+ * Loads the bitmap **sampled** to at most 2 × screen width. A user's gallery
+ * photo can easily be 12-24 MP (50-100 MB decoded as ARGB_8888), which OOMs on
+ * mid-range devices the moment the dialog opens. 2× screen still gives plenty
+ * of room for the 6× pinch-zoom ceiling enforced below without the pixels
+ * looking blocky — for a 1440-wide display that's 2880px of resolution,
+ * comfortably beyond anything the user can actually perceive.
  */
 @Composable
 private fun ZoomablePhotoDialog(path: String, onDismiss: () -> Unit) {
-    val bitmap by produceState<ImageBitmap?>(initialValue = null, path) {
+    val targetPx = with(androidx.compose.ui.platform.LocalConfiguration.current) {
+        (screenWidthDp * 2).coerceAtLeast(512)
+    }
+    val bitmap by produceState<ImageBitmap?>(initialValue = null, path, targetPx) {
         value = withContext(Dispatchers.IO) {
             runCatching {
-                if (File(path).exists()) BitmapFactory.decodeFile(path)?.asImageBitmap()
-                else null
+                if (!File(path).exists()) return@runCatching null
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeFile(path, bounds)
+                val srcLong = max(bounds.outWidth, bounds.outHeight)
+                if (srcLong <= 0) return@runCatching null
+                var sample = 1
+                while (srcLong / sample > targetPx * 2) sample *= 2
+                val opts = BitmapFactory.Options().apply {
+                    inSampleSize = sample
+                    inPreferredConfig = Bitmap.Config.ARGB_8888
+                }
+                BitmapFactory.decodeFile(path, opts)?.asImageBitmap()
             }.getOrNull()
         }
-    }
-
-    // If the file disappeared (user cleared it mid-dialog), close gracefully.
-    LaunchedEffect(bitmap) {
-        // produceState emits null while loading; only auto-dismiss if we actually
-        // finished and got nothing back — harmless but covers the edge case.
     }
 
     Dialog(

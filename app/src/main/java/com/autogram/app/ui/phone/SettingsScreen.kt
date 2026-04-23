@@ -34,6 +34,12 @@ import androidx.compose.ui.unit.dp
 import com.autogram.app.R
 import kotlinx.coroutines.launch
 
+// Must match ExportImportUseCase.MAX_BACKUP_BYTES so the pre-read guard
+// rejects the same set of files the use case would reject later (and
+// nothing extra). Prevents readBytes() from OOM-ing on a user who picks
+// a multi-gigabyte file via the SAF picker.
+private const val MAX_IMPORT_BYTES: Long = 50L * 1024L * 1024L
+
 /**
  * Configuración — visual premium: tarjetas de sección con icono cabecero, filas
  * con estilo ListItem y separadores finos, paleta de surfaces de Material 3.
@@ -76,8 +82,36 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
     ) { uri ->
         if (uri != null) {
             runCatching {
-                context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                    ?: error("openInputStream returned null")
+                // Reject oversize files BEFORE readBytes() loads the whole
+                // thing into memory. The user could pick a multi-GB file
+                // (video, archive, anything) via the SAF picker and OOM the
+                // process before ExportImportUseCase's 50 MB check ever
+                // fires. `statSize` over a ContentProvider-backed URI is
+                // sometimes -1 (unknown) — in that case we fall back to a
+                // bounded read and reject if the bytes exceed the cap.
+                val fdSize = context.contentResolver.openFileDescriptor(uri, "r")
+                    ?.use { it.statSize } ?: -1L
+                if (fdSize in 1L..MAX_IMPORT_BYTES) {
+                    context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        ?: error("openInputStream returned null")
+                } else if (fdSize > MAX_IMPORT_BYTES) {
+                    error("file too large (${fdSize / 1024 / 1024} MB)")
+                } else {
+                    // size unknown — read up to MAX_IMPORT_BYTES + 1 and
+                    // reject if we got more, so we never hold the full
+                    // body in memory beyond the cap.
+                    context.contentResolver.openInputStream(uri)?.use { stream ->
+                        val buf = ByteArray((MAX_IMPORT_BYTES + 1).toInt())
+                        var total = 0
+                        while (total < buf.size) {
+                            val r = stream.read(buf, total, buf.size - total)
+                            if (r == -1) break
+                            total += r
+                        }
+                        if (total > MAX_IMPORT_BYTES) error("file too large")
+                        buf.copyOf(total)
+                    } ?: error("openInputStream returned null")
+                }
             }.onSuccess { bytes ->
                 pendingImportBytes = bytes
                 showImportConfirmDialog = true

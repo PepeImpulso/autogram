@@ -53,9 +53,14 @@ class PlayReplyUseCase @Inject constructor(
     // and race to start MediaPlayer twice, dropping the first message.
     private val playbackStartLock = Mutex()
     @Volatile private var currentPlayingId: String? = null
-    // BUG-12: Dedicated scope for MediaPlayer callbacks instead of runBlocking
-    // BUG-50 FIX: Mutable scope so it can be recreated after stopAll()
-    private var playbackScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    // Dedicated scope for MediaPlayer callbacks (instead of runBlocking) —
+    // recreated after stopAll() so cancelled work doesn't leak into future
+    // playbacks. `@Volatile` because MediaPlayer callbacks fire on the
+    // player's internal thread, while stopAll runs on the main / caller
+    // thread: without the visibility fence a callback launching via
+    // `playbackScope.launch { ... }` could observe a cancelled-but-not-yet
+    // -replaced scope and silently drop the DB state update.
+    @Volatile private var playbackScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     sealed class PlaybackStatus {
         object Idle : PlaybackStatus()
@@ -393,8 +398,17 @@ class PlayReplyUseCase @Inject constructor(
         val entities = pendingPlaybackDao.getAll()
         for (entity in entities) {
             val message = messageRepository.getById(entity.messageId) ?: continue
-            if (message.state == MessageState.PENDING_PLAYBACK && !pendingQueue.any { it.id == message.id }) {
-                synchronized(pendingQueue) { pendingQueue.add(message) }
+            if (message.state != MessageState.PENDING_PLAYBACK) continue
+            // Collections.synchronizedList wraps individual ops (add / remove /
+            // size / clear) in a monitor but does NOT cover iteration. The
+            // `.any { ... }` scan below iterates; without holding the same
+            // lock, a concurrent add from another coroutine can throw
+            // ConcurrentModificationException. Wrap the duplicate check AND
+            // the subsequent add in a single synchronized block so both the
+            // iteration and the decision-plus-mutation are atomic.
+            synchronized(pendingQueue) {
+                val alreadyQueued = pendingQueue.any { it.id == message.id }
+                if (!alreadyQueued) pendingQueue.add(message)
             }
         }
         if (pendingQueue.isNotEmpty()) {

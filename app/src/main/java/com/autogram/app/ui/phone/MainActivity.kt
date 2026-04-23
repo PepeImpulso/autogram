@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -80,6 +81,8 @@ class MainActivity : BaseLocaleActivity() {
     @Inject lateinit var settingsRepository: SettingsRepository
     @Inject lateinit var tdLibClient: TdLibClient
 
+    private val mainViewModel: MainViewModel by viewModels()
+
     override fun onResume() {
         super.onResume()
         lifecycleScope.launch {
@@ -142,6 +145,20 @@ class MainActivity : BaseLocaleActivity() {
         }
     }
 
+    /**
+     * Re-deliver the launch intent when the activity is brought to front
+     * (e.g. user taps the QS tile while MainActivity is already in the
+     * back-stack). We handle EXTRA_AUTO_RECORD HERE at the activity level
+     * — inside the composable a `LaunchedEffect` would never re-fire on
+     * a second QS tap because its (pinned, hasPermission) keys don't
+     * change between taps.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleAutoRecordIntent(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -160,18 +177,44 @@ class MainActivity : BaseLocaleActivity() {
                 }
             }
         }
+        handleAutoRecordIntent(intent)
     }
 
     /**
-     * Re-deliver the launch intent when the activity is brought to front
-     * (e.g. user taps the QS tile while MainActivity is already in the
-     * back-stack). Without this the second tap would never trigger
-     * EXTRA_AUTO_RECORD because [MainScreen]'s LaunchedEffect only reads
-     * the intent that was attached at activity-create time.
+     * Drive QS-tile auto-record from the activity lifecycle so repeated
+     * taps (onNewIntent → setIntent → handle) all go through. Guards:
+     * third-party callers are refused (anyone could craft an Intent with
+     * this extra since MainActivity is LAUNCHER-exported); no record
+     * without mic permission; no record if the user hasn't picked a
+     * primary target.
      */
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
+    private fun handleAutoRecordIntent(intent: Intent) {
+        if (!intent.getBooleanExtra(
+                com.autogram.app.tiles.RecordVoiceTileService.EXTRA_AUTO_RECORD,
+                false
+            )
+        ) return
+        val referrer = this.referrer?.host ?: callingPackage
+        if (referrer != null && referrer != packageName) {
+            timber.log.Timber.w("MainActivity: ignoring EXTRA_AUTO_RECORD from external caller '$referrer'")
+            intent.removeExtra(com.autogram.app.tiles.RecordVoiceTileService.EXTRA_AUTO_RECORD)
+            return
+        }
+        val hasMic = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+        if (!hasMic) return
+        // Consume the extra first so any recomposition of MainScreen that
+        // still reads the activity intent doesn't double-trigger.
+        intent.removeExtra(com.autogram.app.tiles.RecordVoiceTileService.EXTRA_AUTO_RECORD)
+        lifecycleScope.launch {
+            // Wait until the pinned conversation flow has emitted at least
+            // one entry with isActive=true — happens as soon as the
+            // repository's Room flow settles, typically within a few ms
+            // of the activity attaching.
+            val target = mainViewModel.pinned.first { list -> list.any { it.isActive } }
+                .firstOrNull { it.isActive } ?: return@launch
+            mainViewModel.startRecording(target.id)
+        }
     }
 }
 
@@ -221,44 +264,12 @@ private fun MainScreen(
         )
     }
 
-    // QS-tile auto-record: if the activity was launched from the Quick
-    // Settings tile (or the corresponding deep-link), kick off recording
-    // to the primary target as soon as it's available + we have mic
-    // permission. The intent extra is consumed (set to false) so a
-    // configuration change or recomposition doesn't re-trigger.
-    val pinnedForAuto by viewModel.pinned.collectAsState()
-    LaunchedEffect(pinnedForAuto, hasMicPermission) {
-        val activity = ctx as? android.app.Activity ?: return@LaunchedEffect
-        val intent = activity.intent ?: return@LaunchedEffect
-        if (!intent.getBooleanExtra(
-                com.autogram.app.tiles.RecordVoiceTileService.EXTRA_AUTO_RECORD,
-                false
-            )
-        ) return@LaunchedEffect
-        // Guard against third-party apps crafting an Intent with
-        // EXTRA_AUTO_RECORD to silently trigger voice recording on
-        // Autogram launch. MainActivity is exported (LAUNCHER), so
-        // without this check any app could start a mic session.
-        // We accept the extra only when the intent came from our own
-        // package — either our QS tile (RecordVoiceTileService) or
-        // an internal re-launch (MainActivity → MainActivity via
-        // onNewIntent). Falls back to safe (ignore extra) if we
-        // can't determine the referrer.
-        val referrer = activity.referrer?.host ?: activity.callingPackage
-        if (referrer != null && referrer != activity.packageName) {
-            timber.log.Timber.w("MainActivity: ignoring EXTRA_AUTO_RECORD from external caller '$referrer'")
-            intent.removeExtra(com.autogram.app.tiles.RecordVoiceTileService.EXTRA_AUTO_RECORD)
-            return@LaunchedEffect
-        }
-        val target = pinnedForAuto.firstOrNull { it.isActive } ?: return@LaunchedEffect
-        if (!hasMicPermission) {
-            // Wait for the user to grant; the LaunchedEffect re-runs when
-            // hasMicPermission flips to true.
-            return@LaunchedEffect
-        }
-        intent.removeExtra(com.autogram.app.tiles.RecordVoiceTileService.EXTRA_AUTO_RECORD)
-        viewModel.startRecording(target.id)
-    }
+    // QS-tile auto-record used to live here inside a LaunchedEffect, but
+    // its (pinned, hasMicPermission) keys don't change on a second QS tap
+    // that arrives via MainActivity.onNewIntent — the effect simply
+    // wouldn't re-fire. Moved to MainActivity.handleAutoRecordIntent()
+    // so every dispatch of the extra (first launch AND subsequent re-
+    // taps) goes through the activity lifecycle path directly.
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted -> hasMicPermission = granted }

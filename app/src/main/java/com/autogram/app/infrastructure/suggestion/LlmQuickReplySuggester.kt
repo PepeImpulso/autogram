@@ -88,7 +88,20 @@ class LlmQuickReplySuggester @Inject constructor(
                         Timber.w("LLM suggest HTTP ${response.code}")
                         return@use emptyList()
                     }
-                    val bodyStr = response.body?.string().orEmpty()
+                    // Bound the response body we'll parse — matches the cap
+                    // in LlmEndpointSummarizationEngine. A misconfigured or
+                    // hostile endpoint could stream gigabytes and `body.string()`
+                    // has no implicit limit. A real chat-completions reply
+                    // of a 3-item JSON array is always a few hundred bytes,
+                    // so 256 KB is several orders of magnitude of safety.
+                    val source = response.body?.source()
+                    val bodyStr = if (source == null) {
+                        ""
+                    } else {
+                        source.request(MAX_RESPONSE_BYTES)
+                        val available = minOf(source.buffer.size, MAX_RESPONSE_BYTES)
+                        source.buffer.readUtf8(available)
+                    }
                     val content = JSONObject(bodyStr).optJSONArray("choices")
                         ?.optJSONObject(0)
                         ?.optJSONObject("message")
@@ -102,6 +115,15 @@ class LlmQuickReplySuggester @Inject constructor(
                 emptyList()
             }
         }
+
+    companion object {
+        // Matches the cap in LlmEndpointSummarizationEngine. A normal
+        // chat-completions response of a 3-item JSON array weighs a few
+        // hundred bytes; 256 KB is the upper bound we'll tolerate before
+        // bailing to avoid pathological OOM risk on a misconfigured or
+        // adversarial endpoint.
+        private const val MAX_RESPONSE_BYTES: Long = 256L * 1024L
+    }
 
     /**
      * Tolerant JSON-array parser. LLMs sometimes wrap the array in markdown

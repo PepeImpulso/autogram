@@ -553,7 +553,13 @@ class AutogramSurfaceRenderer(
             if (file.exists() && file.length() > 0) {
                 val key = "$path:${file.lastModified()}"
                 photoCache[key]?.let { return it }
-                val decoded = runCatching { BitmapFactory.decodeFile(path) }.getOrNull()
+                // Sample the decode. The user's gallery photo can easily
+                // be 12-24 MP (50-100 MB as ARGB_8888); caching the raw
+                // bitmap per conversation in `photoCache` (up to 12
+                // entries) could pin hundreds of megabytes — ruinous on
+                // memory-constrained head units. Decode at ~2 × sizePx
+                // so the downstream circle crop still looks sharp.
+                val decoded = runCatching { decodeSampled(path, sizePx) }.getOrNull()
                 if (decoded != null) {
                     photoCache[key] = decoded
                     return decoded
@@ -573,6 +579,25 @@ class AutogramSurfaceRenderer(
             sizePx = sizePx * 0.55f
         )
         return fallback
+    }
+
+    /**
+     * Two-pass sampled decode. First read bounds only, pick `inSampleSize`
+     * so the longer side lands at or just above `2 × targetPx`, then decode.
+     * Mirrors the pattern used by `CircleAvatar.decodeSampled` on the phone.
+     */
+    private fun decodeSampled(path: String, targetPx: Int): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(path, bounds)
+        val srcLong = kotlin.math.max(bounds.outWidth, bounds.outHeight)
+        if (srcLong <= 0) return null
+        var sample = 1
+        while (srcLong / sample > targetPx * 2) sample *= 2
+        val opts = BitmapFactory.Options().apply {
+            inSampleSize = sample
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        return BitmapFactory.decodeFile(path, opts)
     }
 
     private fun toCircleBitmap(src: Bitmap, sizePx: Int): Bitmap {

@@ -28,7 +28,6 @@ import com.autogram.app.domain.model.Conversation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import kotlin.math.abs
 import kotlin.math.max
 
 /**
@@ -110,6 +109,12 @@ private fun colorFor(conv: Conversation): Color {
         Color(0xFFD08770), Color(0xFFB48EAD), Color(0xFF88C0D0),
         Color(0xFFEBCB8B), Color(0xFF8FBCBB)
     )
-    val idx = abs(conv.id.hashCode()) % palette.size
+    // `abs(Int.MIN_VALUE) == Int.MIN_VALUE` (two's-complement overflow), and
+    // `MIN_VALUE % N` can return a NEGATIVE remainder when N doesn't divide
+    // MIN_VALUE evenly → IndexOutOfBoundsException on the palette lookup.
+    // With 8 entries we happen to be safe by accident (MIN_VALUE is a
+    // multiple of 8), but any future palette resize would reintroduce the
+    // crash. Mask off the sign bit instead of using `abs`.
+    val idx = (conv.id.hashCode() and Int.MAX_VALUE) % palette.size
     return palette[idx]
 }

@@ -93,7 +93,15 @@ fun AutogramTheme(
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
-            val window = (view.context as Activity).window
+            // Defensive: `view.context` is normally the hosting Activity,
+            // but `ComposeView` inside a DialogWindow / fragment-dialog /
+            // ContextThemeWrapper chain can expose a non-Activity context
+            // instead. The hard cast crashed with ClassCastException in
+            // those cases. Safe-cast + skip if not an Activity — the theme
+            // still applies, we just don't get to tweak the status bar
+            // on that surface.
+            val activity = view.context as? Activity ?: return@SideEffect
+            val window = activity.window
             // Transparent status bar — content draws edge-to-edge via the scheme.
             window.statusBarColor = colorScheme.surface.toArgb()
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
