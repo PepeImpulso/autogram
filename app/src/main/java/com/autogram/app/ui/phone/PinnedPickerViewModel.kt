@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import java.io.File
 import java.util.UUID
 import javax.inject.Inject
 
@@ -160,6 +161,13 @@ class PinnedPickerViewModel @Inject constructor(
                             it.topicId == topicId.toLong()
                     } ?: continue
                     if (row.isActive) continue
+                    // Drop any photo file the user attached to this topic so
+                    // unpinning it doesn't orphan a file in
+                    // filesDir/circle_photos/. ManagePinnedActivity.remove()
+                    // already does this; without the symmetric cleanup here
+                    // the retention worker's sweep wouldn't catch it (that
+                    // sweep only covers audio dirs, not circle_photos).
+                    row.photoLocalPath?.let { runCatching { File(it).delete() } }
                     conversationRepository.delete(row.id)
                 }
                 _state.value = _state.value.copy(saved = true)
