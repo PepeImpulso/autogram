@@ -62,6 +62,19 @@ interface MessageDao {
     """)
     suspend fun getOutbox(limit: Int = 50, maxRetries: Int = 3): List<MessageEntity>
 
+    /**
+     * Un-stuck rows left in SENDING by a retry worker that was
+     * cancelled mid-drain (e.g. by ExistingWorkPolicy.REPLACE when a
+     * fresh message arrives during the prior run). Without this sweep
+     * those rows are invisible to `getOutbox` (which only scans
+     * QUEUED_OFFLINE and FAILED) and would sit in SENDING forever.
+     */
+    @Query("""
+        UPDATE messages SET state = 'QUEUED_OFFLINE'
+        WHERE direction = 'OUTGOING' AND state = 'SENDING'
+    """)
+    suspend fun resetStuckSending(): Int
+
     // Live count for the UI pill: how many outgoing messages are waiting to go out.
     @Query("""
         SELECT COUNT(*) FROM messages

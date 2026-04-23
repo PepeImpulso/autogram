@@ -89,28 +89,56 @@ class LlmEndpointSummarizationEngine @Inject constructor(
                 .build()
 
             try {
-                httpClient.newCall(request).execute().use { response ->
-                    val bodyStr = response.body?.string().orEmpty()
-                    if (!response.isSuccessful) {
-                        Timber.w("LLM summary HTTP ${response.code}")
-                        return@withContext SummarizationEngine.Result.Error("HTTP ${response.code}")
+                // Hard cap on the whole call. The shared OkHttpClient
+                // is configured with a generic connect/read timeout
+                // but no overall call timeout; a dribbling endpoint
+                // (1 byte/sec, or a stalled streaming server) would
+                // hold the coroutine forever. 30s is well above any
+                // reasonable chat-completions round-trip.
+                kotlinx.coroutines.withTimeoutOrNull(LLM_CALL_TIMEOUT_MS) {
+                    httpClient.newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) {
+                            Timber.w("LLM summary HTTP ${response.code}")
+                            return@withTimeoutOrNull SummarizationEngine.Result.Error("HTTP ${response.code}")
+                        }
+                        // Bound the response body we're willing to
+                        // parse. A misconfigured or hostile endpoint
+                        // could stream gigabytes; `body.string()` has
+                        // no implicit cap and would OOM the process.
+                        val source = response.body?.source()
+                        val bodyStr = if (source == null) {
+                            ""
+                        } else {
+                            source.request(MAX_RESPONSE_BYTES)
+                            val available = minOf(source.buffer.size, MAX_RESPONSE_BYTES)
+                            source.buffer.readUtf8(available)
+                        }
+                        val obj = JSONObject(bodyStr)
+                        val content = obj.optJSONArray("choices")
+                            ?.optJSONObject(0)
+                            ?.optJSONObject("message")
+                            ?.optString("content")
+                            ?.trim()
+                            .orEmpty()
+                        if (content.isBlank()) {
+                            SummarizationEngine.Result.Error("empty response")
+                        } else {
+                            SummarizationEngine.Result.Success(content)
+                        }
                     }
-                    val obj = JSONObject(bodyStr)
-                    val content = obj.optJSONArray("choices")
-                        ?.optJSONObject(0)
-                        ?.optJSONObject("message")
-                        ?.optString("content")
-                        ?.trim()
-                        .orEmpty()
-                    if (content.isBlank()) {
-                        SummarizationEngine.Result.Error("empty response")
-                    } else {
-                        SummarizationEngine.Result.Success(content)
-                    }
-                }
+                } ?: SummarizationEngine.Result.Error("LLM call timed out")
             } catch (e: Exception) {
                 Timber.w(e, "LLM summary failed")
                 SummarizationEngine.Result.Error(e.message ?: "network error")
             }
         }
+
+    companion object {
+        private const val LLM_CALL_TIMEOUT_MS: Long = 30_000L
+        // 256KB — a chat-completions reply is typically a few KB;
+        // anything above this is either a misconfigured stream or a
+        // hostile endpoint. Defensive limit that protects the process
+        // without cutting off any realistic summary.
+        private const val MAX_RESPONSE_BYTES: Long = 256L * 1024L
+    }
 }

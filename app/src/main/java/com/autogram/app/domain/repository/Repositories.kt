@@ -14,6 +14,8 @@ interface MessageRepository {
     suspend fun deleteOlderThan(conversationId: String, timestampMs: Long)
     suspend fun getPendingRetries(limit: Int): List<Message>
     suspend fun getOutbox(limit: Int = 50, maxRetries: Int = 3): List<Message>
+    /** Returns count of rows that were promoted back to QUEUED_OFFLINE. */
+    suspend fun resetStuckSending(): Int
     fun observeOutboxCount(): Flow<Int>
     fun observePendingReplyCounts(): Flow<Map<String, Int>>
 }

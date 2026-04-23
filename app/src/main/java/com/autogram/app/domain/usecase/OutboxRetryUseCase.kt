@@ -40,6 +40,15 @@ class OutboxRetryUseCase @Inject constructor(
 
     suspend fun runOnce(): Outcome {
         return try {
+            // Un-stuck any rows left in SENDING by a previous worker
+            // that was cancelled mid-drain (e.g. via
+            // ExistingWorkPolicy.REPLACE when a fresh message arrived
+            // during a retry). Without this they'd be invisible to
+            // getOutbox (which only scans QUEUED_OFFLINE / FAILED).
+            val unstuck = messageRepository.resetStuckSending()
+            if (unstuck > 0) {
+                Timber.i("OutboxRetry: reset $unstuck stuck SENDING rows back to QUEUED_OFFLINE")
+            }
             if (tdLibClient.authState.value !is AuthState.Ready) {
                 Timber.d("OutboxRetry: TDLib not authenticated, rescheduling")
                 return Outcome.RETRY

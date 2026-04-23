@@ -56,15 +56,28 @@ class RetryWorker @AssistedInject constructor(
                     30, TimeUnit.SECONDS
                 )
                 .build()
-            // KEEP: if a retry worker is already queued, don't
-            // schedule another. Each worker drains ALL outbox
-            // messages in one run, so appending N times (one per
-            // quick-fire-offline voice message) just wastes
-            // battery and wakes the device N times for no reason.
-            // Previously APPEND_OR_REPLACE, which did exactly that.
+            // REPLACE (not KEEP, not APPEND_OR_REPLACE):
+            //
+            // KEEP alone looked right — one worker drains the whole
+            // outbox — but it silently delayed fresh messages
+            // enqueued while a previous worker was in BackoffPolicy
+            // EXPONENTIAL (up to 5 hours at cap). A new voice
+            // message arriving after a flaky-network attempt would
+            // wait hours for the next retry window.
+            //
+            // APPEND_OR_REPLACE stacks workers — N messages = N
+            // redundant wakeups.
+            //
+            // REPLACE cancels any scheduled-with-backoff worker and
+            // reschedules from scratch. The trade-off is that a
+            // currently-RUNNING worker also gets cancelled mid-drain,
+            // which could strand a row in MessageState.SENDING. We
+            // recover from that in OutboxRetryUseCase.runOnce() by
+            // un-stucking any SENDING rows back to QUEUED_OFFLINE
+            // before draining on each startup.
             WorkManager.getInstance(context).enqueueUniqueWork(
                 UNIQUE_NAME,
-                ExistingWorkPolicy.KEEP,
+                ExistingWorkPolicy.REPLACE,
                 request
             )
             Timber.d("RetryWorker enqueued")

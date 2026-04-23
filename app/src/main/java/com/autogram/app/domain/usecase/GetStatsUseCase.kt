@@ -26,6 +26,25 @@ data class DailyCount(val label: String, val sent: Int, val received: Int)
 class GetStatsUseCase @Inject constructor(
     private val messageRepository: MessageRepository
 ) {
+    /**
+     * One-shot lifetime stats. Calls the unbounded `getAll()` which
+     * reads EVERY message row; expected to run on a background
+     * dispatcher from the caller (StatsViewModel wraps it in a
+     * `viewModelScope.launch`). Used by the Stats screen — the Flow
+     * variant [observe] is deprecated because its underlying
+     * `observeAllAcrossConversations` is now LIMIT 500 for UI
+     * latency, which would silently cap lifetime counts.
+     */
+    suspend fun getLifetimeStats(): Stats {
+        return computeStats(messageRepository.getAll())
+    }
+
+    /**
+     * Recent-only stats, reactive. Mirrors what MainViewModel sees
+     * (last 500 messages) — kept because the Stats screen's chart
+     * previously used this path and some existing tests depend on
+     * the signature. New code should prefer [getLifetimeStats].
+     */
     fun observe(): Flow<Stats> =
         messageRepository.observeAllAcrossConversations().map { computeStats(it) }
 
