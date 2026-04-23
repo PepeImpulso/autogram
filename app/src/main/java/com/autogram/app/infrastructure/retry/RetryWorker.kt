@@ -56,28 +56,42 @@ class RetryWorker @AssistedInject constructor(
                     30, TimeUnit.SECONDS
                 )
                 .build()
-            // REPLACE (not KEEP, not APPEND_OR_REPLACE):
+            // APPEND_OR_REPLACE:
             //
-            // KEEP alone looked right — one worker drains the whole
-            // outbox — but it silently delayed fresh messages
-            // enqueued while a previous worker was in BackoffPolicy
-            // EXPONENTIAL (up to 5 hours at cap). A new voice
-            // message arriving after a flaky-network attempt would
-            // wait hours for the next retry window.
+            // We rotated through three policies auditing this code.
+            // Each has a real trade-off:
             //
-            // APPEND_OR_REPLACE stacks workers — N messages = N
-            // redundant wakeups.
+            // - KEEP  — deduplicates (good) but inherits a stale
+            //           BackoffPolicy.EXPONENTIAL timer from a
+            //           previous failed attempt (up to 5h at cap).
+            //           A fresh offline message would wait hours.
             //
-            // REPLACE cancels any scheduled-with-backoff worker and
-            // reschedules from scratch. The trade-off is that a
-            // currently-RUNNING worker also gets cancelled mid-drain,
-            // which could strand a row in MessageState.SENDING. We
-            // recover from that in OutboxRetryUseCase.runOnce() by
-            // un-stucking any SENDING rows back to QUEUED_OFFLINE
-            // before draining on each startup.
+            // - REPLACE — cancels the scheduled backoff (great) but
+            //           ALSO cancels a currently-running worker mid
+            //           -`tdLibClient.send(...)`. TDLib's native
+            //           upload does NOT abort on coroutine cancel —
+            //           it continues in the background and delivers
+            //           the voice note anyway. Our row stays in
+            //           SENDING, `resetStuckSending` flips it back to
+            //           QUEUED_OFFLINE, the next worker re-sends,
+            //           and the user's chat ends up with the message
+            //           DUPLICATED. That's worse than the 5h stall.
+            //
+            // - APPEND_OR_REPLACE — running worker isn't cancelled
+            //           (it finishes draining), new work appends
+            //           after. Fresh backoff only kicks in for a
+            //           REALLY persistent failure chain, and
+            //           WorkManager restarts the worker as soon as
+            //           the NetworkType.CONNECTED constraint is
+            //           satisfied, bypassing part of the backoff.
+            //
+            // Stuck-SENDING recovery (`resetStuckSending` in the
+            // worker's startup) is still useful — it cleans up
+            // process-kill scenarios where TDLib died alongside our
+            // coroutine.
             WorkManager.getInstance(context).enqueueUniqueWork(
                 UNIQUE_NAME,
-                ExistingWorkPolicy.REPLACE,
+                ExistingWorkPolicy.APPEND_OR_REPLACE,
                 request
             )
             Timber.d("RetryWorker enqueued")
