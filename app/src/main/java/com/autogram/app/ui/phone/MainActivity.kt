@@ -1,6 +1,7 @@
 package com.autogram.app.ui.phone
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -139,6 +140,7 @@ class MainActivity : BaseLocaleActivity() {
             // false and get the wizard once.
             if (!settings.onboardingCompleted) {
                 startActivity(Intent(this@MainActivity, OnboardingActivity::class.java))
+                return@launch
             }
             startMtprotoReceiverService()
             requestCompanionRuntimePermissions()
@@ -241,10 +243,9 @@ class MainActivity : BaseLocaleActivity() {
     /**
      * Drive QS-tile auto-record from the activity lifecycle so repeated
      * taps (onNewIntent → setIntent → handle) all go through. Guards:
-     * third-party callers are refused (anyone could craft an Intent with
-     * this extra since MainActivity is LAUNCHER-exported); no record
-     * without mic permission; no record if the user hasn't picked a
-     * primary target.
+     * only the in-app QS tile can arm it (launcher activity is exported,
+     * so intent extras alone are not trustworthy); no record without mic
+     * permission; no record if the user hasn't picked a primary target.
      */
     private fun handleAutoRecordIntent(intent: Intent) {
         if (!intent.getBooleanExtra(
@@ -252,18 +253,22 @@ class MainActivity : BaseLocaleActivity() {
                 false
             )
         ) return
-        val referrer = this.referrer?.host ?: callingPackage
-        if (referrer != null && referrer != packageName) {
-            timber.log.Timber.w("MainActivity: ignoring EXTRA_AUTO_RECORD from external caller '$referrer'")
+        val token = intent.getStringExtra(com.autogram.app.tiles.RecordVoiceTileService.EXTRA_AUTO_RECORD_TOKEN)
+        if (intent.action != com.autogram.app.tiles.RecordVoiceTileService.ACTION_AUTO_RECORD ||
+            !consumeAutoRecordToken(token)
+        ) {
+            timber.log.Timber.w("MainActivity: ignoring unauthenticated EXTRA_AUTO_RECORD launch")
             intent.removeExtra(com.autogram.app.tiles.RecordVoiceTileService.EXTRA_AUTO_RECORD)
+            intent.removeExtra(com.autogram.app.tiles.RecordVoiceTileService.EXTRA_AUTO_RECORD_TOKEN)
             return
         }
         val hasMic = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
             PackageManager.PERMISSION_GRANTED
-        if (!hasMic) return
         // Consume the extra first so any recomposition of MainScreen that
         // still reads the activity intent doesn't double-trigger.
         intent.removeExtra(com.autogram.app.tiles.RecordVoiceTileService.EXTRA_AUTO_RECORD)
+        intent.removeExtra(com.autogram.app.tiles.RecordVoiceTileService.EXTRA_AUTO_RECORD_TOKEN)
+        if (!hasMic) return
         lifecycleScope.launch {
             // Wait until the pinned conversation flow has emitted at least
             // one entry with isActive=true — happens as soon as the
@@ -274,6 +279,29 @@ class MainActivity : BaseLocaleActivity() {
             }
                 ?.firstOrNull { it.isActive } ?: return@launch
             mainViewModel.startRecording(target.id)
+        }
+    }
+
+    private fun consumeAutoRecordToken(token: String?): Boolean {
+        if (token.isNullOrBlank()) return false
+        val prefs = getSharedPreferences(AUTO_RECORD_PREFS, Context.MODE_PRIVATE)
+        val stored = prefs.getString(KEY_AUTO_RECORD_TOKEN, null)
+        if (stored.isNullOrBlank() || stored != token) return false
+        prefs.edit().remove(KEY_AUTO_RECORD_TOKEN).apply()
+        return true
+    }
+
+    companion object {
+        private const val AUTO_RECORD_PREFS = "autogram_auto_record"
+        private const val KEY_AUTO_RECORD_TOKEN = "token"
+
+        fun issueAutoRecordToken(context: Context): String {
+            val token = java.util.UUID.randomUUID().toString()
+            context.getSharedPreferences(AUTO_RECORD_PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putString(KEY_AUTO_RECORD_TOKEN, token)
+                .apply()
+            return token
         }
     }
 }

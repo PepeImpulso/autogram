@@ -41,6 +41,7 @@ class RecordVoiceTileService : TileService() {
         val intent = Intent(this, MainActivity::class.java).apply {
             action = ACTION_AUTO_RECORD
             putExtra(EXTRA_AUTO_RECORD, true)
+            putExtra(EXTRA_AUTO_RECORD_TOKEN, MainActivity.issueAutoRecordToken(this@RecordVoiceTileService))
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
         // Android 14+ requires PendingIntent variant of startActivityAndCollapse.
@@ -61,5 +62,6 @@ class RecordVoiceTileService : TileService() {
     companion object {
         const val ACTION_AUTO_RECORD = "com.autogram.app.action.AUTO_RECORD"
         const val EXTRA_AUTO_RECORD = "com.autogram.app.extra.AUTO_RECORD"
+        const val EXTRA_AUTO_RECORD_TOKEN = "com.autogram.app.extra.AUTO_RECORD_TOKEN"
     }
 }
