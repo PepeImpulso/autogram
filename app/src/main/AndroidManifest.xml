@@ -168,7 +168,7 @@
         <service
             android:name=".service.MtprotoReceiverService"
             android:exported="false"
-            android:foregroundServiceType="specialUse">
+            android:foregroundServiceType="dataSync|specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="MtprotoReceiverService continuously maintains a TDLib MTProto session for Autogram so incoming voice messages can be received, notified to Android Auto, and played aloud without requiring the user to keep the app open on the phone." />

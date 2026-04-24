@@ -11,7 +11,7 @@
 #   2. Manual mode (--manual) — requires local keystore:
 #        - runs scripts/build_autogram_release.sh to produce signed APK
 #        - gh release create directly on PepeImpulso/autogram-releases
-#        - does NOT push a tag to the source repo unless --tag is also passed
+#        - pushes a source tag by default; pass --no-tag to skip it
 #        Use: scripts/publish_autogram_release.sh --manual 1.2.3
 #
 # Either way the app's in-app updater (CheckForUpdatesUseCase) will detect the

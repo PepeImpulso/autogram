@@ -1,5 +1,6 @@
 package com.autogram.app.infrastructure.audio
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
@@ -276,6 +277,7 @@ class AudioPlayer @Inject constructor(
         audioFocusRequest = null
     }
 
+    @SuppressLint("InlinedApi")
     companion object {
         private val PROJECTED_CAR_OUTPUT_PRIORITY = listOf(
             AudioDeviceInfo.TYPE_BUS,

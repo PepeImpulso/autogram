@@ -92,15 +92,17 @@ class MtprotoReceiverService : Service() {
             scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
         }
         createNotificationChannel()
-        // API 34+ requires the 3-arg form with an explicit FGS type.
-        // Passing FOREGROUND_SERVICE_TYPE_SPECIAL_USE must match what
-        // the manifest declares (`specialUse`), otherwise the OS
-        // throws IllegalArgumentException.
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(
                 NOTIFICATION_ID,
                 buildNotification("Conectando…"),
                 android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID,
+                buildNotification("Conectando…"),
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
             )
         } else {
             startForeground(NOTIFICATION_ID, buildNotification("Conectando…"))

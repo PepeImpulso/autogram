@@ -45,3 +45,8 @@ new permissions, user-visible re-configuration).
 `scripts/publish_autogram_release.sh --manual <version>` picks up
 `docs/release-notes/v<version>.md` automatically and uses it as the
 GitHub release body. Write the notes file first, then run the script.
+
+When a user needs to test a newly created build on a phone or in Android
+Auto, publish it to GitHub first so the in-app updater can install it from
+`PepeImpulso/autogram-releases`. Do not tell the user to manually install a
+fresh local APK unless they explicitly ask for that fallback.
