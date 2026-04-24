@@ -97,6 +97,10 @@
     <string name="quick_replies_filter_voice">Voice</string>
 
     <string name="aa_record">Record</string>
+    <string name="aa_conversations">Conversations</string>
+    <string name="aa_no_conversations">Pin a conversation in the phone app.</string>
+    <string name="aa_no_messages">No messages yet.</string>
+    <string name="aa_voice_message">Voice message</string>
     <string name="aa_stop_send">Stop and send</string>
     <string name="aa_recording_tap_to_send">Recording · Tap to send</string>
     <string name="aa_cancel">Cancel</string>

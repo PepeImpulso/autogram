@@ -13,7 +13,7 @@ import org.junit.Test
  */
 class AudioPlayerRouteTest {
 
-    @Test fun `projected car output beats paired bluetooth`() {
+    @Test fun `projected car output leaves routing to the os`() {
         val selected = AudioPlayer.choosePreferredOutputType(
             routedTypes = listOf(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP),
             outputTypes = listOf(
@@ -22,16 +22,16 @@ class AudioPlayerRouteTest {
             )
         )
 
-        assertEquals(AudioDeviceInfo.TYPE_USB_ACCESSORY, selected)
+        assertNull(selected)
     }
 
-    @Test fun `routed bus output wins first`() {
+    @Test fun `routed bus output leaves routing to the os`() {
         val selected = AudioPlayer.choosePreferredOutputType(
             routedTypes = listOf(AudioDeviceInfo.TYPE_BUS, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP),
             outputTypes = listOf(AudioDeviceInfo.TYPE_USB_DEVICE)
         )
 
-        assertEquals(AudioDeviceInfo.TYPE_BUS, selected)
+        assertNull(selected)
     }
 
     @Test fun `bluetooth is preferred when no car output exists`() {

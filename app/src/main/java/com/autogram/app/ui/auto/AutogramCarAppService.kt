@@ -7,6 +7,7 @@ import androidx.car.app.Session
 import androidx.car.app.validation.HostValidator
 import androidx.core.content.ContextCompat
 import com.autogram.app.domain.repository.ConversationRepository
+import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.domain.repository.QuickReplyRepository
 import com.autogram.app.domain.usecase.ManageSettingsUseCase
 import com.autogram.app.domain.usecase.PlayReplyUseCase
@@ -86,6 +87,7 @@ interface AutogramCarSessionDeps {
     fun manageSettingsUseCase(): ManageSettingsUseCase
     fun quickReplyRepository(): QuickReplyRepository
     fun conversationRepository(): ConversationRepository
+    fun messageRepository(): MessageRepository
     fun voiceCommandRecognizer(): VoiceCommandRecognizer
 }
 
@@ -103,6 +105,7 @@ class AutogramCarSession : Session() {
             deps.manageSettingsUseCase(),
             deps.quickReplyRepository(),
             deps.conversationRepository(),
+            deps.messageRepository(),
             deps.voiceCommandRecognizer()
         )
     }

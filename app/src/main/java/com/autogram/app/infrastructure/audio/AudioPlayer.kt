@@ -42,8 +42,7 @@ class AudioPlayer @Inject constructor(
             completionHandler = onComplete
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             val outputSnapshot = getOutputDevices(audioManager)
-            val hasProjectedCarOutput = outputSnapshot.any { isProjectedCarOutputType(it.type) }
-            val playbackAttributes = buildPlaybackAttributes(useNavigationGuidance = hasProjectedCarOutput)
+            val playbackAttributes = buildPlaybackAttributes()
 
             // Request audio focus. In an Android Auto session Google Maps /
             // the AA host will typically already hold focus for navigation
@@ -178,13 +177,11 @@ class AudioPlayer @Inject constructor(
     }
 
     /**
-     * Route MediaPlayer output through the output Android is likely to use
-     * for these attributes. When AA exposes a USB/BUS/HDMI car sink, prefer
-     * that explicitly; the previous "car output exists, let the OS decide"
-     * strategy still let some hosts pick a silent paired-BT route.
-     *
-     * The priority is: routed car output -> available car output -> routed
-     * headset/BT -> available headset/BT -> OS default.
+     * Route MediaPlayer output through a connected personal output when no
+     * projected Android Auto route is present. During USB Android Auto, the
+     * car can expose BUS/USB/HDMI sinks that are controlled by Gearhead; forcing
+     * `setPreferredDevice()` to those sinks has proven to route playback into
+     * silence on some cars. In that state, leave routing to the OS.
      */
     private fun preferOutputRoute(
         player: MediaPlayer,
@@ -194,6 +191,13 @@ class AudioPlayer @Inject constructor(
     ) {
         try {
             val routedDevices = getRoutedDevices(audioManager, attributes)
+            if ((routedDevices + outputSnapshot).any { isProjectedCarOutputType(it.type) }) {
+                Timber.i(
+                    "AudioPlayer routing: projected car output detected; using OS default " +
+                        "(routed=${routedDevices.typeSummary()}, outputs=${outputSnapshot.typeSummary()})"
+                )
+                return
+            }
             val preferredType = choosePreferredOutputType(
                 routedTypes = routedDevices.map { it.type },
                 outputTypes = outputSnapshot.map { it.type }
@@ -225,16 +229,10 @@ class AudioPlayer @Inject constructor(
         }
     }
 
-    private fun buildPlaybackAttributes(useNavigationGuidance: Boolean): AudioAttributes {
+    private fun buildPlaybackAttributes(): AudioAttributes {
         return AudioAttributes.Builder()
             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-            .setUsage(
-                if (useNavigationGuidance) {
-                    AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE
-                } else {
-                    AudioAttributes.USAGE_MEDIA
-                }
-            )
+            .setUsage(AudioAttributes.USAGE_MEDIA)
             .build()
     }
 
@@ -288,9 +286,6 @@ class AudioPlayer @Inject constructor(
             AudioDeviceInfo.TYPE_HDMI_EARC
         )
 
-        private val CAR_OUTPUT_PRIORITY = PROJECTED_CAR_OUTPUT_PRIORITY +
-            AudioDeviceInfo.TYPE_USB_HEADSET
-
         private val PERSONAL_OUTPUT_PRIORITY = listOf(
             AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
             AudioDeviceInfo.TYPE_BLE_SPEAKER,
@@ -307,9 +302,8 @@ class AudioPlayer @Inject constructor(
             routedTypes: List<Int>,
             outputTypes: List<Int>
         ): Int? {
-            return firstByPriority(routedTypes, CAR_OUTPUT_PRIORITY)
-                ?: firstByPriority(outputTypes, CAR_OUTPUT_PRIORITY)
-                ?: firstByPriority(routedTypes, PERSONAL_OUTPUT_PRIORITY)
+            if ((routedTypes + outputTypes).any { isProjectedCarOutputType(it) }) return null
+            return firstByPriority(routedTypes, PERSONAL_OUTPUT_PRIORITY)
                 ?: firstByPriority(outputTypes, PERSONAL_OUTPUT_PRIORITY)
         }
 

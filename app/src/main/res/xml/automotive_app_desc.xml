@@ -3,4 +3,7 @@
     <!-- template: required for androidx.car.app projected apps (screens
          rendered on the car head unit). -->
     <uses name="template" />
+    <!-- notification: required for Android Auto messaging apps so incoming
+         message notifications are handled by the car host. -->
+    <uses name="notification" />
 </automotiveApp>

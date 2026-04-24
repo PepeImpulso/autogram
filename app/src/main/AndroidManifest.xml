@@ -25,18 +25,6 @@
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <!-- NavigationTemplate needs this permission. Gearhead grants it
-         to any CarAppService that declares the NAVIGATION category
-         intent-filter, so this works for sideloaded apps (as long as
-         "Unknown sources" is enabled in AA → Developer Settings). -->
-    <uses-permission android:name="androidx.car.app.NAVIGATION_TEMPLATES" />
-    <!-- setSurfaceCallback() needs a SECOND permission: ACCESS_SURFACE.
-         Required for the raw-canvas rendering path (same one Waze /
-         Google Maps use). Without it Gearhead refuses the surface
-         handoff with "trying to access surface when the permission
-         was not granted" in logcat. -->
-    <uses-permission android:name="androidx.car.app.ACCESS_SURFACE" />
-
     <uses-feature
         android:name="android.hardware.type.automotive"
         android:required="false" />
@@ -122,29 +110,18 @@
         <meta-data
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
-        <!-- minCarApiLevel=3 so the Android Auto launcher actually surfaces the app.
-             Level 1 is accepted but AA hides sideloaded IOT apps that only declare
-             level 1 from the launcher in recent versions (14+). -->
+        <!-- Templated messaging uses ConversationItem, available from Car API 7. -->
         <meta-data
             android:name="androidx.car.app.minCarApiLevel"
-            android:value="3" />
+            android:value="7" />
         <meta-data
             android:name="androidx.car.app.theme"
             android:resource="@style/Theme.Autogram.Car" />
 
-        <!-- CarAppService for Android Auto.
-
-             Working compromise for real-car testing:
-             - NAVIGATION is required for NavigationTemplate + surface rendering.
-             - IOT keeps the tile discoverable in the AA launcher on current
-               sideloaded/dev installs.
-             - MESSAGING stays OUT, because that was what hijacked taps into
-               AA's built-in empty inbox ("No se han recibido mensajes...").
-
-             Car App Library docs allow declaring one or more categories on
-             the service. We intentionally keep automotive_app_desc.xml as
-             `template` only so the launcher path still opens our custom
-             surface instead of a messaging surface. -->
+        <!-- Android Auto: official templated messaging experience.
+             Google documents MESSAGING + template + notification as the
+             supported path for chat apps; using NAVIGATION/IOT to draw a
+             custom surface is too fragile across Gearhead versions. -->
         <service
             android:name=".ui.auto.AutogramCarAppService"
             android:exported="true"
@@ -152,11 +129,7 @@
             android:label="@string/app_name">
             <intent-filter>
                 <action android:name="androidx.car.app.CarAppService" />
-                <category android:name="androidx.car.app.category.NAVIGATION" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="androidx.car.app.CarAppService" />
-                <category android:name="androidx.car.app.category.IOT" />
+                <category android:name="androidx.car.app.category.MESSAGING" />
             </intent-filter>
         </service>
 

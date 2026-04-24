@@ -16,13 +16,20 @@ import androidx.core.content.ContextCompat
 import androidx.car.app.Screen
 import androidx.car.app.constraints.ConstraintManager
 import androidx.car.app.model.*
+import androidx.car.app.messaging.model.CarMessage
+import androidx.car.app.messaging.model.ConversationCallback
+import androidx.car.app.messaging.model.ConversationItem
 import androidx.core.graphics.drawable.IconCompat
+import androidx.core.app.Person
 import com.autogram.app.R
 import com.autogram.app.domain.model.Conversation
+import com.autogram.app.domain.model.Message
+import com.autogram.app.domain.model.MessageDirection
 import com.autogram.app.domain.model.QuickReply
 import com.autogram.app.domain.model.QuickReplyKind
 import com.autogram.app.domain.model.VoiceCommand
 import com.autogram.app.domain.repository.ConversationRepository
+import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.domain.repository.QuickReplyRepository
 import com.autogram.app.domain.usecase.ManageSettingsUseCase
 import com.autogram.app.domain.usecase.PlayReplyUseCase
@@ -38,22 +45,15 @@ import timber.log.Timber
 import java.io.File
 
 /**
- * Android Auto home screen. Template-based (GridTemplate) because AA won't
- * let us render arbitrary Compose UI, but visually we try to match the
- * phone app as closely as the car library allows:
+ * Android Auto home screen. Uses the official templated messaging path so
+ * Gearhead can list Autogram as a communication app and render conversation
+ * history with AA's reply UI:
  *
- *   - Pinned conversations appear as tiles with their real photo cropped
- *     to a circle, in the same order the phone's home screen shows them.
- *     Tap a tile → start recording to that target.
- *   - Text quick-reply shortcuts render with the Bolt icon (matches the
- *     phone chip); voice quick-reply shortcuts render with the Mic icon
- *     (new in v1.17.0) and send the pre-recorded .ogg on tap.
+ *   - Pinned conversations appear as ConversationItem rows, in the same order
+ *     the phone's home screen shows them.
+ *   - Reply callbacks send text replies to the selected target.
+ *   - A per-conversation Record action starts a direct voice message.
  *   - Bottom ActionStrip keeps the Silent toggle + Voice-command CTA.
- *
- * Android Auto enforces a distraction-optimized tile limit (typically 6-8
- * depending on the head unit). When the user has more pinned circles +
- * shortcuts than the budget allows, pinned circles win — the car is a
- * conversation-first context, the shortcuts are phone-first.
  */
 @OptIn(ExperimentalCarApi::class)
 class MainScreen(
@@ -63,6 +63,7 @@ class MainScreen(
     private val manageSettingsUseCase: ManageSettingsUseCase,
     private val quickReplyRepository: QuickReplyRepository,
     private val conversationRepository: ConversationRepository,
+    private val messageRepository: MessageRepository,
     private val voiceCommandRecognizer: VoiceCommandRecognizer
 ) : Screen(carContext) {
 
@@ -73,72 +74,26 @@ class MainScreen(
     private val silentMode = MutableStateFlow(false)
     private val cachedQuickReplies = MutableStateFlow<List<QuickReply>>(emptyList())
     private val cachedPinned = MutableStateFlow<List<Conversation>>(emptyList())
+    private val cachedMessages = MutableStateFlow<List<Message>>(emptyList())
 
     // Unchanged from v1.17.x: icon cache only used by the fallback
     // GridTemplate on the non-home screens (recording / status).
     private val iconCache: MutableMap<String, CarIcon> = HashMap()
 
-    // Custom canvas renderer for the home screen. Registered with AA's
-    // AppManager on screen start so AA hands us the Surface when the
-    // NavigationTemplate is shown. Unregistered on screen stop so other
-    // screens (recording, status) don't accidentally draw over the
-    // surface.
-    private val surfaceRenderer = AutogramSurfaceRenderer(carContext, screenScope).apply {
-        onPrimaryTap = { id -> startRecording(id) }
-        onSecondaryTap = { id -> startRecording(id) }
-        onShortcutTap = { qr -> sendShortcut(qr) }
-        // While a recording is in flight, ANY tap on the surface stops
-        // the recording and sends it. Closest approximation to "release
-        // to send" that AA's SurfaceCallback allows — onClick is the
-        // only pointer event we receive.
-        onStopAndSend = { stopAndSend() }
-    }
-
     init {
         lifecycle.addObserver(object : androidx.lifecycle.DefaultLifecycleObserver {
-            override fun onStart(owner: androidx.lifecycle.LifecycleOwner) {
-                // Take ownership of the car surface whenever MainScreen
-                // is the visible screen. Releasing on onStop keeps other
-                // screens' templates (MessageTemplate for recording) from
-                // rendering our canvas behind them.
-                runCatching {
-                    carContext.getCarService(androidx.car.app.AppManager::class.java)
-                        .setSurfaceCallback(surfaceRenderer)
-                }.onFailure { Timber.w(it, "AppManager.setSurfaceCallback failed") }
-                pushState()
-            }
-
-            override fun onStop(owner: androidx.lifecycle.LifecycleOwner) {
-                runCatching {
-                    carContext.getCarService(androidx.car.app.AppManager::class.java)
-                        .setSurfaceCallback(null)
-                }
-            }
-
             override fun onDestroy(owner: androidx.lifecycle.LifecycleOwner) {
-                // Defensive: also clear the surface callback here in case
-                // onStop wasn't fired before destroy (can happen in some
-                // AA reconnect paths). Leaving it set would let the car
-                // host retain CarContext via this Screen instance.
-                runCatching {
-                    carContext.getCarService(androidx.car.app.AppManager::class.java)
-                        .setSurfaceCallback(null)
-                }
-                surfaceRenderer.dispose()
                 screenJob.cancel()
                 iconCache.clear()
             }
         })
-        // Combine both state flows into a single observer so the
-        // renderer never sees an interim (isRecording=true, activeId=null)
-        // frame during the brief window between the two flows' emits.
+        // Combine recording state flows so every status change invalidates the
+        // car template from a single collector.
         screenScope.launch {
             kotlinx.coroutines.flow.combine(
                 sendMessageUseCase.status,
                 sendMessageUseCase.activeTargetId
-            ) { status, activeId -> status to activeId }.collect { (status, activeId) ->
-                val isRecording = status is SendVoiceMtprotoUseCase.SendStatus.Recording
-                surfaceRenderer.updateRecordingState(isRecording, activeId)
+            ) { status, _ -> status }.collect { status ->
                 // Auto-clear any terminal status after 5 s so the pill /
                 // status banner doesn't linger indefinitely. Moved here
                 // from onGetTemplate (which had a side effect every time
@@ -171,30 +126,28 @@ class MainScreen(
         screenScope.launch {
             quickReplyRepository.observeAll().collect { list ->
                 cachedQuickReplies.value = list
-                pushState()
                 invalidate()
             }
         }
         screenScope.launch {
             conversationRepository.observePinned().collect { list ->
                 cachedPinned.value = list
-                pushState()
+                invalidate()
+            }
+        }
+        screenScope.launch {
+            messageRepository.observeAllAcrossConversations().collect { list ->
+                cachedMessages.value = list
                 invalidate()
             }
         }
     }
 
-    private fun pushState() {
-        surfaceRenderer.updateState(cachedPinned.value, cachedQuickReplies.value)
-    }
-
     override fun onGetTemplate(): Template {
         return when (val status = sendMessageUseCase.status.value) {
-            // Recording stays on the home surface — the renderer shows
-            // a red ring on the active target + a top banner that any
-            // tap sends. Navigating away to MessageTemplate would tear
-            // down the surface and lose our custom canvas mid-recording.
-            is SendVoiceMtprotoUseCase.SendStatus.Recording -> buildHomeTemplate()
+            // Recording uses a simple driver-safe status screen with
+            // explicit Send / Cancel actions.
+            is SendVoiceMtprotoUseCase.SendStatus.Recording -> buildRecordingTemplate()
             is SendVoiceMtprotoUseCase.SendStatus.Sending -> buildStatusTemplate(carContext.getString(R.string.status_sending))
             // Auto-reset after Sent is scheduled by the flow collector
             // in init {} — onGetTemplate stays pure (no side effects)
@@ -211,18 +164,89 @@ class MainScreen(
         }
     }
 
-    /**
-     * Home = NavigationTemplate so AA hands us a raw Surface to render on
-     * (via AppManager.setSurfaceCallback → AutogramSurfaceRenderer). We
-     * skip setNavigationInfo/setMapActionStrip so the template shows
-     * nothing but our surface + the top ActionStrip.
-     */
+    /** Home = official Android Auto messaging list. */
     private fun buildHomeTemplate(): Template {
-        return androidx.car.app.navigation.model.NavigationTemplate.Builder()
+        val items = ItemList.Builder()
+            .setNoItemsMessage(carContext.getString(R.string.aa_no_conversations))
+
+        val messagesByConversation = cachedMessages.value.groupBy { it.conversationId }
+        val pinned = cachedPinned.value
+        pinned.forEach { conv ->
+            val carMessages = messagesByConversation[conv.id]
+                .orEmpty()
+                .sortedByDescending { it.createdAt }
+                .take(5)
+                .asReversed()
+                .map { it.toCarMessage(conv) }
+                .ifEmpty { listOf(emptyCarMessage(conv)) }
+
+            val callback = object : ConversationCallback {
+                override fun onMarkAsRead() = Unit
+                override fun onTextReply(text: String) {
+                    screenScope.launch {
+                        sendMessageUseCase.sendQuickReply(text, targetConversationId = conv.id)
+                        invalidate()
+                    }
+                }
+            }
+
+            items.addItem(
+                ConversationItem.Builder()
+                    .setId(conv.id)
+                    .setTitle(CarText.create(tileTitle(conv)))
+                    .setSelf(selfPerson())
+                    .setIcon(avatarTileIcon(conv, isPrimary = conv == pinned.firstOrNull()))
+                    .setMessages(carMessages)
+                    .setConversationCallback(callback)
+                    .addAction(
+                        Action.Builder()
+                            .setTitle(carContext.getString(R.string.aa_record))
+                            .setIcon(carIcon(R.drawable.ic_mic, CarColor.PRIMARY))
+                            .setOnClickListener { startRecording(conv.id) }
+                            .build()
+                    )
+                    .build()
+            )
+        }
+
+        return ListTemplate.Builder()
+            .setTitle(carContext.getString(R.string.aa_conversations))
+            .setHeaderAction(Action.APP_ICON)
             .setActionStrip(buildActionStrip())
-            .setBackgroundColor(CarColor.createCustom(0xFF121212.toInt(), 0xFF121212.toInt()))
+            .setSingleList(items.build())
             .build()
     }
+
+    private fun selfPerson(): Person =
+        Person.Builder()
+            .setName(carContext.getString(R.string.app_name))
+            .build()
+
+    private fun senderPerson(conv: Conversation): Person =
+        Person.Builder()
+            .setName(tileTitle(conv))
+            .build()
+
+    private fun Message.toCarMessage(conv: Conversation): CarMessage {
+        val body = summary?.takeIf { it.isNotBlank() }
+            ?: transcription?.takeIf { it.isNotBlank() }
+            ?: textContent?.takeIf { it.isNotBlank() }
+            ?: carContext.getString(R.string.aa_voice_message)
+        return CarMessage.Builder()
+            .setSender(if (direction == MessageDirection.OUTGOING) selfPerson() else senderPerson(conv))
+            .setBody(CarText.create(body))
+            .setReceivedTimeEpochMillis(createdAt)
+            .setRead(state != com.autogram.app.domain.model.MessageState.PENDING_PLAYBACK)
+            .build()
+    }
+
+    private fun emptyCarMessage(conv: Conversation): CarMessage =
+        CarMessage.Builder()
+            .setSender(senderPerson(conv))
+            .setBody(CarText.create(carContext.getString(R.string.aa_no_messages)))
+            .setReceivedTimeEpochMillis(System.currentTimeMillis())
+            .setRead(true)
+            .build()
 
     private fun buildMainGrid(): GridTemplate {
         val builder = GridTemplate.Builder()
