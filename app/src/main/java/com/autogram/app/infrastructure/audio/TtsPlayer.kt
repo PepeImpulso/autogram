@@ -68,7 +68,14 @@ class TtsPlayer @Inject constructor(
             return
         }
         val settings = settingsRepository.get()
-        val effectiveLocale = locale ?: currentLocaleOrDefault()
+        val requested = locale ?: currentLocaleOrDefault()
+        // Android's TextToSpeech silently falls back to the engine default
+        // (usually English) when you set a language whose voice data isn't
+        // installed — `setLanguage` returns LANG_MISSING_DATA /
+        // LANG_NOT_SUPPORTED but we used to throw that value away. Check
+        // availability first and swap in a fallback the engine can
+        // actually speak, or we read Spanish text with an English voice.
+        val effectiveLocale = resolveSupportedLocale(tts, requested)
         runCatching { tts.language = effectiveLocale }
 
         tts.setSpeechRate(settings.playbackSpeed.coerceIn(0.5f, 2.0f))
@@ -168,13 +175,59 @@ class TtsPlayer @Inject constructor(
         return Locale.getDefault()
     }
 
+    /**
+     * Android's TTS `setLanguage` silently falls back to the engine default
+     * (usually English) when the requested voice isn't installed on the
+     * device. That's exactly how Spanish text ends up being read by an
+     * English voice: `detectLocale` returns `es`, `setLanguage(es)` returns
+     * `LANG_MISSING_DATA`, and we never notice.
+     *
+     * This walks the available fallbacks in order of specificity:
+     *   1. the requested locale as-is (`es-ES`, `es-MX`, …)
+     *   2. its language-only form (`es`) — covers "generic Spanish installed
+     *      but not the country variant"
+     *   3. the UI locale, if different from the requested one
+     *   4. whatever the engine already has loaded (we leave language unset)
+     */
+    private fun resolveSupportedLocale(tts: TextToSpeech, requested: Locale): Locale {
+        if (isLocaleSupported(tts, requested)) return requested
+        val generic = Locale(requested.language)
+        if (generic != requested && isLocaleSupported(tts, generic)) {
+            Timber.d("TtsPlayer: using generic $generic instead of $requested")
+            return generic
+        }
+        val uiLocale = currentLocaleOrDefault()
+        if (uiLocale.language != requested.language && isLocaleSupported(tts, uiLocale)) {
+            Timber.w("TtsPlayer: no voice for $requested; falling back to UI locale $uiLocale")
+            return uiLocale
+        }
+        Timber.w(
+            "TtsPlayer: no matching voice for $requested (UI=$uiLocale). " +
+                "Engine will read it in whatever default voice it has — likely English."
+        )
+        return uiLocale
+    }
+
+    private fun isLocaleSupported(tts: TextToSpeech, locale: Locale): Boolean {
+        val code = runCatching { tts.isLanguageAvailable(locale) }
+            .getOrDefault(TextToSpeech.LANG_NOT_SUPPORTED)
+        return code == TextToSpeech.LANG_AVAILABLE ||
+            code == TextToSpeech.LANG_COUNTRY_AVAILABLE ||
+            code == TextToSpeech.LANG_COUNTRY_VAR_AVAILABLE
+    }
+
     companion object {
         /**
-         * Cheap content-based locale detection. Used when we need to read
-         * text whose language might not match the UI (e.g. a summary produced
-         * in the original message's language). Checks unicode scripts in
-         * descending specificity: CJK scripts first (they're unambiguous),
-         * then Spanish-specific markers, else falls back to [fallback].
+         * Cheap content-based locale detection. The priority ladder is:
+         *   1. **CJK scripts** — unambiguous, pick immediately.
+         *   2. **Spanish-specific characters** (ñ, ¿, ¡, accented vowels) —
+         *      strong signal; also immediate.
+         *   3. **Stopword scoring (Spanish vs English)** — catches
+         *      accent-less Spanish like "voy en camino" that the character
+         *      check would miss. A winner is declared only when it leads
+         *      by at least [STOPWORD_MARGIN] hits, otherwise we trust the
+         *      UI [fallback] — avoids flipping short greetings to the
+         *      wrong language.
          */
         fun detectLocale(text: String, fallback: Locale): Locale {
             if (text.isBlank()) return fallback
@@ -197,11 +250,23 @@ class TtsPlayer @Inject constructor(
                 }
                 if (ch in SPANISH_MARKERS) hasSpanishMarker = true
             }
+            if (hasHiraganaKatakana) return Locale.JAPANESE
+            if (hasHangul) return Locale.KOREAN
+            if (hasCjkIdeograph) return Locale.CHINESE
+            if (hasSpanishMarker) return Locale("es")
+
+            // Stopword scoring — only reached when the text has no
+            // diacritics. "voy en camino" is all Latin-1 ASCII but
+            // unmistakably Spanish via the function words it contains.
+            val words = text.lowercase()
+                .split(WORD_SPLIT_RE)
+                .filter { it.isNotEmpty() }
+            if (words.isEmpty()) return fallback
+            val spanish = words.count { it in SPANISH_STOPWORDS }
+            val english = words.count { it in ENGLISH_STOPWORDS }
             return when {
-                hasHiraganaKatakana -> Locale.JAPANESE
-                hasHangul -> Locale.KOREAN
-                hasCjkIdeograph -> Locale.CHINESE
-                hasSpanishMarker -> Locale("es")
+                spanish >= english + STOPWORD_MARGIN -> Locale("es")
+                english >= spanish + STOPWORD_MARGIN -> Locale.ENGLISH
                 else -> fallback
             }
         }
@@ -209,6 +274,66 @@ class TtsPlayer @Inject constructor(
         private val SPANISH_MARKERS = setOf(
             'ñ', 'Ñ', 'á', 'é', 'í', 'ó', 'ú', 'Á', 'É', 'Í', 'Ó', 'Ú',
             'ü', 'Ü', '¿', '¡'
+        )
+
+        // Unicode-letter-aware split. Handles apostrophes inside a word
+        // ("I'm" → "i'm") so they count as one token.
+        private val WORD_SPLIT_RE = Regex("[^\\p{L}']+")
+
+        // Minimum gap between the two scores before we call a winner.
+        // A value of 2 means a short greeting with a single shared word
+        // ("hola") doesn't flip a UI-English user to Spanish voice.
+        private const val STOPWORD_MARGIN: Int = 2
+
+        private val SPANISH_STOPWORDS = setOf(
+            // Articles + determiners
+            "el", "la", "los", "las", "un", "una", "unos", "unas",
+            "este", "esta", "estos", "estas", "ese", "esa", "esos", "esas",
+            "esto", "eso", "aquel", "aquella", "aquello",
+            // Prepositions + conjunctions
+            "de", "del", "en", "a", "al", "y", "o", "u", "con", "sin",
+            "por", "para", "como", "pero", "porque", "mas", "si", "ni",
+            "entre", "sobre", "hasta", "desde", "ante", "bajo",
+            // Pronouns
+            "yo", "tu", "el", "ella", "nosotros", "vosotros", "ellos", "ellas",
+            "me", "te", "se", "nos", "os", "le", "les", "lo", "mi", "su",
+            // Common verbs (indicative)
+            "soy", "eres", "es", "somos", "sois", "son",
+            "estoy", "estas", "esta", "estamos", "estais", "estan",
+            "voy", "vas", "va", "vamos", "vais", "van",
+            "he", "has", "ha", "hemos", "habeis", "han",
+            "tengo", "tienes", "tiene", "tenemos", "teneis", "tienen",
+            "hago", "haces", "hace", "hacemos", "haceis", "hacen",
+            "quiero", "quieres", "quiere", "queremos", "quereis", "quieren",
+            "puedo", "puedes", "puede", "podemos", "podeis", "pueden",
+            "era", "fue", "fui", "fuimos", "fueron", "sera", "fueron",
+            // Greetings / courtesy / interjections often accent-less in fast typing
+            "hola", "gracias", "buenos", "buenas", "dias", "tardes", "noches",
+            "vale", "claro", "bueno", "bien", "mal", "muy", "bastante",
+            "ahora", "luego", "despues", "antes", "aqui", "alli", "ahi",
+            "hoy", "ayer", "manana", "siempre", "nunca",
+            "todo", "todos", "todas", "nada", "algo", "alguien", "nadie",
+            "solo", "tambien", "tampoco", "casi", "ya", "aun"
+        )
+
+        private val ENGLISH_STOPWORDS = setOf(
+            "the", "a", "an", "and", "or", "but", "if", "then", "so",
+            "because", "while", "although", "though",
+            "is", "are", "was", "were", "be", "been", "being", "am",
+            "have", "has", "had", "do", "does", "did",
+            "can", "could", "will", "would", "should", "may", "might",
+            "in", "on", "at", "to", "from", "of", "for", "with", "about",
+            "as", "by", "into", "onto", "over", "under", "between",
+            "i", "you", "he", "she", "it", "we", "they", "me", "him", "her",
+            "us", "them", "my", "your", "his", "her", "its", "our", "their",
+            "this", "that", "these", "those",
+            "not", "no", "yes", "nope", "yeah",
+            "hello", "hi", "hey", "thanks", "thank", "okay", "ok", "please",
+            "good", "bad", "great", "fine",
+            "what", "when", "where", "why", "how", "who", "which",
+            "here", "there", "now", "later", "before", "after", "today",
+            "tomorrow", "yesterday",
+            "going", "coming", "home", "work", "going", "time"
         )
     }
 }
