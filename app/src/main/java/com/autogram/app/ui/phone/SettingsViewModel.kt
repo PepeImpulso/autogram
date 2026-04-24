@@ -61,7 +61,8 @@ class SettingsViewModel @Inject constructor(
                 summaryEngine = settings.summaryEngine,
                 summaryLlmEndpoint = settings.summaryLlmEndpoint,
                 summaryLlmApiKey = settings.summaryLlmApiKey,
-                summaryLlmModel = settings.summaryLlmModel
+                summaryLlmModel = settings.summaryLlmModel,
+                keepScreenOn = settings.keepScreenOn
             )
         }
         viewModelScope.launch {
@@ -193,6 +194,14 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun updateKeepScreenOn(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(keepScreenOn = enabled)
+        viewModelScope.launch {
+            val s = settingsRepository.get()
+            settingsRepository.update(s.copy(keepScreenOn = enabled))
+        }
+    }
+
     fun updateSummaryLlmModel(model: String) {
         _uiState.value = _uiState.value.copy(summaryLlmModel = model)
         viewModelScope.launch {
@@ -293,6 +302,7 @@ data class SettingsUiState(
     val summaryLlmEndpoint: String = "",
     val summaryLlmApiKey: String = "",
     val summaryLlmModel: String = "gpt-4o-mini",
+    val keepScreenOn: Boolean = false,
     val lastSaveMessage: String? = null,
     val hasTarget: Boolean = false,
     val targetTitle: String? = null,

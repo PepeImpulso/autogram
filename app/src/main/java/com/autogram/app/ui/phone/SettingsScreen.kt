@@ -332,12 +332,19 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                     checked = state.showPendingBadges,
                     onCheckedChange = viewModel::updateShowPendingBadges
                 )
+                SettingsDivider()
+                SwitchRow(
+                    label = stringResource(R.string.settings_keep_screen_on),
+                    supporting = stringResource(R.string.settings_keep_screen_on_sub),
+                    checked = state.keepScreenOn,
+                    onCheckedChange = viewModel::updateKeepScreenOn
+                )
             }
 
             SectionCard(
                 icon = Icons.Filled.TextFields,
-                title = stringResource(R.string.settings_transcribe),
-                subtitle = stringResource(R.string.settings_transcribe_sub)
+                title = stringResource(R.string.settings_section_transcribe),
+                subtitle = stringResource(R.string.settings_section_transcribe_sub)
             ) {
                 val transcribeSupported =
                     com.autogram.app.infrastructure.transcription.AndroidOnDeviceTranscriptionEngine.isSupportedHere(context)

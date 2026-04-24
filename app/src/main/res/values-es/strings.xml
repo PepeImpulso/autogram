@@ -166,6 +166,8 @@
     <string name="update_downloading_banner">Descargando actualización…</string>
     <string name="update_error_banner">No se pudo instalar la actualización. Prueba desde Ajustes → Actualizaciones.</string>
     <string name="update_error_action">Abrir Ajustes</string>
+    <string name="settings_keep_screen_on">Mantener pantalla encendida</string>
+    <string name="settings_keep_screen_on_sub">Impide que la pantalla se apague mientras Autogram está abierto. Tiene prioridad sobre el tiempo de espera del sistema — útil para escuchar respuestas en el coche o en la cocina, pero puede consumir más batería.</string>
     <string name="settings_show_pending_badges">Mostrar contador de pendientes</string>
     <string name="settings_show_pending_badges_sub">Muestra un número en cada círculo con los mensajes entrantes que no has contestado. Desactivado por defecto — actívalo si esperas responder a todos los mensajes.</string>
     <string name="settings_section_summary">Resumen</string>
@@ -185,9 +187,11 @@
     <string name="history_summary_unavailable">Motor de resumen no configurado</string>
     <string name="history_summary_failed">No se pudo resumir</string>
 
+    <string name="settings_section_transcribe">Transcripción</string>
+    <string name="settings_section_transcribe_sub">Convierte las notas de voz entrantes en texto, en el propio dispositivo.</string>
     <string name="settings_transcribe">Transcribir mensajes de voz</string>
-    <string name="settings_transcribe_sub">Transcribe automáticamente las notas de voz entrantes con reconocimiento en el dispositivo. Requiere Android 14+ y el paquete de voz de Google.</string>
-    <string name="settings_transcribe_unsupported">Requiere Android 14+ en este dispositivo</string>
+    <string name="settings_transcribe_sub">Usa el reconocedor de voz en el dispositivo de Google. Requiere Android 14 o superior y tener descargado el paquete de voz del idioma del mensaje. Instala los paquetes desde Ajustes de Android → Sistema → Idiomas → Reconocimiento de voz en el dispositivo.</string>
+    <string name="settings_transcribe_unsupported">No disponible — requiere Android 14 o superior y el reconocimiento de voz en el dispositivo de Google</string>
     <string name="history_transcription_in_progress">Transcribiendo…</string>
     <string name="history_transcription_unavailable">Transcripción no disponible (falta paquete de idioma)</string>
     <string name="history_transcription_failed">No se pudo transcribir</string>

@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.speech.tts.Voice
 import androidx.appcompat.app.AppCompatDelegate
 import com.autogram.app.domain.repository.SettingsRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -76,7 +77,29 @@ class TtsPlayer @Inject constructor(
         // availability first and swap in a fallback the engine can
         // actually speak, or we read Spanish text with an English voice.
         val effectiveLocale = resolveSupportedLocale(tts, requested)
+        // setLanguage() is necessary but not sufficient: many engines
+        // (notably Google TTS) keep the previously-selected Voice even when
+        // setLanguage returns COUNTRY_AVAILABLE — so a Spanish locale can
+        // still come out in an English voice if that's what was loaded
+        // last. Picking the actual Voice explicitly is the only reliable
+        // way to switch the voice that gets synthesised. We still call
+        // setLanguage as a fallback for engines that ignore setVoice or
+        // when no concrete Voice can be found.
         runCatching { tts.language = effectiveLocale }
+        val pickedVoice = pickInstalledVoice(tts, effectiveLocale)
+        if (pickedVoice != null) {
+            val accepted = runCatching { tts.voice = pickedVoice }.isSuccess
+            Timber.i(
+                "TtsPlayer: voice=${pickedVoice.name} locale=${pickedVoice.locale} " +
+                    "quality=${pickedVoice.quality} accepted=$accepted (requested=$requested)"
+            )
+        } else {
+            Timber.w(
+                "TtsPlayer: no installed Voice found for $effectiveLocale " +
+                    "(requested=$requested). Falling back to whatever the " +
+                    "engine has loaded — likely English."
+            )
+        }
 
         tts.setSpeechRate(settings.playbackSpeed.coerceIn(0.5f, 2.0f))
         tts.setAudioAttributes(
@@ -216,6 +239,45 @@ class TtsPlayer @Inject constructor(
             code == TextToSpeech.LANG_COUNTRY_VAR_AVAILABLE
     }
 
+    /**
+     * Find a concrete `Voice` whose locale matches [locale] AND whose voice
+     * data is actually installed on the device. Without this, `tts.voice`
+     * silently sticks at whatever the engine loaded last (usually English),
+     * even though `setLanguage(es)` returned COUNTRY_AVAILABLE — that's why
+     * Spanish replies kept being read in an English voice on real phones.
+     *
+     * Selection priority:
+     *   1. Installed locally + no network needed + matching country variant.
+     *   2. Installed locally + no network needed + any country (es-MX over
+     *      the wrong language).
+     *   3. Anything matching the language at all — even if it would download
+     *      from the network. Better than letting the engine fall back to
+     *      its English default.
+     */
+    private fun pickInstalledVoice(tts: TextToSpeech, locale: Locale): Voice? {
+        val voices = runCatching { tts.voices }.getOrNull().orEmpty()
+        if (voices.isEmpty()) return null
+        val targetLang = locale.language.lowercase()
+        val targetCountry = locale.country
+        val sameLanguage = voices.filter {
+            it.locale.language.equals(targetLang, ignoreCase = true)
+        }
+        val installed = sameLanguage.filter { v ->
+            TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED !in v.features &&
+                !v.isNetworkConnectionRequired
+        }
+        if (installed.isNotEmpty()) {
+            return installed.maxWithOrNull(
+                compareBy(
+                    { if (targetCountry.isNotEmpty() &&
+                            it.locale.country.equals(targetCountry, ignoreCase = true)) 1 else 0 },
+                    { it.quality }
+                )
+            )
+        }
+        return sameLanguage.firstOrNull()
+    }
+
     companion object {
         /**
          * Cheap content-based locale detection. The priority ladder is:
@@ -282,7 +344,11 @@ class TtsPlayer @Inject constructor(
 
         // Minimum gap between the two scores before we call a winner.
         // A value of 2 means a short greeting with a single shared word
-        // ("hola") doesn't flip a UI-English user to Spanish voice.
+        // ("hola") doesn't flip a UI-English user to Spanish voice. Lower
+        // values false-positive on French / Italian, where SPANISH_STOPWORDS
+        // overlaps single function words like "le". The real Spanish-voice
+        // bug wasn't detection — it was that setLanguage() didn't switch
+        // the engine's actual `Voice`. See pickInstalledVoice.
         private const val STOPWORD_MARGIN: Int = 2
 
         private val SPANISH_STOPWORDS = setOf(

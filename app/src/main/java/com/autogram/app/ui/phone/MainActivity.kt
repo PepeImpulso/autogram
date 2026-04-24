@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -221,6 +222,19 @@ class MainActivity : BaseLocaleActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Keep-screen-on toggle: observe the settings flow so the user
+        // sees the change without having to relaunch the activity. The
+        // window flag is cheap to set/clear on every emission; only the
+        // last value actually affects the screen-timeout behaviour.
+        lifecycleScope.launch {
+            settingsRepository.observe().collect { settings ->
+                if (settings.keepScreenOn) {
+                    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                } else {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                }
+            }
+        }
         setContent {
             AutogramTheme {
                 Surface(

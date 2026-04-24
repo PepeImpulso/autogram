@@ -171,5 +171,6 @@ data class SettingsEntity(
     val summaryLlmModel: String = "gpt-4o-mini",
     // "ALL" | "TEXT" | "VOICE" — persisted as string for the same reason
     // kind is persisted as string on quick_replies.
-    val quickReplyFilter: String = "ALL"
+    val quickReplyFilter: String = "ALL",
+    val keepScreenOn: Boolean = false
 )

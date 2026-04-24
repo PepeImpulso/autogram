@@ -176,7 +176,12 @@ data class AppSettings(
     val summaryLlmModel: String = "gpt-4o-mini",
     // Which kind of quick-reply shortcuts show in the chip row on the home
     // screen. ALL shows both; user can bias toward just text or just voice.
-    val quickReplyFilter: QuickReplyFilter = QuickReplyFilter.ALL
+    val quickReplyFilter: QuickReplyFilter = QuickReplyFilter.ALL,
+    // Keep the device's screen on while Autogram is in the foreground —
+    // bypasses the system screen-timeout so the user can glance at the
+    // app while driving / cooking without it dimming. Default OFF so we
+    // don't drain battery for users who don't ask for it.
+    val keepScreenOn: Boolean = false
 )
 
 data class DeliveryAttempt(

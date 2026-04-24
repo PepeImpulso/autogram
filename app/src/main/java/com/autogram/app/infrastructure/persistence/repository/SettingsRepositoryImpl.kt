@@ -45,7 +45,8 @@ class SettingsRepositoryImpl @Inject constructor(
         summaryLlmApiKey = summaryLlmApiKey,
         summaryLlmModel = summaryLlmModel,
         quickReplyFilter = runCatching { QuickReplyFilter.valueOf(quickReplyFilter) }
-            .getOrDefault(QuickReplyFilter.ALL)
+            .getOrDefault(QuickReplyFilter.ALL),
+        keepScreenOn = keepScreenOn
     )
 
     private fun AppSettings.toEntity() = SettingsEntity(
@@ -65,6 +66,7 @@ class SettingsRepositoryImpl @Inject constructor(
         summaryLlmEndpoint = summaryLlmEndpoint,
         summaryLlmApiKey = summaryLlmApiKey,
         summaryLlmModel = summaryLlmModel,
-        quickReplyFilter = quickReplyFilter.name
+        quickReplyFilter = quickReplyFilter.name,
+        keepScreenOn = keepScreenOn
     )
 }
