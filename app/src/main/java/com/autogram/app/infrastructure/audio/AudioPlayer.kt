@@ -191,11 +191,37 @@ class AudioPlayer @Inject constructor(
     ) {
         try {
             val routedDevices = getRoutedDevices(audioManager, attributes)
-            if ((routedDevices + outputSnapshot).any { isProjectedCarOutputType(it.type) }) {
-                Timber.i(
-                    "AudioPlayer routing: projected car output detected; using OS default " +
-                        "(routed=${routedDevices.typeSummary()}, outputs=${outputSnapshot.typeSummary()})"
-                )
+            // When a projected Android Auto sink (BUS / USB / HDMI) is on
+            // the system's output list, the OS default route silently
+            // routes our MediaPlayer into the AA media session, which
+            // never gets surfaced because we're not the active AA media
+            // app. Net result: tapping the headphones icon on the phone
+            // produced silence whenever USB-AA was active.
+            //
+            // The semantic of phone-side play() is "play this on the
+            // phone now". So instead of yielding to the OS when projected
+            // outputs are present, we explicitly walk the personal-output
+            // priority (Bluetooth A2DP → wired headset → built-in
+            // speaker) so the user actually hears the message coming out
+            // of their phone or paired headphones.
+            val carPresent = (routedDevices + outputSnapshot)
+                .any { isProjectedCarOutputType(it.type) }
+            if (carPresent) {
+                val phoneDevice = pickPhonePersonalOutput(outputSnapshot, routedDevices)
+                if (phoneDevice != null) {
+                    val accepted = player.setPreferredDevice(phoneDevice)
+                    Timber.i(
+                        "AudioPlayer: projected car output present, forcing phone " +
+                            "output type=${phoneDevice.type} accepted=$accepted " +
+                            "(routed=${routedDevices.typeSummary()}, outputs=${outputSnapshot.typeSummary()})"
+                    )
+                } else {
+                    Timber.w(
+                        "AudioPlayer: projected car output present but no phone-side " +
+                            "personal output found; falling back to OS default " +
+                            "(routed=${routedDevices.typeSummary()}, outputs=${outputSnapshot.typeSummary()})"
+                    )
+                }
                 return
             }
             val preferredType = choosePreferredOutputType(
@@ -298,6 +324,15 @@ class AudioPlayer @Inject constructor(
             AudioDeviceInfo.TYPE_BLUETOOTH_SCO
         )
 
+        // Personal outputs ranked in the order we want to fall back to
+        // when a projected car sink is present. BLUETOOTH_A2DP and wired
+        // headsets are the most "personal" (user's own ears). BUILTIN
+        // speaker is the guaranteed-available last resort so the user
+        // always hears something coming out of the phone itself rather
+        // than silence routed into the AA session they can't see.
+        private val PHONE_FALLBACK_PRIORITY = PERSONAL_OUTPUT_PRIORITY +
+            listOf(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER)
+
         internal fun choosePreferredOutputType(
             routedTypes: List<Int>,
             outputTypes: List<Int>
@@ -312,5 +347,28 @@ class AudioPlayer @Inject constructor(
 
         private fun firstByPriority(types: List<Int>, priority: List<Int>): Int? =
             priority.firstOrNull { it in types }
+    }
+
+    /**
+     * Pick a phone-side personal output (phone speaker, Bluetooth
+     * headset, etc.) when a projected car sink is present. Prefers the
+     * currently-routed personal output if any, then the highest-
+     * priority personal output in the system's device snapshot, and
+     * finally TYPE_BUILTIN_SPEAKER so we never return null when the
+     * built-in speaker exists — the user always hears SOMETHING from
+     * the phone rather than having audio disappear into the AA session.
+     */
+    private fun pickPhonePersonalOutput(
+        outputs: List<AudioDeviceInfo>,
+        routed: List<AudioDeviceInfo>
+    ): AudioDeviceInfo? {
+        val combined = (routed + outputs).distinctBy { it.id }
+        val personal = combined.filter { !isProjectedCarOutputType(it.type) }
+        if (personal.isEmpty()) return null
+        val byType = personal.groupBy { it.type }
+        for (type in PHONE_FALLBACK_PRIORITY) {
+            byType[type]?.firstOrNull()?.let { return it }
+        }
+        return personal.firstOrNull()
     }
 }

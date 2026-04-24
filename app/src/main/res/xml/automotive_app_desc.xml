@@ -1,9 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <automotiveApp>
     <!-- template: required for androidx.car.app projected apps (screens
-         rendered on the car head unit). -->
+         rendered on the car head unit).
+
+         IMPORTANT — do NOT add `<uses name="notification" />`.
+
+         When both `template` and `notification` capabilities are declared,
+         Gearhead 16.5 routes the launcher tap to its built-in messaging
+         inbox (the one that shows the empty "No messages received while
+         driving" state) instead of launching our templated CarAppService.
+         The CarAppExtender we attach to each incoming-message notification
+         in IncomingMessageNotifier still works for the heads-up banner
+         regardless of this declaration — what this XML controls is what
+         happens when the user taps the Autogram tile on the car home.
+         Keeping just `template` forces Gearhead to open our ListTemplate
+         with the pinned conversations and recent messages populated. -->
     <uses name="template" />
-    <!-- notification: required for Android Auto messaging apps so incoming
-         message notifications are handled by the car host. -->
-    <uses name="notification" />
 </automotiveApp>
