@@ -77,8 +77,12 @@ private val DarkColors = darkColorScheme(
 
 @Composable
 fun AutogramTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
+    // v1.20.9 — brand alignment with the gold-on-dark launcher icon. Force
+    // dark scheme on every device so the app looks the same as the icon
+    // the user just tapped, and disable Material 3 dynamic-colour so the
+    // gold doesn't get re-tinted by the user's wallpaper.
+    darkTheme: Boolean = true,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current

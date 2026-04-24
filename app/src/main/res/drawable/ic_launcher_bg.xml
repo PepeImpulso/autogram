@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Adaptive-icon background layer. Solid brand-brown — matches the dark
+    corner colour of the foreground so the launcher's circle / squircle
+    mask blends cleanly with the gold-on-brown rounded square baked into
+    ic_launcher_foreground.png. Colour from the icon spec's palette
+    (#1A120B "fondo oscuro").
+-->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="#0F1A2E" />
+    <solid android:color="#1A120B" />
 </shape>

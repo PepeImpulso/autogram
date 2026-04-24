@@ -2,68 +2,101 @@ package com.autogram.app.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Autogram brand palette — inspired by Telegram's blue but shifted warmer
-// so it doesn't look like a Telegram clone. Generated with Material Theme
-// Builder (seed #2AABEE, secondary #7C4DFF).
+// Autogram brand palette — gold on dark brown, locked in v1.20.9 to match
+// the launcher icon. The five seed colours come from the icon spec:
+//
+//   #1A120B  fondo oscuro          → background / surface
+//   #2A1B12  degradado fondo       → surfaceVariant / elevated surfaces
+//   #D4AF37  dorado principal      → primary
+//   #B8962E  dorado secundario     → primaryContainer / secondary
+//   #F1D27A  brillo / luz          → tertiary / highlights / "on" text
+//
+// We deliberately disable Material 3 dynamic-colour (see AutogramTheme) so
+// the gold doesn't get re-tinted by the user's wallpaper — the brand is
+// the brand on every device.
 
-// Light
-val md_theme_light_primary = Color(0xFF006684)
+private val GoldPrimary    = Color(0xFFD4AF37)
+private val GoldSecondary  = Color(0xFFB8962E)
+private val GoldHighlight  = Color(0xFFF1D27A)
+private val BrownDeep      = Color(0xFF1A120B)
+private val BrownElevated  = Color(0xFF2A1B12)
+
+// Slightly-lifted brown for cards / containers that need to read above the
+// `surface` plane without leaving the brand. Hand-picked between the two
+// brown seeds so the elevation hierarchy stays readable.
+private val BrownContainer = Color(0xFF3D2A1C)
+// Warm off-white for body text on brown. Pure white reads too cold against
+// the warm browns; this is white shifted ~6% toward the gold.
+private val WarmTextHigh   = Color(0xFFF5ECD9)
+private val WarmTextMuted  = Color(0xFFC9B894)
+private val WarmOutline    = Color(0xFF6B5535)
+private val WarmOutlineDim = Color(0xFF3D2F1F)
+
+// --- Light scheme ---------------------------------------------------------
+// AutogramTheme forces dark mode regardless of system, so the light scheme
+// only ever runs in @Preview-without-darkTheme or Compose tooling. We keep
+// it brand-coherent (warm cream + gold) so previews don't render off-brand,
+// but no end user actually sees these tokens at runtime.
+
+val md_theme_light_primary = GoldSecondary
 val md_theme_light_onPrimary = Color(0xFFFFFFFF)
-val md_theme_light_primaryContainer = Color(0xFFBDE9FF)
-val md_theme_light_onPrimaryContainer = Color(0xFF001F2A)
-val md_theme_light_secondary = Color(0xFF4E616C)
+val md_theme_light_primaryContainer = Color(0xFFFFE7A8)
+val md_theme_light_onPrimaryContainer = Color(0xFF2A1B12)
+val md_theme_light_secondary = Color(0xFF6B5535)
 val md_theme_light_onSecondary = Color(0xFFFFFFFF)
-val md_theme_light_secondaryContainer = Color(0xFFD1E5F3)
-val md_theme_light_onSecondaryContainer = Color(0xFF0A1E27)
-val md_theme_light_tertiary = Color(0xFF5F5A7E)
+val md_theme_light_secondaryContainer = Color(0xFFFFE0B2)
+val md_theme_light_onSecondaryContainer = Color(0xFF2A1B12)
+val md_theme_light_tertiary = Color(0xFF8A6E2A)
 val md_theme_light_onTertiary = Color(0xFFFFFFFF)
-val md_theme_light_tertiaryContainer = Color(0xFFE5DEFF)
-val md_theme_light_onTertiaryContainer = Color(0xFF1B1836)
+val md_theme_light_tertiaryContainer = Color(0xFFFFEFC4)
+val md_theme_light_onTertiaryContainer = Color(0xFF2A1B12)
 val md_theme_light_error = Color(0xFFBA1A1A)
 val md_theme_light_errorContainer = Color(0xFFFFDAD6)
 val md_theme_light_onError = Color(0xFFFFFFFF)
 val md_theme_light_onErrorContainer = Color(0xFF410002)
-val md_theme_light_background = Color(0xFFF7FAFC)
-val md_theme_light_onBackground = Color(0xFF171C1F)
-val md_theme_light_surface = Color(0xFFF7FAFC)
-val md_theme_light_onSurface = Color(0xFF171C1F)
-val md_theme_light_surfaceVariant = Color(0xFFDCE4E9)
-val md_theme_light_onSurfaceVariant = Color(0xFF40484C)
-val md_theme_light_outline = Color(0xFF70787D)
-val md_theme_light_inverseOnSurface = Color(0xFFECF2F5)
-val md_theme_light_inverseSurface = Color(0xFF2B3134)
-val md_theme_light_inversePrimary = Color(0xFF67D3FF)
-val md_theme_light_surfaceTint = Color(0xFF006684)
-val md_theme_light_outlineVariant = Color(0xFFC0C8CD)
+val md_theme_light_background = Color(0xFFFFF8E8)
+val md_theme_light_onBackground = Color(0xFF1A120B)
+val md_theme_light_surface = Color(0xFFFFF8E8)
+val md_theme_light_onSurface = Color(0xFF1A120B)
+val md_theme_light_surfaceVariant = Color(0xFFF1E4C4)
+val md_theme_light_onSurfaceVariant = Color(0xFF4D3F25)
+val md_theme_light_outline = Color(0xFF7E6B45)
+val md_theme_light_inverseOnSurface = Color(0xFFFFF8E8)
+val md_theme_light_inverseSurface = Color(0xFF2A1B12)
+val md_theme_light_inversePrimary = GoldHighlight
+val md_theme_light_surfaceTint = GoldSecondary
+val md_theme_light_outlineVariant = Color(0xFFD4C4A0)
 val md_theme_light_scrim = Color(0xFF000000)
 
-// Dark
-val md_theme_dark_primary = Color(0xFF67D3FF)
-val md_theme_dark_onPrimary = Color(0xFF003546)
-val md_theme_dark_primaryContainer = Color(0xFF004D64)
-val md_theme_dark_onPrimaryContainer = Color(0xFFBDE9FF)
-val md_theme_dark_secondary = Color(0xFFB5C9D6)
-val md_theme_dark_onSecondary = Color(0xFF20333C)
-val md_theme_dark_secondaryContainer = Color(0xFF374953)
-val md_theme_dark_onSecondaryContainer = Color(0xFFD1E5F3)
-val md_theme_dark_tertiary = Color(0xFFC8C1EA)
-val md_theme_dark_onTertiary = Color(0xFF302C4D)
-val md_theme_dark_tertiaryContainer = Color(0xFF474265)
-val md_theme_dark_onTertiaryContainer = Color(0xFFE5DEFF)
+// --- Dark scheme ----------------------------------------------------------
+// This is what every device renders at runtime.
+
+val md_theme_dark_primary = GoldPrimary
+val md_theme_dark_onPrimary = BrownDeep
+val md_theme_dark_primaryContainer = GoldSecondary
+val md_theme_dark_onPrimaryContainer = BrownDeep
+val md_theme_dark_secondary = GoldHighlight
+val md_theme_dark_onSecondary = BrownDeep
+val md_theme_dark_secondaryContainer = BrownContainer
+val md_theme_dark_onSecondaryContainer = GoldHighlight
+val md_theme_dark_tertiary = GoldHighlight
+val md_theme_dark_onTertiary = BrownDeep
+val md_theme_dark_tertiaryContainer = BrownElevated
+val md_theme_dark_onTertiaryContainer = GoldHighlight
 val md_theme_dark_error = Color(0xFFFFB4AB)
 val md_theme_dark_errorContainer = Color(0xFF93000A)
 val md_theme_dark_onError = Color(0xFF690005)
 val md_theme_dark_onErrorContainer = Color(0xFFFFDAD6)
-val md_theme_dark_background = Color(0xFF0F1416)
-val md_theme_dark_onBackground = Color(0xFFDEE3E6)
-val md_theme_dark_surface = Color(0xFF0F1416)
-val md_theme_dark_onSurface = Color(0xFFDEE3E6)
-val md_theme_dark_surfaceVariant = Color(0xFF40484C)
-val md_theme_dark_onSurfaceVariant = Color(0xFFC0C8CD)
-val md_theme_dark_outline = Color(0xFF8A9297)
-val md_theme_dark_inverseOnSurface = Color(0xFF0F1416)
-val md_theme_dark_inverseSurface = Color(0xFFDEE3E6)
-val md_theme_dark_inversePrimary = Color(0xFF006684)
-val md_theme_dark_surfaceTint = Color(0xFF67D3FF)
-val md_theme_dark_outlineVariant = Color(0xFF40484C)
+val md_theme_dark_background = BrownDeep
+val md_theme_dark_onBackground = WarmTextHigh
+val md_theme_dark_surface = BrownDeep
+val md_theme_dark_onSurface = WarmTextHigh
+val md_theme_dark_surfaceVariant = BrownElevated
+val md_theme_dark_onSurfaceVariant = WarmTextMuted
+val md_theme_dark_outline = WarmOutline
+val md_theme_dark_inverseOnSurface = BrownDeep
+val md_theme_dark_inverseSurface = WarmTextHigh
+val md_theme_dark_inversePrimary = GoldSecondary
+val md_theme_dark_surfaceTint = GoldPrimary
+val md_theme_dark_outlineVariant = WarmOutlineDim
 val md_theme_dark_scrim = Color(0xFF000000)
