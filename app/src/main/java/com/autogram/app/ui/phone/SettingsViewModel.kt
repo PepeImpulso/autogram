@@ -44,7 +44,6 @@ class SettingsViewModel @Inject constructor(
             val settings = settingsRepository.get()
             _uiState.value = _uiState.value.copy(
                 retentionDays = settings.retentionDays,
-                silentMode = settings.silentMode,
                 autoPlay = settings.autoPlayReplies,
                 minDuration = settings.minRecordingDurationMs,
                 maxRetries = settings.maxRetryAttempts,
@@ -78,14 +77,6 @@ class SettingsViewModel @Inject constructor(
 
     fun updateRetentionDays(days: Int) {
         _uiState.value = _uiState.value.copy(retentionDays = days)
-    }
-
-    fun updateSilentMode(enabled: Boolean) {
-        _uiState.value = _uiState.value.copy(silentMode = enabled)
-        viewModelScope.launch {
-            val settings = settingsRepository.get()
-            settingsRepository.update(settings.copy(silentMode = enabled))
-        }
     }
 
     fun updateAutoPlay(enabled: Boolean) {
@@ -284,7 +275,6 @@ class SettingsViewModel @Inject constructor(
 
 data class SettingsUiState(
     val retentionDays: Int = 30,
-    val silentMode: Boolean = false,
     val autoPlay: Boolean = true,
     val minDuration: Long = 1500,
     val maxRetries: Int = 3,

@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -85,6 +86,8 @@ class MainActivity : BaseLocaleActivity() {
     @Inject lateinit var settingsRepository: SettingsRepository
     @Inject lateinit var tdLibClient: TdLibClient
     @Inject lateinit var callStateMonitor: CallStateMonitor
+    @Inject lateinit var incomingMessageNotifier:
+        com.autogram.app.infrastructure.platform.IncomingMessageNotifier
 
     private val mainViewModel: MainViewModel by viewModels()
 
@@ -98,10 +101,23 @@ class MainActivity : BaseLocaleActivity() {
     override fun onResume() {
         super.onResume()
         lifecycleScope.launch {
+            // v1.20.11 — clear the launcher badge as soon as the user is
+            // looking at the app. Each per-conversation incoming-message
+            // notification contributes +1 to Android's launcher badge,
+            // so the only way to get rid of "2 unread" stale on the home
+            // screen is to dismiss those notifications. The pending-
+            // playback notification on its own channel is left alone
+            // (it represents queue items that still need draining).
+            incomingMessageNotifier.cancelAllIncoming()
             // Biometric gate: only prompts the first time in the app after
             // a long pause — BiometricGate enforces a grace window so
             // Ajustes ⇄ Inicio bounce doesn't trigger a prompt storm.
             val settings = settingsRepository.get()
+            // Reconfigure the incoming-voice channel's badge flag so
+            // toggling Settings → "Show pending badges" is reflected on
+            // the launcher icon dot too. Without this, only the per-circle
+            // dots responded; the launcher count was always-on.
+            incomingMessageNotifier.reconfigureBadgeFor(settings.showPendingBadges)
             if (settings.biometricLockEnabled
                 && BiometricGate.isSupported(this@MainActivity)
                 && !BiometricGate.recentlyUnlocked()
@@ -343,6 +359,7 @@ private fun MainScreen(
     val suggestions by viewModel.suggestedChips.collectAsState()
     val showPendingBadges by viewModel.showPendingBadges.collectAsState()
     val lastIncomingAudio by viewModel.lastIncomingWithAudio.collectAsState()
+    val pendingPlaybackCount by viewModel.pendingPlaybackCount.collectAsState()
     val folders by viewModel.folders.collectAsState()
     val selectedFolderId by viewModel.selectedFolderId.collectAsState()
     val quickReplyFilter by viewModel.quickReplyFilter.collectAsState()
@@ -437,7 +454,9 @@ private fun MainScreen(
                 online = isOnline,
                 hasLastOriginal = lastIncomingAudio != null,
                 isPlayingLast = isAnyPlaying,
-                onToggleLastOriginal = viewModel::toggleLastOriginal
+                pendingCount = pendingPlaybackCount,
+                onToggleLastOriginal = viewModel::toggleLastOriginal,
+                onDrainPending = viewModel::drainPending
             )
 
             if (folders.isNotEmpty()) {
@@ -577,7 +596,9 @@ private fun HeroHeader(
     online: Boolean,
     hasLastOriginal: Boolean,
     isPlayingLast: Boolean,
-    onToggleLastOriginal: () -> Unit
+    pendingCount: Int,
+    onToggleLastOriginal: () -> Unit,
+    onDrainPending: () -> Unit
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -603,17 +624,61 @@ private fun HeroHeader(
         )
         Spacer(Modifier.weight(1f))
         StatusPill(sendStatus, playback, outboxCount, online)
+        // v1.20.11 — drain-pending button. Visible only when there are
+        // queued messages waiting (silent / auto-play OFF arrivals,
+        // in-call deferrals). Tap drains the queue sequentially via
+        // PlayReplyUseCase.playAllPending. Sits left of the "replay
+        // last" toggle so the most-actionable affordance is closer to
+        // the user's thumb.
+        if (pendingCount > 0) {
+            DrainPendingButton(count = pendingCount, onClick = onDrainPending)
+        }
         // Always-visible "play last original" toggle. Disabled when the
         // active target has no incoming audio to play back; shows Stop
-        // while playback is in flight so a single tap kills it. Moved
-        // from the body into the hero header so a driver / glance-only
-        // user always knows where to find it, regardless of what's on
-        // screen right now.
+        // while playback is in flight so a single tap kills it. Plays
+        // ONLY the most-recent message — distinct from the pending-queue
+        // drainer above which plays every parked message.
         PlayLastOriginalToggle(
             enabled = hasLastOriginal,
             isPlaying = isPlayingLast,
             onClick = onToggleLastOriginal
         )
+    }
+}
+
+@Composable
+private fun DrainPendingButton(count: Int, onClick: () -> Unit) {
+    val container = MaterialTheme.colorScheme.primaryContainer
+    val content = MaterialTheme.colorScheme.onPrimaryContainer
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(20.dp),
+        color = container,
+        contentColor = content,
+        modifier = Modifier.heightIn(min = 40.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.PlayArrow,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Text(
+                text = if (count > 99) "99+" else count.toString(),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                stringResource(R.string.main_drain_pending_label),
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 

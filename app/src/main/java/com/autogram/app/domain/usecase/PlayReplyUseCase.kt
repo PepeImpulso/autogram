@@ -14,8 +14,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
@@ -84,11 +86,15 @@ class PlayReplyUseCase @Inject constructor(
         }
 
         val settings = settingsRepository.get()
-        if (respectUserGates && settings.silentMode) {
+        // v1.20.11: silentMode + autoPlayReplies collapsed into a single
+        // gate — autoPlayReplies=false now MEANS "queue for manual drain"
+        // instead of silently dropping the message. The old SILENT_MODE
+        // reason is reused for compatibility with existing pending rows
+        // in the persistent queue (PendingPlaybackEntity.reason).
+        if (respectUserGates && !settings.autoPlayReplies) {
             enqueuePending(message, PendingReason.SILENT_MODE)
             return
         }
-        if (respectUserGates && !settings.autoPlayReplies) return
 
         // Audit-HIGH-4: take the start-lock BEFORE inspecting isPlaying so two
         // concurrent calls can't both pass the check. If something is already
@@ -278,10 +284,10 @@ class PlayReplyUseCase @Inject constructor(
         if (respectUserGates && isCallActive) {
             enqueuePending(message, PendingReason.IN_CALL); return
         }
-        if (respectUserGates && settings.silentMode) {
+        // v1.20.11: silentMode + autoPlayReplies collapsed — !autoPlay = queue.
+        if (respectUserGates && !settings.autoPlayReplies) {
             enqueuePending(message, PendingReason.SILENT_MODE); return
         }
-        if (respectUserGates && !settings.autoPlayReplies) return
 
         // Same coordination as playTextMessage: refuse to speak over an
         // in-flight audio/TTS playback; enqueue the message instead so
@@ -332,13 +338,13 @@ class PlayReplyUseCase @Inject constructor(
             enqueuePending(message, PendingReason.IN_CALL)
             return
         }
-        if (respectUserGates && settings.silentMode) {
-            enqueuePending(message, PendingReason.SILENT_MODE)
-            return
-        }
+        // v1.20.11: silentMode + autoPlayReplies collapsed — !autoPlay = queue
+        // for manual drain via HeroHeader's "Play N pending" button. The
+        // row used to be left in RECEIVED state with no surface to play
+        // it from; now it's persisted as PENDING_PLAYBACK so it actually
+        // shows up in the queue and the count surfaces in the UI.
         if (respectUserGates && !settings.autoPlayReplies) {
-            // User opted out of auto-play. Leave the row RECEIVED so the
-            // History screen shows it as unread; they'll tap play themselves.
+            enqueuePending(message, PendingReason.SILENT_MODE)
             return
         }
 
@@ -537,6 +543,53 @@ class PlayReplyUseCase @Inject constructor(
      * Devuelve el número de mensajes pendientes de reproducción.
      */
     fun pendingCount(): Int = synchronized(pendingQueue) { pendingQueue.size }
+
+    /**
+     * Live count of pending messages — for UI surfaces that need to react
+     * (e.g. HeroHeader's "Play N pending" button toggling visibility).
+     * The internal queue isn't a Flow itself; we re-publish via the
+     * existing playbackStatus stream which already emits PendingCount on
+     * every enqueue / drain. UI binds to playbackStatus and falls back
+     * to [pendingCount] for the initial value.
+     */
+    val pendingCountFlow: Flow<Int>
+        get() = playbackStatus.map { status ->
+            when (status) {
+                is PlaybackStatus.PendingCount -> status.count
+                else -> pendingCount()
+            }
+        }
+
+    /**
+     * E (v1.20.11): user tapped a specific pending message in History and
+     * wants playback to start from there, then chain through the rest of
+     * the queue. Removes [message] from its current position in the
+     * pending queue, plays it immediately, and lets playNext() drain
+     * the remainder. If [message] isn't actually in the queue (e.g. the
+     * user tapped a long-played row), falls back to [playManually].
+     */
+    suspend fun playFromHere(message: Message) {
+        val wasQueued = synchronized(pendingQueue) {
+            val idx = pendingQueue.indexOfFirst { it.id == message.id }
+            if (idx >= 0) {
+                pendingQueue.removeAt(idx)
+                true
+            } else false
+        }
+        if (!wasQueued) {
+            playManually(message)
+            return
+        }
+        playbackScope.launch {
+            try {
+                pendingPlaybackDao.deleteByMessageId(message.id)
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to delete pending playback for ${message.id}")
+            }
+        }
+        pendingReplyNotifier.notifyPending(pendingCount())
+        playQueued(message)
+    }
 
     private suspend fun playQueued(message: Message) {
         val settings = settingsRepository.get()

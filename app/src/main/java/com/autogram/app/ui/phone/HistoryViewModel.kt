@@ -36,8 +36,21 @@ class HistoryViewModel @Inject constructor(
         }
     }
 
+    /**
+     * v1.20.11 — when the tapped row is a queued pending message, route
+     * through [PlayReplyUseCase.playFromHere] so playback starts at this
+     * message and chains through the rest of the queue. Non-pending rows
+     * (already played, sending, etc.) keep the old standalone-replay
+     * semantic — `playManually` ignores the queue entirely.
+     */
     fun onPlayClicked(message: Message) {
-        viewModelScope.launch { playReplyUseCase.playManually(message) }
+        viewModelScope.launch {
+            if (message.state == com.autogram.app.domain.model.MessageState.PENDING_PLAYBACK) {
+                playReplyUseCase.playFromHere(message)
+            } else {
+                playReplyUseCase.playManually(message)
+            }
+        }
     }
 
     fun onPauseClicked() {

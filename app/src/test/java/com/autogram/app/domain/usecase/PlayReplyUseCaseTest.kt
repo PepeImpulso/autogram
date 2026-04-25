@@ -111,8 +111,10 @@ class PlayReplyUseCaseTest {
         verify(exactly = 0) { audioPlayer.play(any(), any(), any()) }
     }
 
-    @Test fun `silent mode enqueues with SILENT_MODE reason`() = runTest {
-        coEvery { settingsRepository.get() } returns defaultSettings.copy(silentMode = true)
+    @Test fun `autoPlay off enqueues with SILENT_MODE reason`() = runTest {
+        // v1.20.11: silentMode collapsed into autoPlayReplies — autoPlay=false
+        // now means "queue for manual drain" (was "drop silently").
+        coEvery { settingsRepository.get() } returns defaultSettings.copy(autoPlayReplies = false)
         val msg = voiceMessage()
         useCase.playVoiceMessage(msg, isCallActive = false)
         coVerify { pendingPlaybackDao.insert(match { it.reason == PendingReason.SILENT_MODE }) }
@@ -142,10 +144,13 @@ class PlayReplyUseCaseTest {
         verify(exactly = 0) { audioPlayer.play(any(), any(), any()) }
     }
 
-    @Test fun `playVoiceMessage skips when autoPlayReplies is off`() = runTest {
+    @Test fun `playVoiceMessage with autoPlay off enqueues instead of dropping`() = runTest {
+        // v1.20.11 regression guard: autoPlay=false used to drop messages
+        // silently; now it must enqueue them so the "Play N pending"
+        // surface in HeroHeader can drain them later.
         coEvery { settingsRepository.get() } returns defaultSettings.copy(autoPlayReplies = false)
         useCase.playVoiceMessage(voiceMessage(), isCallActive = false)
-        coVerify(exactly = 0) { pendingPlaybackDao.insert(any()) }
+        coVerify { pendingPlaybackDao.insert(match { it.reason == PendingReason.SILENT_MODE }) }
         verify(exactly = 0) { audioPlayer.play(any(), any(), any()) }
     }
 
@@ -161,8 +166,8 @@ class PlayReplyUseCaseTest {
 
     // --- playTextMessage gates --------------------------------------------
 
-    @Test fun `playTextMessage respects silent mode`() = runTest {
-        coEvery { settingsRepository.get() } returns defaultSettings.copy(silentMode = true)
+    @Test fun `playTextMessage with autoPlay off enqueues with SILENT_MODE reason`() = runTest {
+        coEvery { settingsRepository.get() } returns defaultSettings.copy(autoPlayReplies = false)
         useCase.playTextMessage(textMessage(), isCallActive = false)
         coVerify { pendingPlaybackDao.insert(match { it.reason == PendingReason.SILENT_MODE }) }
         coVerify(exactly = 0) { ttsPlayer.speak(any(), any(), any()) }
@@ -174,11 +179,11 @@ class PlayReplyUseCaseTest {
         coVerify(exactly = 0) { ttsPlayer.speak(any(), any(), any()) }
     }
 
-    @Test fun `playTextMessage skips when autoPlayReplies is off`() = runTest {
+    @Test fun `playTextMessage with autoPlay off enqueues for manual drain`() = runTest {
+        // v1.20.11: !autoPlay now queues text replies too (was: silent drop).
         coEvery { settingsRepository.get() } returns defaultSettings.copy(autoPlayReplies = false)
         useCase.playTextMessage(textMessage(), isCallActive = false)
-        // Doesn't enqueue (the user opted out) and doesn't speak.
-        coVerify(exactly = 0) { pendingPlaybackDao.insert(any()) }
+        coVerify { pendingPlaybackDao.insert(match { it.reason == PendingReason.SILENT_MODE }) }
         coVerify(exactly = 0) { ttsPlayer.speak(any(), any(), any()) }
     }
 
@@ -243,9 +248,9 @@ class PlayReplyUseCaseTest {
     // --- stopAll resets state ---------------------------------------------
 
     @Test fun `stopAll clears queue, cancels notifier, idles status`() = runTest {
-        // Seed the queue first via the silent-mode path so we have something
+        // Seed the queue first via the autoPlay-off path so we have something
         // to clear.
-        coEvery { settingsRepository.get() } returns defaultSettings.copy(silentMode = true)
+        coEvery { settingsRepository.get() } returns defaultSettings.copy(autoPlayReplies = false)
         useCase.playVoiceMessage(voiceMessage("a"), false)
         useCase.playVoiceMessage(voiceMessage("b"), false)
         assertEquals(2, useCase.pendingCount())

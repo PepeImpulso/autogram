@@ -17,9 +17,16 @@ class ManageSettingsUseCase @Inject constructor(
 
     // BUG-30: Removed empty updateBotToken() — tokens are managed via ConversationRepository
 
+    // v1.20.11: silentMode collapsed into autoPlayReplies — see PlayReplyUseCase.
+    // Callers that used updateSilentMode(true) should now call updateAutoPlay(false);
+    // the "queue for manual drain" semantics moved over.
+    @Deprecated(
+        message = "Silent mode merged into autoPlayReplies in v1.20.11. " +
+            "Pass !enabled to updateAutoPlay() instead.",
+        replaceWith = ReplaceWith("updateAutoPlay(!enabled)")
+    )
     suspend fun updateSilentMode(enabled: Boolean) {
-        val settings = settingsRepository.get()
-        settingsRepository.update(settings.copy(silentMode = enabled))
+        updateAutoPlay(!enabled)
     }
 
     suspend fun updateAutoPlay(enabled: Boolean) {

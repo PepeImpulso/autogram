@@ -71,7 +71,12 @@ class MainScreen(
     private val screenScope = CoroutineScope(Dispatchers.Main + screenJob)
     private var resetJob: kotlinx.coroutines.Job? = null
 
-    private val silentMode = MutableStateFlow(false)
+    // Reflects settings.autoPlayReplies — the AA actionStrip toggle pauses
+    // auto-playback (off) or resumes it (on). Inverted from the historical
+    // "silentMode" flag this used to track; v1.20.11 collapsed both into
+    // autoPlayReplies (see PlayReplyUseCase). The "silent" naming stays
+    // here only because the icon affordance still reads as "mute audio".
+    private val autoPlayOff = MutableStateFlow(false)
     private val cachedQuickReplies = MutableStateFlow<List<QuickReply>>(emptyList())
     private val cachedPinned = MutableStateFlow<List<Conversation>>(emptyList())
     private val cachedMessages = MutableStateFlow<List<Message>>(emptyList())
@@ -117,8 +122,9 @@ class MainScreen(
         }
         screenScope.launch {
             manageSettingsUseCase.observe().collect {
-                if (silentMode.value != it.silentMode) {
-                    silentMode.value = it.silentMode
+                val muted = !it.autoPlayReplies
+                if (autoPlayOff.value != muted) {
+                    autoPlayOff.value = muted
                     invalidate()
                 }
             }
@@ -372,13 +378,16 @@ class MainScreen(
     private fun buildActionStrip(): ActionStrip {
         // AA rule: ActionStrip accepts at most ONE action with a custom
         // title; rest must be icon-only.
-        val isSilent = silentMode.value
-        val silentIcon = if (isSilent) R.drawable.ic_silent else R.drawable.ic_volume_up
+        // Mute toggle = autoPlayReplies inverted. When OFF (muted),
+        // incoming replies queue up for manual drain via the pending
+        // tile / phone HeroHeader's "Play N pending" button.
+        val isMuted = autoPlayOff.value
+        val muteIcon = if (isMuted) R.drawable.ic_silent else R.drawable.ic_volume_up
         return ActionStrip.Builder()
             .addAction(
                 Action.Builder()
-                    .setIcon(carIcon(silentIcon, if (isSilent) CarColor.YELLOW else CarColor.DEFAULT))
-                    .setOnClickListener { toggleSilent() }
+                    .setIcon(carIcon(muteIcon, if (isMuted) CarColor.YELLOW else CarColor.DEFAULT))
+                    .setOnClickListener { toggleAutoPlay() }
                     .build()
             )
             .addAction(
@@ -410,7 +419,7 @@ class MainScreen(
             VoiceCommand.PAUSAR -> { playReplyUseCase.pause(); invalidate() }
             VoiceCommand.REANUDAR -> { playReplyUseCase.resume(); invalidate() }
             VoiceCommand.ENVIAR -> stopAndSend()
-            VoiceCommand.SILENCIO -> toggleSilent()
+            VoiceCommand.SILENCIO -> toggleAutoPlay()
             VoiceCommand.UNKNOWN -> screenManager.push(VoiceCommandsHelpScreen(carContext))
         }
     }
@@ -510,9 +519,12 @@ class MainScreen(
         }
     }
 
-    private fun toggleSilent() {
+    private fun toggleAutoPlay() {
         screenScope.launch {
-            manageSettingsUseCase.updateSilentMode(!silentMode.value)
+            // autoPlayOff.value == true means muted → flipping unmutes
+            // (autoPlayReplies = true). Inversely, !autoPlayOff (currently
+            // playing) → mute (autoPlayReplies = false).
+            manageSettingsUseCase.updateAutoPlay(autoPlayOff.value)
         }
     }
 

@@ -28,7 +28,7 @@ import javax.inject.Singleton
         SettingsEntity::class,
         CircleFolderEntity::class
     ],
-    version = 15,
+    version = 16,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -162,6 +162,21 @@ object DatabaseModule {
         }
     }
 
+    // v15 → v16: silentMode collapsed into autoPlayReplies. The column
+    // stays in the schema for backward-compat (the entity still maps it,
+    // but the domain model + PlayReplyUseCase ignore it from now on).
+    // Existing users who had silentMode=ON or autoPlayReplies=OFF get
+    // converted to autoPlayReplies=OFF — the new "queue for manual drain"
+    // semantic. Users who had both off-by-default keep autoPlayReplies=ON.
+    private val MIGRATION_15_16 = object : Migration(15, 16) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "UPDATE settings SET autoPlayReplies = 0 " +
+                    "WHERE silentMode = 1 OR autoPlayReplies = 0"
+            )
+        }
+    }
+
     // v11 → v12: summary fields on messages + summary engine config in settings.
     // Feature is off by default (summaryEngine=NONE); turning it on requires
     // the user to pick an engine in Settings → Summary.
@@ -185,7 +200,7 @@ object DatabaseModule {
             AutogramDatabase::class.java,
             "autogram.db"
         )
-            .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
+            .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
             // Fallback for any earlier schema (v1 / v2) that has no proper path
             // forward — those versions predate the stable 1.2 line and already
             // wiped once, so destroying from them is acceptable.

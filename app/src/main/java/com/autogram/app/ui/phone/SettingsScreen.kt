@@ -271,17 +271,15 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 title = stringResource(R.string.settings_section_playback),
                 subtitle = stringResource(R.string.settings_section_playback_sub)
             ) {
+                // v1.20.11: silent mode collapsed into auto-play. The toggle
+                // here is the single source of truth — OFF means "queue
+                // every incoming reply for manual playback from HeroHeader's
+                // 'Play N pending' button" (the old silent-mode semantic).
                 SwitchRow(
                     label = stringResource(R.string.settings_autoplay),
+                    supporting = stringResource(R.string.settings_autoplay_sub),
                     checked = state.autoPlay,
                     onCheckedChange = viewModel::updateAutoPlay
-                )
-                SettingsDivider()
-                SwitchRow(
-                    label = stringResource(R.string.settings_silent),
-                    supporting = stringResource(R.string.settings_silent_sub),
-                    checked = state.silentMode,
-                    onCheckedChange = viewModel::updateSilentMode
                 )
                 SettingsDivider()
                 SliderRow(

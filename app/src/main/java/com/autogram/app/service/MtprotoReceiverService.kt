@@ -250,7 +250,7 @@ class MtprotoReceiverService : Service() {
         val inCall = callStateMonitor.isInCall.value
         Timber.i(
             "Incoming voice ${message.id} — autoPlay=${settings.autoPlayReplies} " +
-            "silent=${settings.silentMode} inCall=$inCall " +
+            "inCall=$inCall " +
             "summarize=${settings.summarizeLongMessages} engine=${settings.summaryEngine}"
         )
         if (settings.summarizeLongMessages && settings.summaryEngine != com.autogram.app.domain.model.SummaryEngineType.NONE) {

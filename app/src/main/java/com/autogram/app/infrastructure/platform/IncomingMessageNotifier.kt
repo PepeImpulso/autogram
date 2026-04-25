@@ -39,7 +39,17 @@ class IncomingMessageNotifier @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
 
-    fun ensureChannel() {
+    /**
+     * Create / update the notification channel. The launcher-badge flag
+     * (`setShowBadge`) is bound to the user's `showPendingBadges` setting:
+     * v1.20.11 surfaced that this was previously hard-wired to true, so
+     * users who disabled per-circle badges still got a launcher dot count
+     * they couldn't make sense of. Now the channel is reconfigured every
+     * time we ensure it; if the setting changes the channel needs to be
+     * deleted-and-recreated (Android won't let us mutate setShowBadge
+     * after creation), which we do via [reconfigureBadgeFor].
+     */
+    fun ensureChannel(showBadge: Boolean = true) {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (nm.getNotificationChannel(CHANNEL_ID) != null) return
         nm.createNotificationChannel(
@@ -49,9 +59,48 @@ class IncomingMessageNotifier @Inject constructor(
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = context.getString(R.string.notification_channel_incoming_voice_desc)
-                setShowBadge(true)
+                setShowBadge(showBadge)
             }
         )
+    }
+
+    /**
+     * Re-create the channel with the updated `setShowBadge` value.
+     * Android NotificationManager doesn't let us mutate `setShowBadge`
+     * on an existing channel — only delete + re-create. Called from
+     * MainActivity.onResume so the channel state always tracks the
+     * current `showPendingBadges` setting.
+     */
+    fun reconfigureBadgeFor(showBadge: Boolean) {
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val existing = nm.getNotificationChannel(CHANNEL_ID)
+        if (existing != null && existing.canShowBadge() == showBadge) return
+        runCatching { nm.deleteNotificationChannel(CHANNEL_ID) }
+        ensureChannel(showBadge = showBadge)
+    }
+
+    /**
+     * Cancel every per-conversation incoming-message notification this
+     * notifier has posted. Walks the system's active-notifications list
+     * and dismisses anything on our [CHANNEL_ID]. Leaves notifications
+     * on other channels (notably [PendingReplyNotifier.CHANNEL_ID])
+     * untouched so the pending-playback nag stays visible until the
+     * user actually drains the queue.
+     *
+     * Called from MainActivity.onResume — once the user is looking at
+     * the app, the per-message badge has done its job.
+     */
+    fun cancelAllIncoming() {
+        runCatching {
+            val nm = context.getSystemService(NotificationManager::class.java) ?: return
+            val active = nm.activeNotifications ?: return
+            val nmCompat = NotificationManagerCompat.from(context)
+            for (sb in active) {
+                if (sb.notification?.channelId == CHANNEL_ID) {
+                    nmCompat.cancel(sb.id)
+                }
+            }
+        }.onFailure { Timber.w(it, "cancelAllIncoming failed") }
     }
 
     /**

@@ -123,6 +123,34 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    /**
+     * v1.20.11 — count of messages parked in PlayReplyUseCase's pending
+     * queue (silent-mode / autoPlay-off arrivals + in-call deferrals).
+     * Drives the HeroHeader "▶ N pending" affordance: visible only when
+     * >0; tap calls [drainPending] which kicks the audio chain to play
+     * everything sequentially.
+     *
+     * Backed by playbackStatus (the existing Flow), which emits
+     * PendingCount on every enqueue / drain transition. The map step
+     * folds non-PendingCount statuses (Idle/Playing/Paused) into the
+     * authoritative [pendingCount] snapshot so the count stays correct
+     * while a queued message is actively playing.
+     */
+    val pendingPlaybackCount: StateFlow<Int> =
+        playReplyUseCase.pendingCountFlow
+            .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+
+    /**
+     * v1.20.11 — kick the pending-playback chain. No-op when the queue
+     * is empty. Bypasses `silentMode` / `autoPlay` gates internally
+     * because the user explicitly requested playback.
+     */
+    fun drainPending() {
+        viewModelScope.launch {
+            playReplyUseCase.playAllPending()
+        }
+    }
+
     val pinned: StateFlow<List<Conversation>> =
         conversationRepository.observePinned()
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())

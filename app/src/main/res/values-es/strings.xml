@@ -9,8 +9,9 @@
     <!-- Common -->
     <string name="common_back">Volver</string>
     <string name="common_dismiss">Cerrar</string>
-    <string name="main_play_last_original">Reproducir original</string>
+    <string name="main_play_last_original">Repetir último</string>
     <string name="main_stop_last_original">Detener reproducción</string>
+    <string name="main_drain_pending_label">pendientes</string>
     <string name="tile_record_label">Voz a Merlin</string>
     <string name="tile_no_primary">Elige un destinatario principal en Ajustes</string>
     <string name="common_cancel">Cancelar</string>
@@ -128,8 +129,7 @@
     <string name="settings_manage_pinned">Gestionar accesos rápidos</string>
     <string name="settings_manage_pinned_sub">Círculos secundarios con sus fotos.</string>
     <string name="settings_autoplay">Auto-reproducir respuestas</string>
-    <string name="settings_silent">Modo silencio</string>
-    <string name="settings_silent_sub">Los audios entrantes se encolan en vez de sonar.</string>
+    <string name="settings_autoplay_sub">Cuando está activado, las respuestas (voz y texto) suenan en alto al recibirse. Cuando está desactivado, se encolan para reproducirlas después desde el botón \"▶ N pendientes\" de la pantalla principal.</string>
     <string name="settings_playback_speed">Velocidad de reproducción</string>
     <string name="settings_recording_cues">Pitido de grabación</string>
     <string name="settings_recording_cues_sub">Tono breve que suena al empezar y terminar una grabación para confirmar que el micrófono se abrió — aviso acústico sin mirar la pantalla.</string>
