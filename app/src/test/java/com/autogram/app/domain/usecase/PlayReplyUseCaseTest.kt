@@ -247,9 +247,9 @@ class PlayReplyUseCaseTest {
 
     // --- stopAll resets state ---------------------------------------------
 
-    @Test fun `stopAll clears queue, cancels notifier, idles status`() = runTest {
+    @Test fun `stopAll preserves pending queue (v1_20_11) and refreshes notifier`() = runTest {
         // Seed the queue first via the autoPlay-off path so we have something
-        // to clear.
+        // that should survive the stop.
         coEvery { settingsRepository.get() } returns defaultSettings.copy(autoPlayReplies = false)
         useCase.playVoiceMessage(voiceMessage("a"), false)
         useCase.playVoiceMessage(voiceMessage("b"), false)
@@ -257,8 +257,21 @@ class PlayReplyUseCaseTest {
 
         useCase.stopAll()
         verify { audioPlayer.stop() }
+        // Queue is data, not playback chrome — must NOT be wiped just because
+        // the user pressed Stop / started a new recording.
+        assertEquals(2, useCase.pendingCount())
+        // Notifier stays alive with the surviving count instead of being
+        // cancelled outright.
+        verify { pendingReplyNotifier.notifyPending(2) }
+        val status = useCase.playbackStatus.value
+        assertTrue(status is PlayReplyUseCase.PlaybackStatus.PendingCount)
+        assertEquals(2, (status as PlayReplyUseCase.PlaybackStatus.PendingCount).count)
+    }
+
+    @Test fun `stopAll on empty queue idles status and cancels notifier`() = runTest {
+        useCase.stopAll()
+        verify { audioPlayer.stop() }
         verify { pendingReplyNotifier.cancel() }
-        assertEquals(0, useCase.pendingCount())
         assertEquals(PlayReplyUseCase.PlaybackStatus.Idle, useCase.playbackStatus.value)
     }
 

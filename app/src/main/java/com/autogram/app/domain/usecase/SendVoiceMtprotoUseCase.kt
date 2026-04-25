@@ -105,9 +105,11 @@ class SendVoiceMtprotoUseCase @Inject constructor(
                 return Result.failure(IllegalStateException("Pipeline ocupado: ${_status.value::class.simpleName}"))
             }
         }
-        // Interrupt any voice reply currently playing so the driver can speak over
-        // an unwanted/long-winded answer from Merlin and send their own prompt.
-        // Also drops any queued pending playbacks.
+        // Interrupt any voice reply currently playing so the driver can speak
+        // over an unwanted/long-winded answer from Merlin and send their own
+        // prompt. v1.20.11: stopAll no longer wipes the pending queue — the
+        // queued messages survive so the user can drain them after sending
+        // their reply (via HeroHeader's "Play N pending" button).
         playReplyUseCase.stopAll()
         val audioDir = File(context.cacheDir, "audio_outgoing").apply { mkdirs() }
         val audioFile = File(audioDir, "${UUID.randomUUID()}.ogg")

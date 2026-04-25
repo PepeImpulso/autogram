@@ -408,7 +408,16 @@ class PlayReplyUseCase @Inject constructor(
     }
 
     /**
-     * Detiene toda reproducción y limpia la cola.
+     * Stop whatever is currently playing (audio file + in-flight TTS).
+     *
+     * v1.20.11: NO LONGER clears the pending queue. The previous behaviour
+     * cleared the in-memory queue but left the persisted PendingPlaybackDao
+     * rows intact, so the messages reappeared in `pendingCount` on the next
+     * app launch (via `restorePendingQueue`) — visible-then-invisible state
+     * the user couldn't trust. Now the queue is a durable user-facing surface
+     * (drained via HeroHeader's "Play N pending" button), so "stop" only
+     * stops the current playback; queued messages stay queued. The
+     * pending-replies notification is kept in sync with the surviving count.
      */
     fun stopAll() {
         audioPlayer.stop()
@@ -416,11 +425,18 @@ class PlayReplyUseCase @Inject constructor(
         // the user starts recording would otherwise keep speaking into
         // the mic (audio contamination of the new recording).
         ttsPlayer.stop()
-        synchronized(pendingQueue) { pendingQueue.clear() }
         currentPlayingId = null
-        _playbackStatus.value = PlaybackStatus.Idle
-        pendingReplyNotifier.cancel()
-        // BUG-44 FIX: Cancel and recreate playback scope
+        val remaining = pendingCount()
+        if (remaining > 0) {
+            _playbackStatus.value = PlaybackStatus.PendingCount(remaining)
+            pendingReplyNotifier.notifyPending(remaining)
+        } else {
+            _playbackStatus.value = PlaybackStatus.Idle
+            pendingReplyNotifier.cancel()
+        }
+        // BUG-44 FIX: Cancel and recreate playback scope so MediaPlayer
+        // completion callbacks for the just-stopped playback don't fire
+        // DB updates against a "now playing" row that's no longer playing.
         playbackScope.cancel()
         playbackScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     }
@@ -513,17 +529,29 @@ class PlayReplyUseCase @Inject constructor(
     }
 
     /**
-     * Reproduce todos los mensajes pendientes (cuando se desactiva el modo silencio o termina la llamada).
+     * Drain the queued pending messages sequentially. Triggered by:
+     *   - HeroHeader's "Play N pending" button (v1.20.11)
+     *   - Android Auto's pending-count tile
+     *   - Voice command "REPETIR"
+     *
+     * Pops the first queued message and starts playback; the audio-
+     * completion → playNext() chain handles the rest. Iterating manually
+     * with a for-loop would re-enqueue every item past the first, since
+     * playVoiceMessage gates on `audioPlayer.isPlaying()`.
      */
     suspend fun playAllPending() {
-        // DON'T drain the queue with a for-loop calling playVoiceMessage:
-        // audioPlayer.play is asynchronous and returns immediately, so
-        // the second iteration's playVoiceMessage sees isPlaying()==true
-        // and re-enqueues the message — every item after the first was
-        // effectively re-queued in the exact same order, so nothing
-        // ever drained. Instead, kick off the first message and let the
-        // audio-completion → playNext() chain drain the rest the same
-        // way an incoming reply drains the queue.
+        // v1.20.11 — if a one-off playback is already in flight (e.g. the
+        // user tapped Replay-last, then immediately tapped Play N pending),
+        // hard-stop it so the queue actually starts at message #1. Without
+        // this, the first queued message would hit
+        // `playVoiceMessage`'s isPlaying() gate and get re-enqueued at the
+        // BACK of the queue while its DAO row was already deleted —
+        // ghosted message after the next app restart.
+        if (audioPlayer.isPlaying() || ttsPlayer.isSpeaking()) {
+            audioPlayer.stop()
+            ttsPlayer.stop()
+            currentPlayingId = null
+        }
         val first: Message? = synchronized(pendingQueue) {
             if (pendingQueue.isEmpty()) null else pendingQueue.removeAt(0)
         }
@@ -579,6 +607,15 @@ class PlayReplyUseCase @Inject constructor(
         if (!wasQueued) {
             playManually(message)
             return
+        }
+        // Hard-stop any in-flight playback so the requested message can
+        // actually become the playing one — otherwise playVoiceMessage's
+        // isPlaying() gate would re-enqueue it at the END of the queue
+        // and start playing the wrong thing. Same fix as playAllPending.
+        if (audioPlayer.isPlaying() || ttsPlayer.isSpeaking()) {
+            audioPlayer.stop()
+            ttsPlayer.stop()
+            currentPlayingId = null
         }
         playbackScope.launch {
             try {

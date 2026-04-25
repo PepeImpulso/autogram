@@ -39,17 +39,22 @@ class IncomingMessageNotifier @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
 
+    // Source of truth for the channel's setShowBadge value. Updated from
+    // MainActivity.onResume via [reconfigureBadgeFor]. Read by
+    // [ensureChannel] so that any post path landing in the tiny window
+    // between deleteNotificationChannel + recreate sees the desired
+    // value instead of clobbering it back to the default `true`.
+    @Volatile private var desiredShowBadge: Boolean = true
+
     /**
-     * Create / update the notification channel. The launcher-badge flag
-     * (`setShowBadge`) is bound to the user's `showPendingBadges` setting:
-     * v1.20.11 surfaced that this was previously hard-wired to true, so
-     * users who disabled per-circle badges still got a launcher dot count
-     * they couldn't make sense of. Now the channel is reconfigured every
-     * time we ensure it; if the setting changes the channel needs to be
-     * deleted-and-recreated (Android won't let us mutate setShowBadge
-     * after creation), which we do via [reconfigureBadgeFor].
+     * Create the notification channel if it doesn't already exist. Uses
+     * [desiredShowBadge] as the badge flag — never the per-call default
+     * — so a notification posted concurrently with [reconfigureBadgeFor]
+     * can't restore the wrong badge state. The badge value can only be
+     * changed via [reconfigureBadgeFor] (Android forbids mutating
+     * `setShowBadge` on an existing channel).
      */
-    fun ensureChannel(showBadge: Boolean = true) {
+    fun ensureChannel() {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (nm.getNotificationChannel(CHANNEL_ID) != null) return
         nm.createNotificationChannel(
@@ -59,7 +64,7 @@ class IncomingMessageNotifier @Inject constructor(
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = context.getString(R.string.notification_channel_incoming_voice_desc)
-                setShowBadge(showBadge)
+                setShowBadge(desiredShowBadge)
             }
         )
     }
@@ -69,14 +74,17 @@ class IncomingMessageNotifier @Inject constructor(
      * Android NotificationManager doesn't let us mutate `setShowBadge`
      * on an existing channel — only delete + re-create. Called from
      * MainActivity.onResume so the channel state always tracks the
-     * current `showPendingBadges` setting.
+     * current `showPendingBadges` setting. Sets [desiredShowBadge]
+     * first so any notification posting between delete and recreate
+     * uses the new value.
      */
     fun reconfigureBadgeFor(showBadge: Boolean) {
+        desiredShowBadge = showBadge
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val existing = nm.getNotificationChannel(CHANNEL_ID)
         if (existing != null && existing.canShowBadge() == showBadge) return
         runCatching { nm.deleteNotificationChannel(CHANNEL_ID) }
-        ensureChannel(showBadge = showBadge)
+        ensureChannel()
     }
 
     /**
