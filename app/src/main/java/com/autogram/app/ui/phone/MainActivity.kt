@@ -258,20 +258,22 @@ class MainActivity : BaseLocaleActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    MainScreen(
-                        onOpenSettings = { startActivity(Intent(this, SettingsActivity::class.java)) },
-                        onOpenHistory = { startActivity(Intent(this, HistoryActivity::class.java)) },
-                        onOpenHistoryFor = { conversationId ->
-                            startActivity(
-                                Intent(this, HistoryActivity::class.java).apply {
-                                    putExtra(HistoryActivity.EXTRA_CONVERSATION_ID, conversationId)
-                                }
-                            )
-                        },
-                        onOpenStats = { startActivity(Intent(this, StatsActivity::class.java)) },
-                        onManagePinned = { startActivity(Intent(this, ManagePinnedActivity::class.java)) },
-                        onManageQuickReplies = { startActivity(Intent(this, QuickRepliesSettingsActivity::class.java)) }
-                    )
+                    DebugScreenshotOverlay {
+                        MainScreen(
+                            onOpenSettings = { startActivity(Intent(this, SettingsActivity::class.java)) },
+                            onOpenHistory = { startActivity(Intent(this, HistoryActivity::class.java)) },
+                            onOpenHistoryFor = { conversationId ->
+                                startActivity(
+                                    Intent(this, HistoryActivity::class.java).apply {
+                                        putExtra(HistoryActivity.EXTRA_CONVERSATION_ID, conversationId)
+                                    }
+                                )
+                            },
+                            onOpenStats = { startActivity(Intent(this, StatsActivity::class.java)) },
+                            onManagePinned = { startActivity(Intent(this, ManagePinnedActivity::class.java)) },
+                            onManageQuickReplies = { startActivity(Intent(this, QuickRepliesSettingsActivity::class.java)) }
+                        )
+                    }
                 }
             }
         }
@@ -369,7 +371,6 @@ private fun MainScreen(
     val showPendingBadges by viewModel.showPendingBadges.collectAsState()
     val lastIncomingAudio by viewModel.lastIncomingWithAudio.collectAsState()
     val pendingPlaybackCount by viewModel.pendingPlaybackCount.collectAsState()
-    val developerMode by viewModel.developerMode.collectAsState()
     val folders by viewModel.folders.collectAsState()
     val selectedFolderId by viewModel.selectedFolderId.collectAsState()
     val quickReplyFilter by viewModel.quickReplyFilter.collectAsState()
@@ -465,23 +466,8 @@ private fun MainScreen(
                 hasLastOriginal = lastIncomingAudio != null,
                 isPlayingLast = isAnyPlaying,
                 pendingCount = pendingPlaybackCount,
-                showScreenshotButton = developerMode,
                 onToggleLastOriginal = viewModel::toggleLastOriginal,
-                onDrainPending = viewModel::drainPending,
-                onCaptureScreenshot = {
-                    val activity = ctx as? android.app.Activity
-                    if (activity != null) {
-                        val uri = com.autogram.app.infrastructure.platform
-                            .ScreenshotCapture.captureAndShare(activity)
-                        val msgRes = if (uri != null) R.string.debug_screenshot_saved
-                                     else R.string.debug_screenshot_failed
-                        android.widget.Toast.makeText(
-                            activity,
-                            activity.getString(msgRes),
-                            android.widget.Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
+                onDrainPending = viewModel::drainPending
             )
 
             if (folders.isNotEmpty()) {
@@ -624,10 +610,8 @@ private fun HeroHeader(
     hasLastOriginal: Boolean,
     isPlayingLast: Boolean,
     pendingCount: Int,
-    showScreenshotButton: Boolean,
     onToggleLastOriginal: () -> Unit,
-    onDrainPending: () -> Unit,
-    onCaptureScreenshot: () -> Unit
+    onDrainPending: () -> Unit
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -653,15 +637,9 @@ private fun HeroHeader(
         )
         Spacer(Modifier.weight(1f))
         StatusPill(sendStatus, playback, outboxCount, online)
-        // v1.20.14 — debug screenshot button, only visible when Settings
-        // → Developer mode is ON. Captures the current screen, drops it
-        // into Pictures/Autogram, and opens the system share sheet so the
-        // user can send it to the developer for bug-report context. Sits
-        // far left of the action cluster so it never gets accidentally
-        // tapped when reaching for the more-frequently-used queue/replay.
-        if (showScreenshotButton) {
-            DebugScreenshotButton(onClick = onCaptureScreenshot)
-        }
+        // v1.20.15: debug screenshot button moved out of the header into
+        // a global FAB (DebugScreenshotOverlay) so it's available on
+        // every screen, not just Home. The header stays clean.
         // v1.20.11 — drain-pending button. Visible only when there are
         // queued messages waiting (silent / auto-play OFF arrivals,
         // in-call deferrals). Tap drains the queue sequentially via
@@ -681,27 +659,6 @@ private fun HeroHeader(
             isPlaying = isPlayingLast,
             onClick = onToggleLastOriginal
         )
-    }
-}
-
-@Composable
-private fun DebugScreenshotButton(onClick: () -> Unit) {
-    val container = MaterialTheme.colorScheme.tertiaryContainer
-    val content = MaterialTheme.colorScheme.onTertiaryContainer
-    Surface(
-        onClick = onClick,
-        shape = CircleShape,
-        color = container,
-        contentColor = content,
-        modifier = Modifier.size(40.dp)
-    ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-            Icon(
-                imageVector = Icons.Filled.CameraAlt,
-                contentDescription = stringResource(R.string.debug_screenshot_button_cd),
-                modifier = Modifier.size(20.dp)
-            )
-        }
     }
 }
 

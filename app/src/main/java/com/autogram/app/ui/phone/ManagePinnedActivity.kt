@@ -111,11 +111,13 @@ class ManagePinnedActivity : BaseLocaleActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             AutogramTheme {
-                ManagePinnedScreen(
-                    viewModel = viewModel,
-                    onBack = { finish() },
-                    onAdd = { startActivity(Intent(this, PinnedPickerActivity::class.java)) }
-                )
+                DebugScreenshotOverlay {
+                    ManagePinnedScreen(
+                        viewModel = viewModel,
+                        onBack = { finish() },
+                        onAdd = { startActivity(Intent(this, PinnedPickerActivity::class.java)) }
+                    )
+                }
             }
         }
     }

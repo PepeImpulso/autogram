@@ -47,15 +47,22 @@ class HistoryViewModel @Inject constructor(
             }
             _conversation.value = target
             if (target != null) {
-                // v1.20.14: opening History on a conversation with unread
-                // incoming counts as acknowledging them — the badge query
-                // (observePendingReplyCounts) compares incoming.createdAt
-                // against conversations.lastRepliedAt, so bumping that to
-                // now clears the per-circle red dot. Only used as an "ack"
-                // signal; the timestamp isn't surfaced anywhere in the
-                // UI as "last reply", so the conflation is harmless.
-                conversationRepository.upsert(
-                    target.copy(lastRepliedAt = System.currentTimeMillis())
+                // v1.20.15 CRITICAL FIX (was v1.20.14 data-loss bug):
+                // Bump conversations.lastRepliedAt via the targeted UPDATE
+                // helper, NOT via upsert. ConversationDao.upsert is
+                // @Insert(onConflict = REPLACE), which SQLite implements
+                // as DELETE-then-INSERT on the conflicting row — and
+                // MessageEntity has ForeignKey(onDelete = CASCADE) on
+                // conversations.id, so the upsert was wiping out every
+                // message for the tapped conversation. setLastRepliedAt
+                // is a plain UPDATE with no FK side-effects.
+                //
+                // Acknowledge-on-view: clears the per-circle pending
+                // badge by making observePendingReplyCounts'
+                // `m.createdAt > c.lastRepliedAt` filter return zero for
+                // existing incoming messages.
+                conversationRepository.setLastRepliedAt(
+                    target.id, System.currentTimeMillis()
                 )
                 messageRepository.observeAll(target.id).collect { messages ->
                     _messages.value = messages

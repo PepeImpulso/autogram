@@ -12,7 +12,9 @@ class StatsActivity : BaseLocaleActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             AutogramTheme {
-                StatsScreen(onBack = { finish() })
+                DebugScreenshotOverlay {
+                    StatsScreen(onBack = { finish() })
+                }
             }
         }
     }

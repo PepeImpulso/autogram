@@ -34,7 +34,9 @@ class HistoryActivity : BaseLocaleActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             AutogramTheme {
-                HistoryScreen(viewModel = viewModel, onBack = { finish() })
+                DebugScreenshotOverlay {
+                    HistoryScreen(viewModel = viewModel, onBack = { finish() })
+                }
             }
         }
     }

@@ -67,7 +67,9 @@ class QuickRepliesSettingsActivity : BaseLocaleActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             AutogramTheme {
-                QuickRepliesScreen(viewModel = viewModel, onBack = { finish() })
+                DebugScreenshotOverlay {
+                    QuickRepliesScreen(viewModel = viewModel, onBack = { finish() })
+                }
             }
         }
     }

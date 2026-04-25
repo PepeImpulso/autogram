@@ -33,7 +33,9 @@ class SettingsActivity : BaseLocaleActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             AutogramTheme {
-                SettingsScreen(viewModel = viewModel, onBack = { finish() })
+                DebugScreenshotOverlay {
+                    SettingsScreen(viewModel = viewModel, onBack = { finish() })
+                }
             }
         }
     }
