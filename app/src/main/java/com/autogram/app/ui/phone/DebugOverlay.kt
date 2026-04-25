@@ -67,11 +67,16 @@ fun DebugScreenshotOverlay(
                     ).show()
                 },
                 modifier = Modifier
-                    // Bottom-end above the bottom-nav strip on screens that
-                    // have one. Screens without a nav bar still get a
-                    // sensible inset from the system gesture area.
+                    // Bottom-end clear of the bottom-nav strip. v1.20.15
+                    // used 96 dp which still overlapped the rightmost nav
+                    // item (Settings) on devices where the bottom nav +
+                    // gesture-bar region totals more than 96 dp. 140 dp
+                    // clears Material 3's NavigationBar (~80 dp) plus
+                    // typical system-gesture insets (~48 dp) plus a 16 dp
+                    // breathing margin. Screens without a nav bar just
+                    // get a 140 dp inset from the bottom — fine.
                     .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = 96.dp)
+                    .padding(end = 16.dp, bottom = 140.dp)
                     .size(44.dp),
                 containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                 contentColor = MaterialTheme.colorScheme.onTertiaryContainer

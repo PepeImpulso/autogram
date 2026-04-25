@@ -1,5 +1,6 @@
 package com.autogram.app.ui.phone
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -8,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ShortText
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Mic
@@ -41,30 +43,74 @@ fun HistoryScreen(viewModel: HistoryViewModel, onBack: () -> Unit) {
     val messages by viewModel.messages.collectAsState()
     val playback by viewModel.playbackStatus.collectAsState()
     val conversation by viewModel.conversation.collectAsState()
+    val pinned by viewModel.pinned.collectAsState()
+    var dropdownOpen by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text(
-                            stringResource(R.string.history_title),
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        // v1.20.14: surface the scoped conversation name so
-                        // the user knows which circle's history they're
-                        // looking at when they got here via a per-circle
-                        // pending-badge tap.
-                        conversation?.let { conv ->
-                            val subtitle = conv.topicName?.takeIf { it.isNotBlank() }
-                                ?: conv.targetTitle?.takeIf { it.isNotBlank() }
-                                ?: stringResource(R.string.main_default_primary_name)
-                            Text(
-                                subtitle,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                    // v1.20.16 — title row is a tap target that opens a
+                    // dropdown with every pinned conversation, so the
+                    // user can browse any circle's history without
+                    // bouncing back to Home. Visual cue: tiny chevron
+                    // next to the conversation name.
+                    Box {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = if (pinned.size > 1) {
+                                Modifier.clickable { dropdownOpen = true }
+                            } else Modifier
+                        ) {
+                            Column {
+                                Text(
+                                    stringResource(R.string.history_title),
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                conversation?.let { conv ->
+                                    val subtitle = conv.topicName?.takeIf { it.isNotBlank() }
+                                        ?: conv.targetTitle?.takeIf { it.isNotBlank() }
+                                        ?: stringResource(R.string.main_default_primary_name)
+                                    Text(
+                                        subtitle,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            if (pinned.size > 1) {
+                                Icon(
+                                    imageVector = Icons.Filled.ArrowDropDown,
+                                    contentDescription = stringResource(R.string.history_choose_conversation),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 4.dp)
+                                )
+                            }
+                        }
+                        DropdownMenu(
+                            expanded = dropdownOpen,
+                            onDismissRequest = { dropdownOpen = false }
+                        ) {
+                            pinned.forEach { conv ->
+                                val label = conv.topicName?.takeIf { it.isNotBlank() }
+                                    ?: conv.targetTitle?.takeIf { it.isNotBlank() }
+                                    ?: stringResource(R.string.main_default_primary_name)
+                                val isCurrent = conv.id == conversation?.id
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            label,
+                                            fontWeight = if (isCurrent) FontWeight.SemiBold
+                                                         else FontWeight.Normal
+                                        )
+                                    },
+                                    onClick = {
+                                        viewModel.selectConversation(conv.id)
+                                        dropdownOpen = false
+                                    }
+                                )
+                            }
                         }
                     }
                 },

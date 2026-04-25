@@ -273,6 +273,7 @@
     <string name="stats_avg_duration">Duración media</string>
     <string name="stats_last_7_days">Últimos 7 días</string>
     <string name="stats_no_data">Aún no hay datos para mostrar.</string>
+    <string name="history_choose_conversation">Elegir conversación</string>
     <string name="history_empty">Aún no hay mensajes.</string>
     <string name="history_empty_sub">Cuando Merlin u otro chat fijado te envíe una voz o texto, aparecerá aquí.</string>
     <string name="history_direction_incoming">Entrante</string>

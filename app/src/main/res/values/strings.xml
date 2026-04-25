@@ -268,6 +268,7 @@
     <string name="stats_avg_duration">Average duration</string>
     <string name="stats_last_7_days">Last 7 days</string>
     <string name="stats_no_data">No data to show yet.</string>
+    <string name="history_choose_conversation">Choose conversation</string>
     <string name="history_empty">No messages yet.</string>
     <string name="history_empty_sub">When Merlin or another pinned chat sends you a voice or text, it\'ll appear here.</string>
     <string name="history_direction_incoming">Incoming</string>

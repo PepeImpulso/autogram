@@ -10,10 +10,20 @@ import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.domain.usecase.PlayReplyUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class HistoryViewModel @Inject constructor(
     application: Application,
@@ -23,52 +33,79 @@ class HistoryViewModel @Inject constructor(
     private val playReplyUseCase: PlayReplyUseCase
 ) : AndroidViewModel(application) {
 
-    private val _messages = MutableStateFlow<List<Message>>(emptyList())
-    val messages: StateFlow<List<Message>> = _messages.asStateFlow()
+    /**
+     * v1.20.16 — the conversation we're currently viewing. Driven by:
+     *  - the EXTRA_CONVERSATION_ID intent extra (e.g. user tapped a
+     *    per-circle badge on Home),
+     *  - the active conversation as a fallback for the bottom-nav
+     *    entry point,
+     *  - [selectConversation] when the user picks a different chat
+     *    from the in-toolbar dropdown.
+     *
+     * Changes here drive both the messages list and the lastRepliedAt
+     * "ack" bump (so the per-circle pending badge clears the moment the
+     * user views the conversation, even via dropdown switch).
+     */
+    private val _currentConversationId = MutableStateFlow<String?>(null)
+
+    /** All pinned conversations — populates the toolbar dropdown chooser. */
+    val pinned: StateFlow<List<Conversation>> =
+        conversationRepository.observePinned()
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private val _conversation = MutableStateFlow<Conversation?>(null)
     /** Conversation whose messages we're showing — for the toolbar title. */
     val conversation: StateFlow<Conversation?> = _conversation.asStateFlow()
 
+    private val _messages = MutableStateFlow<List<Message>>(emptyList())
+    val messages: StateFlow<List<Message>> = _messages.asStateFlow()
+
     val playbackStatus: StateFlow<PlayReplyUseCase.PlaybackStatus> = playReplyUseCase.playbackStatus
 
     init {
+        // Resolve the initial conversation: explicit intent extra wins,
+        // active conversation is the fallback. Runs once at construction.
         viewModelScope.launch {
-            // v1.20.14: HistoryActivity can be opened with a specific
-            // conversation ID (e.g. user tapped a per-circle pending badge
-            // on the Home screen). Fall back to the active conversation
-            // when no ID is provided so the bottom-nav entry-point keeps
-            // working as before.
             val explicitId: String? = savedStateHandle[HistoryActivity.EXTRA_CONVERSATION_ID]
-            val target = if (!explicitId.isNullOrBlank()) {
-                conversationRepository.getById(explicitId)
-            } else {
-                conversationRepository.getActive()
-            }
-            _conversation.value = target
-            if (target != null) {
-                // v1.20.15 CRITICAL FIX (was v1.20.14 data-loss bug):
-                // Bump conversations.lastRepliedAt via the targeted UPDATE
-                // helper, NOT via upsert. ConversationDao.upsert is
-                // @Insert(onConflict = REPLACE), which SQLite implements
-                // as DELETE-then-INSERT on the conflicting row — and
-                // MessageEntity has ForeignKey(onDelete = CASCADE) on
-                // conversations.id, so the upsert was wiping out every
-                // message for the tapped conversation. setLastRepliedAt
-                // is a plain UPDATE with no FK side-effects.
-                //
-                // Acknowledge-on-view: clears the per-circle pending
-                // badge by making observePendingReplyCounts'
-                // `m.createdAt > c.lastRepliedAt` filter return zero for
-                // existing incoming messages.
-                conversationRepository.setLastRepliedAt(
-                    target.id, System.currentTimeMillis()
-                )
-                messageRepository.observeAll(target.id).collect { messages ->
-                    _messages.value = messages
-                }
-            }
+            val initialId = if (!explicitId.isNullOrBlank()) explicitId
+                            else conversationRepository.getActive()?.id
+            _currentConversationId.value = initialId
         }
+        // Side-effects on conversation switch: bump lastRepliedAt as an
+        // "I've seen these" ack so the per-circle pending badge clears,
+        // and load the conversation entity for the toolbar title.
+        // Plain UPDATE (NOT upsert) — see the v1.20.15 release notes for
+        // the FK-CASCADE catastrophe that called for this lesson.
+        viewModelScope.launch {
+            _currentConversationId
+                .filterNotNull()
+                .distinctUntilChanged()
+                .collect { id ->
+                    conversationRepository.setLastRepliedAt(
+                        id, System.currentTimeMillis()
+                    )
+                    _conversation.value = conversationRepository.getById(id)
+                }
+        }
+        // Switch the messages stream when the user picks a different
+        // conversation. flatMapLatest cancels the previous observeAll
+        // subscription cleanly so we don't double-emit.
+        viewModelScope.launch {
+            _currentConversationId
+                .filterNotNull()
+                .distinctUntilChanged()
+                .flatMapLatest { id -> messageRepository.observeAll(id) }
+                .collect { _messages.value = it }
+        }
+    }
+
+    /**
+     * v1.20.16 — change the conversation being viewed. Fired from the
+     * toolbar dropdown chooser. No-op if the user picks the same
+     * conversation already on screen.
+     */
+    fun selectConversation(id: String) {
+        _currentConversationId.value = id
     }
 
     /**
