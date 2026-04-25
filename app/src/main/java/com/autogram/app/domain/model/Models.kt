@@ -181,7 +181,13 @@ data class AppSettings(
     // bypasses the system screen-timeout so the user can glance at the
     // app while driving / cooking without it dimming. Default OFF so we
     // don't drain battery for users who don't ask for it.
-    val keepScreenOn: Boolean = false
+    val keepScreenOn: Boolean = false,
+    // Developer mode — shows an on-screen camera button on the Home
+    // screen that captures a screenshot of the app and opens the system
+    // share sheet so the user can send it to the developer for
+    // bug-report context. Default OFF; turning it on adds visual chrome
+    // most users won't want.
+    val developerMode: Boolean = false
 )
 
 data class DeliveryAttempt(

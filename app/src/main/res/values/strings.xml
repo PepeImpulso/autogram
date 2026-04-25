@@ -242,6 +242,12 @@
     <string name="settings_diagnostics_test_sentry">Send test event to Sentry</string>
     <string name="settings_diagnostics_test_sentry_sub">Non-fatal. Verifies crash reporting is wired up.</string>
     <string name="settings_diagnostics_test_sent">Test event sent ✓</string>
+    <string name="settings_developer_mode">Developer mode</string>
+    <string name="settings_developer_mode_sub">Adds a small camera button on the Home screen. Tap it to capture a screenshot of the app and immediately share it with the developer (via Telegram, email, etc.) for bug reports.</string>
+    <string name="debug_screenshot_button_cd">Capture screenshot</string>
+    <string name="debug_screenshot_share_title">Share Autogram screenshot</string>
+    <string name="debug_screenshot_saved">Screenshot saved to Pictures/Autogram</string>
+    <string name="debug_screenshot_failed">Couldn\'t capture screenshot</string>
 
     <string name="settings_updates_section">Updates</string>
     <string name="settings_updates_current_version">Installed version: %s</string>

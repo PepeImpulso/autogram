@@ -38,4 +38,15 @@ class HistoryActivity : BaseLocaleActivity() {
             }
         }
     }
+
+    companion object {
+        /**
+         * Optional intent extra: open History scoped to a specific
+         * conversation instead of the currently-active target. Used by
+         * the per-circle pending badges on the Home screen
+         * (v1.20.14) so the user can tap on the "1" next to a circle
+         * and land on that circle's message history.
+         */
+        const val EXTRA_CONVERSATION_ID: String = "conversationId"
+    }
 }

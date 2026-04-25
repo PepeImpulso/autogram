@@ -68,6 +68,12 @@ class MainViewModel @Inject constructor(
             .map { it.showPendingBadges }
             .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
+    /** v1.20.14 — drives the on-screen screenshot button in HeroHeader. */
+    val developerMode: StateFlow<Boolean> =
+        settingsRepository.observe()
+            .map { it.developerMode }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
     // Ephemeral suggestion chips. Recomputed whenever a new INCOMING message
     // (voice with transcription, or text) arrives on the active conversation.
     // Cleared when the user sends a chip (tap), sends a voice reply, or

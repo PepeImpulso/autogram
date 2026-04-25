@@ -40,16 +40,33 @@ import java.util.Locale
 fun HistoryScreen(viewModel: HistoryViewModel, onBack: () -> Unit) {
     val messages by viewModel.messages.collectAsState()
     val playback by viewModel.playbackStatus.collectAsState()
+    val conversation by viewModel.conversation.collectAsState()
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        stringResource(R.string.history_title),
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    Column {
+                        Text(
+                            stringResource(R.string.history_title),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        // v1.20.14: surface the scoped conversation name so
+                        // the user knows which circle's history they're
+                        // looking at when they got here via a per-circle
+                        // pending-badge tap.
+                        conversation?.let { conv ->
+                            val subtitle = conv.topicName?.takeIf { it.isNotBlank() }
+                                ?: conv.targetTitle?.takeIf { it.isNotBlank() }
+                                ?: stringResource(R.string.main_default_primary_name)
+                            Text(
+                                subtitle,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {

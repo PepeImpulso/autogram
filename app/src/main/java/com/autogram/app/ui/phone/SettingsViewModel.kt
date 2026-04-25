@@ -61,7 +61,8 @@ class SettingsViewModel @Inject constructor(
                 summaryLlmEndpoint = settings.summaryLlmEndpoint,
                 summaryLlmApiKey = settings.summaryLlmApiKey,
                 summaryLlmModel = settings.summaryLlmModel,
-                keepScreenOn = settings.keepScreenOn
+                keepScreenOn = settings.keepScreenOn,
+                developerMode = settings.developerMode
             )
         }
         viewModelScope.launch {
@@ -193,6 +194,14 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun updateDeveloperMode(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(developerMode = enabled)
+        viewModelScope.launch {
+            val s = settingsRepository.get()
+            settingsRepository.update(s.copy(developerMode = enabled))
+        }
+    }
+
     fun updateSummaryLlmModel(model: String) {
         _uiState.value = _uiState.value.copy(summaryLlmModel = model)
         viewModelScope.launch {
@@ -293,6 +302,7 @@ data class SettingsUiState(
     val summaryLlmApiKey: String = "",
     val summaryLlmModel: String = "gpt-4o-mini",
     val keepScreenOn: Boolean = false,
+    val developerMode: Boolean = false,
     val lastSaveMessage: String? = null,
     val hasTarget: Boolean = false,
     val targetTitle: String? = null,

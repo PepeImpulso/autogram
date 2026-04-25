@@ -41,7 +41,14 @@ class RecordingSounds @Inject constructor(
     private suspend fun playTone(tone: Int, durationMs: Int) {
         val volume = settingsRepository.get().recordingCuesVolume
         if (volume <= 0) return   // user disabled the cues
-        val clampedVolume = volume.coerceIn(1, 100)
+        // v1.20.14: user feedback was that the cue was inaudible over road
+        // noise even at the default 50%. ToneGenerator's volume range is
+        // 1-100 with 100 being the system MEDIA-stream cap, so we apply a
+        // 2× boost: the slider's 0-50 range now covers 0-100 effective
+        // volume, and 51-100 stays clamped at 100 (no perceptible change
+        // beyond 50). Doubles loudness in the most-used range without
+        // breaking the slider semantics.
+        val clampedVolume = (volume * 2).coerceIn(1, 100)
 
         // ToneGenerator must be released after each use; keeping one alive as a field
         // would leak AudioTrack handles across screens / recordings.

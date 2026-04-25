@@ -497,13 +497,21 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 BatteryOptimizationRow(context)
             }
 
-            // Only expose the Sentry-test affordance when a DSN is actually
-            // baked in — users on dev builds without Sentry don't need it.
-            if (com.autogram.app.BuildConfig.SENTRY_DSN.isNotBlank()) {
-                SectionCard(
-                    icon = Icons.Filled.BugReport,
-                    title = stringResource(R.string.settings_diagnostics_section)
-                ) {
+            // v1.20.14: developer-mode toggle lives in Diagnostics whether
+            // or not Sentry is wired up — both rows are about debugging.
+            // The Sentry test row is conditionally shown below.
+            SectionCard(
+                icon = Icons.Filled.BugReport,
+                title = stringResource(R.string.settings_diagnostics_section)
+            ) {
+                SwitchRow(
+                    label = stringResource(R.string.settings_developer_mode),
+                    supporting = stringResource(R.string.settings_developer_mode_sub),
+                    checked = state.developerMode,
+                    onCheckedChange = viewModel::updateDeveloperMode
+                )
+                if (com.autogram.app.BuildConfig.SENTRY_DSN.isNotBlank()) {
+                    SettingsDivider()
                     SentryTestRow()
                 }
             }

@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
@@ -260,6 +261,13 @@ class MainActivity : BaseLocaleActivity() {
                     MainScreen(
                         onOpenSettings = { startActivity(Intent(this, SettingsActivity::class.java)) },
                         onOpenHistory = { startActivity(Intent(this, HistoryActivity::class.java)) },
+                        onOpenHistoryFor = { conversationId ->
+                            startActivity(
+                                Intent(this, HistoryActivity::class.java).apply {
+                                    putExtra(HistoryActivity.EXTRA_CONVERSATION_ID, conversationId)
+                                }
+                            )
+                        },
                         onOpenStats = { startActivity(Intent(this, StatsActivity::class.java)) },
                         onManagePinned = { startActivity(Intent(this, ManagePinnedActivity::class.java)) },
                         onManageQuickReplies = { startActivity(Intent(this, QuickRepliesSettingsActivity::class.java)) }
@@ -340,6 +348,7 @@ class MainActivity : BaseLocaleActivity() {
 private fun MainScreen(
     onOpenSettings: () -> Unit,
     onOpenHistory: () -> Unit,
+    onOpenHistoryFor: (conversationId: String) -> Unit,
     onOpenStats: () -> Unit,
     onManagePinned: () -> Unit,
     onManageQuickReplies: () -> Unit,
@@ -360,6 +369,7 @@ private fun MainScreen(
     val showPendingBadges by viewModel.showPendingBadges.collectAsState()
     val lastIncomingAudio by viewModel.lastIncomingWithAudio.collectAsState()
     val pendingPlaybackCount by viewModel.pendingPlaybackCount.collectAsState()
+    val developerMode by viewModel.developerMode.collectAsState()
     val folders by viewModel.folders.collectAsState()
     val selectedFolderId by viewModel.selectedFolderId.collectAsState()
     val quickReplyFilter by viewModel.quickReplyFilter.collectAsState()
@@ -455,8 +465,23 @@ private fun MainScreen(
                 hasLastOriginal = lastIncomingAudio != null,
                 isPlayingLast = isAnyPlaying,
                 pendingCount = pendingPlaybackCount,
+                showScreenshotButton = developerMode,
                 onToggleLastOriginal = viewModel::toggleLastOriginal,
-                onDrainPending = viewModel::drainPending
+                onDrainPending = viewModel::drainPending,
+                onCaptureScreenshot = {
+                    val activity = ctx as? android.app.Activity
+                    if (activity != null) {
+                        val uri = com.autogram.app.infrastructure.platform
+                            .ScreenshotCapture.captureAndShare(activity)
+                        val msgRes = if (uri != null) R.string.debug_screenshot_saved
+                                     else R.string.debug_screenshot_failed
+                        android.widget.Toast.makeText(
+                            activity,
+                            activity.getString(msgRes),
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
             )
 
             if (folders.isNotEmpty()) {
@@ -494,7 +519,8 @@ private fun MainScreen(
                     onStart = { viewModel.startRecording(primary.id) },
                     onSend = { viewModel.stopAndSend() },
                     onCancel = { viewModel.cancelRecording() },
-                    onQuickReply = { viewModel.sendQuickReplyShortcut(it, primary.id) }
+                    onQuickReply = { viewModel.sendQuickReplyShortcut(it, primary.id) },
+                    onOpenHistory = { onOpenHistoryFor(primary.id) }
                 )
             } else {
                 NoPrimaryState(onConfigure = onManagePinned)
@@ -512,7 +538,8 @@ private fun MainScreen(
                 onStart = { viewModel.startRecording(it.id) },
                 onSend = { viewModel.stopAndSend() },
                 onCancel = { viewModel.cancelRecording() },
-                onManage = onManagePinned
+                onManage = onManagePinned,
+                onOpenHistoryFor = onOpenHistoryFor
             )
 
             Spacer(Modifier.weight(1f))
@@ -597,8 +624,10 @@ private fun HeroHeader(
     hasLastOriginal: Boolean,
     isPlayingLast: Boolean,
     pendingCount: Int,
+    showScreenshotButton: Boolean,
     onToggleLastOriginal: () -> Unit,
-    onDrainPending: () -> Unit
+    onDrainPending: () -> Unit,
+    onCaptureScreenshot: () -> Unit
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -624,6 +653,15 @@ private fun HeroHeader(
         )
         Spacer(Modifier.weight(1f))
         StatusPill(sendStatus, playback, outboxCount, online)
+        // v1.20.14 — debug screenshot button, only visible when Settings
+        // → Developer mode is ON. Captures the current screen, drops it
+        // into Pictures/Autogram, and opens the system share sheet so the
+        // user can send it to the developer for bug-report context. Sits
+        // far left of the action cluster so it never gets accidentally
+        // tapped when reaching for the more-frequently-used queue/replay.
+        if (showScreenshotButton) {
+            DebugScreenshotButton(onClick = onCaptureScreenshot)
+        }
         // v1.20.11 — drain-pending button. Visible only when there are
         // queued messages waiting (silent / auto-play OFF arrivals,
         // in-call deferrals). Tap drains the queue sequentially via
@@ -643,6 +681,27 @@ private fun HeroHeader(
             isPlaying = isPlayingLast,
             onClick = onToggleLastOriginal
         )
+    }
+}
+
+@Composable
+private fun DebugScreenshotButton(onClick: () -> Unit) {
+    val container = MaterialTheme.colorScheme.tertiaryContainer
+    val content = MaterialTheme.colorScheme.onTertiaryContainer
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = container,
+        contentColor = content,
+        modifier = Modifier.size(40.dp)
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            Icon(
+                imageVector = Icons.Filled.CameraAlt,
+                contentDescription = stringResource(R.string.debug_screenshot_button_cd),
+                modifier = Modifier.size(20.dp)
+            )
+        }
     }
 }
 
@@ -963,7 +1022,8 @@ private fun RecordCircle(
     onRequestPermission: () -> Unit,
     onStart: () -> Unit,
     onSend: () -> Unit,
-    onCancel: () -> Unit
+    onCancel: () -> Unit,
+    onPendingBadgeClick: (() -> Unit)? = null
 ) {
     val scale by animateFloatAsState(
         targetValue = if (isRecordingThis) 1.1f else 1f,
@@ -1061,6 +1121,7 @@ private fun RecordCircle(
         if (pendingCount > 0) {
             PendingBadge(
                 count = pendingCount,
+                onClick = onPendingBadgeClick,
                 modifier = Modifier.align(Alignment.TopEnd)
             )
         }
@@ -1088,12 +1149,24 @@ private fun MicBadge(circleSize: Dp, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun PendingBadge(count: Int, modifier: Modifier = Modifier) {
+private fun PendingBadge(
+    count: Int,
+    onClick: (() -> Unit)?,
+    modifier: Modifier = Modifier
+) {
+    // v1.20.14: badge becomes tappable to open History scoped to this
+    // conversation, so the user can finally listen to the messages the
+    // count refers to. The badge sits as a SIBLING of the recordable
+    // circle in the parent Box, not a child — so the Surface's onClick
+    // intercepts taps without competing with the hold-to-record gesture
+    // detector on the inner circle.
     Surface(
         shape = CircleShape,
         color = MaterialTheme.colorScheme.error,
         contentColor = MaterialTheme.colorScheme.onError,
         shadowElevation = 2.dp,
+        onClick = onClick ?: {},
+        enabled = onClick != null,
         modifier = modifier.defaultMinSize(minWidth = 22.dp, minHeight = 22.dp)
     ) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 6.dp)) {
@@ -1118,7 +1191,8 @@ private fun SecondaryCirclesRow(
     onStart: (Conversation) -> Unit,
     onSend: () -> Unit,
     onCancel: () -> Unit,
-    onManage: () -> Unit
+    onManage: () -> Unit,
+    onOpenHistoryFor: (conversationId: String) -> Unit
 ) {
     // Wrapping grid — circles flow onto a new row once the current row fills
     // up. Keeps the layout clean up to ~8 circles on a phone-width screen
@@ -1142,7 +1216,8 @@ private fun SecondaryCirclesRow(
                     onRequestPermission = onRequestPermission,
                     onStart = { onStart(conv) },
                     onSend = onSend,
-                    onCancel = onCancel
+                    onCancel = onCancel,
+                    onPendingBadgeClick = { onOpenHistoryFor(conv.id) }
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
@@ -1197,7 +1272,8 @@ private fun PrimaryRow(
     onStart: () -> Unit,
     onSend: () -> Unit,
     onCancel: () -> Unit,
-    onQuickReply: (com.autogram.app.domain.model.QuickReply) -> Unit
+    onQuickReply: (com.autogram.app.domain.model.QuickReply) -> Unit,
+    onOpenHistory: () -> Unit
 ) {
     val hasBothKinds = remember(quickReplies) {
         quickReplies.any { it.kind == com.autogram.app.domain.model.QuickReplyKind.TEXT } &&
@@ -1237,7 +1313,8 @@ private fun PrimaryRow(
                     onRequestPermission = onRequestPermission,
                     onStart = onStart,
                     onSend = onSend,
-                    onCancel = onCancel
+                    onCancel = onCancel,
+                    onPendingBadgeClick = onOpenHistory
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(

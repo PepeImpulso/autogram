@@ -246,6 +246,12 @@
     <string name="settings_diagnostics_test_sentry">Enviar evento de prueba a Sentry</string>
     <string name="settings_diagnostics_test_sentry_sub">No es un crash. Sirve para verificar que el reporting funciona.</string>
     <string name="settings_diagnostics_test_sent">Evento enviado ✓</string>
+    <string name="settings_developer_mode">Modo desarrollador</string>
+    <string name="settings_developer_mode_sub">Añade un pequeño botón de cámara en la pantalla principal. Tócalo para capturar la pantalla de la app y compartirla al instante con el desarrollador (vía Telegram, email, etc.) para reportes de bugs.</string>
+    <string name="debug_screenshot_button_cd">Capturar pantalla</string>
+    <string name="debug_screenshot_share_title">Compartir captura de Autogram</string>
+    <string name="debug_screenshot_saved">Captura guardada en Imágenes/Autogram</string>
+    <string name="debug_screenshot_failed">No se pudo capturar la pantalla</string>
 
     <string name="settings_updates_section">Actualizaciones</string>
     <string name="settings_updates_current_version">Versión instalada: %s</string>
