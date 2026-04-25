@@ -121,8 +121,6 @@
     <string name="settings_manage_pinned">Kürzel verwalten</string>
     <string name="settings_manage_pinned_sub">Sekundäre Kreise mit ihren Fotos.</string>
     <string name="settings_autoplay">Antworten automatisch abspielen</string>
-    <string name="settings_silent">Lautlos-Modus</string>
-    <string name="settings_silent_sub">Eingehende Audios werden statt abgespielt in die Warteschlange gesetzt.</string>
     <string name="settings_playback_speed">Wiedergabegeschwindigkeit</string>
     <string name="settings_recording_cues">Aufnahme-Piepton</string>
     <string name="settings_recording_cues_sub">Kurzer Ton zu Beginn und am Ende einer Aufnahme, um zu bestätigen, dass das Mikrofon offen ist — akustische Bestätigung, ohne auf den Bildschirm zu sehen.</string>

@@ -121,8 +121,6 @@
     <string name="settings_manage_pinned">Gérer les raccourcis</string>
     <string name="settings_manage_pinned_sub">Cercles secondaires avec leurs photos.</string>
     <string name="settings_autoplay">Lecture automatique des réponses</string>
-    <string name="settings_silent">Mode silencieux</string>
-    <string name="settings_silent_sub">Les audios entrants sont mis en file d\'attente au lieu d\'être lus.</string>
     <string name="settings_playback_speed">Vitesse de lecture</string>
     <string name="settings_recording_cues">Bip d\'enregistrement</string>
     <string name="settings_recording_cues_sub">Tonalité brève émise au début et à la fin d\'un enregistrement pour confirmer que le micro s\'est ouvert — confirmation sonore sans regarder l\'écran.</string>

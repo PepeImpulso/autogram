@@ -120,8 +120,6 @@
     <string name="settings_manage_pinned">管理快捷</string>
     <string name="settings_manage_pinned_sub">带图片的次要圆圈。</string>
     <string name="settings_autoplay">自动播放回复</string>
-    <string name="settings_silent">静音模式</string>
-    <string name="settings_silent_sub">收到的音频会排队而非立即播放。</string>
     <string name="settings_playback_speed">播放速度</string>
     <string name="settings_recording_cues">录音提示音</string>
     <string name="settings_recording_cues_sub">录音开始和结束时播放的短音，用于确认麦克风已开启——无需查看屏幕即可获得听觉提示。</string>
