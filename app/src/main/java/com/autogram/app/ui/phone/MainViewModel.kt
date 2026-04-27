@@ -116,10 +116,16 @@ class MainViewModel @Inject constructor(
      * stop (button is disabled in that combined state).
      */
     fun toggleLastOriginal() {
+        // Mirrors the header's Stop-icon gating: only treat actively-Playing
+        // as "stop". Paused (e.g. user paused a message from History) is
+        // treated as Idle here so a tap just plays the latest incoming
+        // from scratch — playManually's audioPlayer.stop() handles
+        // releasing the paused MediaPlayer along the way. Pre-v1.20.18,
+        // tapping while Paused did stopAll, which was technically
+        // correct but the UX was confusing because the icon read as Stop
+        // even though no sound was coming out.
         val st = playbackStatus.value
-        val isAnyPlaying = st is PlayReplyUseCase.PlaybackStatus.Playing ||
-            st is PlayReplyUseCase.PlaybackStatus.Paused
-        if (isAnyPlaying) {
+        if (st is PlayReplyUseCase.PlaybackStatus.Playing) {
             playReplyUseCase.stopAll()
             return
         }

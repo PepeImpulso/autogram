@@ -102,8 +102,17 @@ class PlayReplyUseCase @Inject constructor(
         // concurrent calls can't both pass the check. If something is already
         // playing, this caller queues and returns without releasing until the
         // status is persisted.
+        //
+        // v1.20.18: the busy check ONLY applies to user-initiated arrivals
+        // (respectUserGates=true). When respectUserGates=false we're being
+        // called from playNext() right after a prior playback's onCompletion
+        // fired — the AudioPlayer.isPlaying flag is reliably false here,
+        // but if some OEM's MediaPlayer were ever briefly inconsistent the
+        // re-enqueue would strand this message in memory (its persistent
+        // pending row was already deleted by playNext) and break the chain.
+        // Trusting the call-site over the flag keeps the queue draining.
         playbackStartLock.withLock {
-            if (audioPlayer.isPlaying()) {
+            if (respectUserGates && audioPlayer.isPlaying()) {
                 Timber.i("playVoiceMessage ${message.id} → enqueue (audio already playing)")
                 pendingQueue.add(message)
                 _playbackStatus.value = PlaybackStatus.PendingCount(pendingQueue.size)
@@ -304,8 +313,20 @@ class PlayReplyUseCase @Inject constructor(
         // Same coordination as playTextMessage: refuse to speak over an
         // in-flight audio/TTS playback; enqueue the message instead so
         // playNext picks it up after the current one finishes.
+        //
+        // v1.20.18: gate the busy check on respectUserGates. Android's
+        // TextToSpeech.isSpeaking() has a tiny window after onDone fires
+        // where it can still return true; if a queued message arrives at
+        // playNext during that window, the old code re-enqueued it in
+        // memory while the persistent pending row was already gone, so
+        // the queue stalled and the user had to manually drain. When
+        // we're here from playNext (respectUserGates=false), the
+        // previous utterance's onDone already fired and we trust that
+        // we're safe to start the next utterance — TtsPlayer.speak does
+        // QUEUE_FLUSH internally, which makes this safe even if the
+        // engine is genuinely lingering.
         playbackStartLock.withLock {
-            if (audioPlayer.isPlaying() || ttsPlayer.isSpeaking()) {
+            if (respectUserGates && (audioPlayer.isPlaying() || ttsPlayer.isSpeaking())) {
                 Timber.i(
                     "playSummaryOrTranscription ${message.id} → enqueue " +
                     "(audio=${audioPlayer.isPlaying()} tts=${ttsPlayer.isSpeaking()})"
@@ -374,8 +395,12 @@ class PlayReplyUseCase @Inject constructor(
         // audio path uses, and if audio is already speaking, enqueue
         // the text for after — exactly like a late-arriving voice note
         // would be handled.
+        //
+        // v1.20.18: see playSummaryOrTranscription for why the busy
+        // check is gated on respectUserGates — same isSpeaking-race
+        // story.
         playbackStartLock.withLock {
-            if (audioPlayer.isPlaying() || ttsPlayer.isSpeaking()) {
+            if (respectUserGates && (audioPlayer.isPlaying() || ttsPlayer.isSpeaking())) {
                 Timber.i(
                     "playTextMessage ${message.id} → enqueue " +
                     "(audio=${audioPlayer.isPlaying()} tts=${ttsPlayer.isSpeaking()})"

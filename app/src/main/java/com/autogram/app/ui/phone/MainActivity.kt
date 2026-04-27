@@ -456,11 +456,17 @@ private fun MainScreen(
                 .fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            val isAnyPlaying = playback is PlayReplyUseCase.PlaybackStatus.Playing ||
-                playback is PlayReplyUseCase.PlaybackStatus.Paused
+            // Header's Stop affordance lights up ONLY for actively-playing
+            // playback. Pre-v1.20.18 also lit it on Paused, but that left
+            // a misleading Stop icon visible after the user paused a
+            // message from History and walked back to Home — looked like
+            // something was playing when nothing was making sound. Paused
+            // is now treated as Idle from the header's perspective; the
+            // pause/resume controls inside the History bubble still work
+            // normally for users who want them.
+            val isAnyPlaying = playback is PlayReplyUseCase.PlaybackStatus.Playing
             HeroHeader(
                 sendStatus = sendStatus,
-                playback = playback,
                 outboxCount = outboxCount,
                 online = isOnline,
                 hasLastOriginal = lastIncomingAudio != null,
@@ -604,7 +610,6 @@ private fun MainScreen(
 @Composable
 private fun HeroHeader(
     sendStatus: SendVoiceMtprotoUseCase.SendStatus,
-    playback: PlayReplyUseCase.PlaybackStatus,
     outboxCount: Int,
     online: Boolean,
     hasLastOriginal: Boolean,
@@ -636,7 +641,7 @@ private fun HeroHeader(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.weight(1f))
-        StatusPill(sendStatus, playback, outboxCount, online)
+        StatusPill(sendStatus, outboxCount, online)
         // v1.20.15: debug screenshot button moved out of the header into
         // a global FAB (DebugScreenshotOverlay) so it's available on
         // every screen, not just Home. The header stays clean.
@@ -744,7 +749,6 @@ private fun PlayLastOriginalToggle(
 @Composable
 private fun StatusPill(
     sendStatus: SendVoiceMtprotoUseCase.SendStatus,
-    playback: PlayReplyUseCase.PlaybackStatus,
     outboxCount: Int,
     online: Boolean
 ) {
