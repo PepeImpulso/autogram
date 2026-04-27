@@ -292,10 +292,26 @@ class PlayReplyUseCase @Inject constructor(
             ?: message.transcription?.takeIf { it.isNotBlank() }
             ?: message.textContent?.takeIf { it.isNotBlank() }
         if (text == null) {
+            // v1.20.19 — no usable summary/transcription. Most common
+            // cause: on-device speech recognition isn't available for the
+            // user's locale (transcribe returns NotInstalled /
+            // LanguageUnavailable), so the chained summarize never runs
+            // either, and we end up here with a voice message that has
+            // no text representation. Pre-v1.20.19 we returned silently,
+            // which left the user staring at a "1" badge on the circle
+            // with nothing actually playing. Fall back to the original
+            // audio so auto-play still does its job.
+            if (!message.audioFilePath.isNullOrBlank()) {
+                Timber.i(
+                    "playSummaryOrTranscription ${message.id} → no text after " +
+                    "summarize/transcribe; falling back to original audio"
+                )
+                playVoiceMessage(message, isCallActive, respectUserGates)
+                return
+            }
             Timber.w(
                 "playSummaryOrTranscription ${message.id} → no readable text " +
-                "(summary/transcription/textContent all blank). Message stays " +
-                "in ${message.state} without playback or queue."
+                "and no audio path; nothing to play (state=${message.state})"
             )
             return
         }
