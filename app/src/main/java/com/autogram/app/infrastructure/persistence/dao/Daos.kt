@@ -61,6 +61,26 @@ interface MessageDao {
     @Query("DELETE FROM messages WHERE conversationId = :conversationId AND createdAt < :timestampMs")
     suspend fun deleteOlderThan(conversationId: String, timestampMs: Long)
 
+    // User-initiated wipe of an entire conversation's history (Settings →
+    // History → Clear conversation). The pending_playbacks rows are
+    // cleaned up automatically by the FK CASCADE. Audio files on disk
+    // are deleted by the repository before this call (see
+    // MessageRepositoryImpl.clearForConversation), since SQLite alone
+    // can't reach the filesystem.
+    @Query("DELETE FROM messages WHERE conversationId = :conversationId")
+    suspend fun deleteAllForConversation(conversationId: String)
+
+    // Snapshot of audio paths in a conversation, used by the
+    // clear-conversation flow to remove the .ogg files from disk before
+    // the rows are dropped from the DB.
+    @Query("""
+        SELECT audioFilePath FROM messages
+        WHERE conversationId = :conversationId
+          AND audioFilePath IS NOT NULL
+          AND audioFilePath != ''
+    """)
+    suspend fun audioPathsForConversation(conversationId: String): List<String>
+
     @Query("SELECT * FROM messages WHERE state = 'FAILED' AND retryCount < :maxRetries LIMIT :limit")
     suspend fun getPendingRetries(limit: Int, maxRetries: Int = 3): List<MessageEntity>
 

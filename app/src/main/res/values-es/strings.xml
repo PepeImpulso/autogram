@@ -11,7 +11,7 @@
     <string name="common_dismiss">Cerrar</string>
     <string name="main_play_last_original">Repetir último</string>
     <string name="main_stop_last_original">Detener reproducción</string>
-    <string name="main_drain_pending_label">pendientes</string>
+    <string name="main_drain_pending_label">Pendientes</string>
     <string name="tile_record_label">Voz a Merlin</string>
     <string name="tile_no_primary">Elige un destinatario principal en Ajustes</string>
     <string name="common_cancel">Cancelar</string>
@@ -274,6 +274,10 @@
     <string name="stats_last_7_days">Últimos 7 días</string>
     <string name="stats_no_data">Aún no hay datos para mostrar.</string>
     <string name="history_choose_conversation">Elegir conversación</string>
+    <string name="history_clear_cd">Limpiar historial de la conversación</string>
+    <string name="history_clear_title">¿Limpiar esta conversación?</string>
+    <string name="history_clear_body">Se eliminan del teléfono todos los mensajes y notas de voz de esta conversación. Los mensajes en los servidores de Telegram no se tocan y se sincronizarán de nuevo si llega una respuesta nueva. Esta acción no se puede deshacer.</string>
+    <string name="history_clear_confirm">Limpiar</string>
     <string name="history_empty">Aún no hay mensajes.</string>
     <string name="history_empty_sub">Cuando Merlin u otro chat fijado te envíe una voz o texto, aparecerá aquí.</string>
     <string name="history_direction_incoming">Entrante</string>

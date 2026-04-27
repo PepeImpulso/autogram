@@ -14,6 +14,13 @@ interface MessageRepository {
     suspend fun insert(message: Message)
     suspend fun update(message: Message)
     suspend fun deleteOlderThan(conversationId: String, timestampMs: Long)
+    /**
+     * User-initiated wipe of every message in [conversationId]. Removes
+     * audio files from disk first, then deletes the rows. Pending-playback
+     * rows tied to those messages cascade-delete via the FK on
+     * pending_playbacks → messages.
+     */
+    suspend fun clearForConversation(conversationId: String)
     suspend fun getPendingRetries(limit: Int): List<Message>
     suspend fun getOutbox(limit: Int = 50, maxRetries: Int = 3): List<Message>
     /** Returns count of rows that were promoted back to QUEUED_OFFLINE. */

@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ShortText
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Mic
@@ -45,6 +46,7 @@ fun HistoryScreen(viewModel: HistoryViewModel, onBack: () -> Unit) {
     val conversation by viewModel.conversation.collectAsState()
     val pinned by viewModel.pinned.collectAsState()
     var dropdownOpen by remember { mutableStateOf(false) }
+    var clearConfirmOpen by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -122,20 +124,58 @@ fun HistoryScreen(viewModel: HistoryViewModel, onBack: () -> Unit) {
                         )
                     }
                 },
+                actions = {
+                    // v1.20.17 — clear conversation. Hidden when the
+                    // conversation is already empty so a fresh chat
+                    // doesn't show a destructive icon with nothing to
+                    // act on. Confirmation dialog is mandatory; this
+                    // wipes both DB rows AND the .ogg files on disk.
+                    if (messages.isNotEmpty()) {
+                        IconButton(onClick = { clearConfirmOpen = true }) {
+                            Icon(
+                                Icons.Filled.DeleteSweep,
+                                stringResource(R.string.history_clear_cd)
+                            )
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                 )
             )
         }
     ) { padding ->
+        if (clearConfirmOpen) {
+            AlertDialog(
+                onDismissRequest = { clearConfirmOpen = false },
+                title = { Text(stringResource(R.string.history_clear_title)) },
+                text = { Text(stringResource(R.string.history_clear_body)) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        viewModel.clearHistory()
+                        clearConfirmOpen = false
+                    }) {
+                        Text(stringResource(R.string.history_clear_confirm))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { clearConfirmOpen = false }) {
+                        Text(stringResource(R.string.common_cancel))
+                    }
+                }
+            )
+        }
         if (messages.isEmpty()) {
             HistoryEmptyState(modifier = Modifier.fillMaxSize().padding(padding))
             return@Scaffold
         }
 
-        // Chronological order — oldest at top, newest at bottom, like a chat.
-        // Grouped by day so long scrolls stay orientable.
-        val ordered = remember(messages) { messages.sortedBy { it.createdAt } }
+        // Reverse-chronological — newest at top. Users asked for this so
+        // a fresh reply is the first thing they see when opening History,
+        // without having to scroll to the bottom of a long log. Day
+        // groups inherit the ordering: Today appears first, then
+        // Yesterday, then older.
+        val ordered = remember(messages) { messages.sortedByDescending { it.createdAt } }
         val grouped = groupByDay(ordered)
 
         LazyColumn(

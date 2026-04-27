@@ -132,4 +132,19 @@ class HistoryViewModel @Inject constructor(
     fun onResumeClicked() {
         playReplyUseCase.resume()
     }
+
+    /**
+     * v1.20.17 — wipes every message in the currently-viewed conversation
+     * and the .ogg files on disk that backed them. Stops in-flight
+     * playback first and reconciles the pending-playback queue so a
+     * post-clear playNext doesn't try to play a row that's already gone.
+     * No-op if no conversation is loaded.
+     */
+    fun clearHistory() {
+        val id = _currentConversationId.value ?: return
+        viewModelScope.launch {
+            playReplyUseCase.clearForConversation(id)
+            messageRepository.clearForConversation(id)
+        }
+    }
 }

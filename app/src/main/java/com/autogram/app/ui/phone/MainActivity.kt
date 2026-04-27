@@ -666,31 +666,37 @@ private fun HeroHeader(
 private fun DrainPendingButton(count: Int, onClick: () -> Unit) {
     val container = MaterialTheme.colorScheme.primaryContainer
     val content = MaterialTheme.colorScheme.onPrimaryContainer
+    // Pill is the single surface for the pending-queue count. Height is
+    // pinned to 40 dp so it lines up cleanly with the always-visible
+    // PlayLastOriginalToggle (40 dp circle) sitting to its right —
+    // they read as a paired control, not two unrelated affordances.
+    // The verbose "%d pending messages" status pill that used to render
+    // alongside this was redundant and got removed in v1.20.17.
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(20.dp),
         color = container,
         contentColor = content,
-        modifier = Modifier.heightIn(min = 40.dp)
+        modifier = Modifier.height(40.dp)
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Icon(
                 imageVector = Icons.Filled.PlayArrow,
                 contentDescription = null,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(22.dp)
             )
             Text(
                 text = if (count > 99) "99+" else count.toString(),
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
             Text(
                 stringResource(R.string.main_drain_pending_label),
-                style = MaterialTheme.typography.labelMedium,
+                style = MaterialTheme.typography.labelLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -776,17 +782,15 @@ private fun StatusPill(
             Pill(ctx.getString(R.string.status_error_generic, sendStatus.message), scheme.errorContainer, scheme.onErrorContainer)
         else -> {
             // Idle: only show the pill when there's information the user
-            // needs (outbox count, pending playback count). Otherwise
-            // render nothing so the header actually empties out 5 s after
-            // a Sent / Error / Discarded auto-dismiss instead of
-            // reverting to a persistent "Ready" tag.
+            // needs (outbox count). The pending-playback count used to
+            // surface here too as "%d pending messages", but that double-
+            // counted with the DrainPendingButton sitting right next to
+            // this pill — the same number rendered twice in the same row.
+            // Removed in v1.20.17; the button is the single surface for
+            // the queued count.
             when {
                 outboxCount > 0 ->
                     Pill(ctx.getString(R.string.status_outbox_count, outboxCount), scheme.tertiaryContainer, scheme.onTertiaryContainer)
-                (playback as? PlayReplyUseCase.PlaybackStatus.PendingCount)?.count?.let { it > 0 } == true -> {
-                    val c = (playback as PlayReplyUseCase.PlaybackStatus.PendingCount).count
-                    Pill(ctx.getString(R.string.status_pending_count, c), scheme.tertiaryContainer, scheme.onTertiaryContainer)
-                }
                 else -> null
             }
         }

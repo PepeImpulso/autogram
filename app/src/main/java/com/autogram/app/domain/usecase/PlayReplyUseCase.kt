@@ -81,6 +81,7 @@ class PlayReplyUseCase @Inject constructor(
         respectUserGates: Boolean = true
     ) {
         if (respectUserGates && isCallActive) {
+            Timber.i("playVoiceMessage ${message.id} → enqueue (in-call)")
             enqueuePending(message, PendingReason.IN_CALL)
             return
         }
@@ -92,6 +93,7 @@ class PlayReplyUseCase @Inject constructor(
         // reason is reused for compatibility with existing pending rows
         // in the persistent queue (PendingPlaybackEntity.reason).
         if (respectUserGates && !settings.autoPlayReplies) {
+            Timber.i("playVoiceMessage ${message.id} → enqueue (autoPlayReplies=false)")
             enqueuePending(message, PendingReason.SILENT_MODE)
             return
         }
@@ -102,6 +104,7 @@ class PlayReplyUseCase @Inject constructor(
         // status is persisted.
         playbackStartLock.withLock {
             if (audioPlayer.isPlaying()) {
+                Timber.i("playVoiceMessage ${message.id} → enqueue (audio already playing)")
                 pendingQueue.add(message)
                 _playbackStatus.value = PlaybackStatus.PendingCount(pendingQueue.size)
                 return
@@ -279,13 +282,22 @@ class PlayReplyUseCase @Inject constructor(
         val text = message.summary?.takeIf { it.isNotBlank() }
             ?: message.transcription?.takeIf { it.isNotBlank() }
             ?: message.textContent?.takeIf { it.isNotBlank() }
-            ?: return
+        if (text == null) {
+            Timber.w(
+                "playSummaryOrTranscription ${message.id} → no readable text " +
+                "(summary/transcription/textContent all blank). Message stays " +
+                "in ${message.state} without playback or queue."
+            )
+            return
+        }
         val settings = settingsRepository.get()
         if (respectUserGates && isCallActive) {
+            Timber.i("playSummaryOrTranscription ${message.id} → enqueue (in-call)")
             enqueuePending(message, PendingReason.IN_CALL); return
         }
         // v1.20.11: silentMode + autoPlayReplies collapsed — !autoPlay = queue.
         if (respectUserGates && !settings.autoPlayReplies) {
+            Timber.i("playSummaryOrTranscription ${message.id} → enqueue (autoPlayReplies=false)")
             enqueuePending(message, PendingReason.SILENT_MODE); return
         }
 
@@ -294,6 +306,10 @@ class PlayReplyUseCase @Inject constructor(
         // playNext picks it up after the current one finishes.
         playbackStartLock.withLock {
             if (audioPlayer.isPlaying() || ttsPlayer.isSpeaking()) {
+                Timber.i(
+                    "playSummaryOrTranscription ${message.id} → enqueue " +
+                    "(audio=${audioPlayer.isPlaying()} tts=${ttsPlayer.isSpeaking()})"
+                )
                 pendingQueue.add(message)
                 _playbackStatus.value = PlaybackStatus.PendingCount(pendingQueue.size)
                 return@withLock
@@ -335,6 +351,7 @@ class PlayReplyUseCase @Inject constructor(
         // but text rows have no audioFilePath → fall through to TTS there.
         val settings = settingsRepository.get()
         if (respectUserGates && isCallActive) {
+            Timber.i("playTextMessage ${message.id} → enqueue (in-call)")
             enqueuePending(message, PendingReason.IN_CALL)
             return
         }
@@ -344,6 +361,7 @@ class PlayReplyUseCase @Inject constructor(
         // it from; now it's persisted as PENDING_PLAYBACK so it actually
         // shows up in the queue and the count surfaces in the UI.
         if (respectUserGates && !settings.autoPlayReplies) {
+            Timber.i("playTextMessage ${message.id} → enqueue (autoPlayReplies=false)")
             enqueuePending(message, PendingReason.SILENT_MODE)
             return
         }
@@ -358,6 +376,10 @@ class PlayReplyUseCase @Inject constructor(
         // would be handled.
         playbackStartLock.withLock {
             if (audioPlayer.isPlaying() || ttsPlayer.isSpeaking()) {
+                Timber.i(
+                    "playTextMessage ${message.id} → enqueue " +
+                    "(audio=${audioPlayer.isPlaying()} tts=${ttsPlayer.isSpeaking()})"
+                )
                 pendingQueue.add(message)
                 _playbackStatus.value = PlaybackStatus.PendingCount(pendingQueue.size)
                 return@withLock
@@ -571,6 +593,42 @@ class PlayReplyUseCase @Inject constructor(
      * Devuelve el número de mensajes pendientes de reproducción.
      */
     fun pendingCount(): Int = synchronized(pendingQueue) { pendingQueue.size }
+
+    /**
+     * Drops every queued message belonging to [conversationId] from the
+     * in-memory pending queue, and stops current playback if the message
+     * being played belongs to the same conversation. Used by the History
+     * "Clear conversation" action so the user doesn't hear ghost
+     * messages whose underlying DB rows + audio files have just been
+     * wiped. The DB-side pending_playbacks rows cascade-delete via the
+     * FK on PendingPlaybackEntity.messageId, so this method only needs
+     * to reconcile the in-memory state.
+     */
+    fun clearForConversation(conversationId: String) {
+        val playingFromThisConvo = synchronized(pendingQueue) {
+            pendingQueue.removeAll { it.conversationId == conversationId }
+            // currentPlayingId is just an id — we don't store the
+            // conversationId of the playing message. Caller (HistoryViewModel)
+            // already knows the playing message's conversation via
+            // playbackStatus, but the simplest and safest action here is
+            // to always stop if anything is playing once we've changed
+            // the queue. stopAll() doesn't drop the queue (post-v1.20.11).
+            audioPlayer.isPlaying() || ttsPlayer.isSpeaking()
+        }
+        if (playingFromThisConvo) {
+            audioPlayer.stop()
+            ttsPlayer.stop()
+            currentPlayingId = null
+        }
+        val remaining = pendingCount()
+        if (remaining > 0) {
+            _playbackStatus.value = PlaybackStatus.PendingCount(remaining)
+            pendingReplyNotifier.notifyPending(remaining)
+        } else {
+            _playbackStatus.value = PlaybackStatus.Idle
+            pendingReplyNotifier.cancel()
+        }
+    }
 
     /**
      * Live count of pending messages — for UI surfaces that need to react

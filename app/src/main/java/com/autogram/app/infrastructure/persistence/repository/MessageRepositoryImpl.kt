@@ -50,6 +50,16 @@ class MessageRepositoryImpl @Inject constructor(
         messageDao.deleteOlderThan(conversationId, timestampMs)
     }
 
+    override suspend fun clearForConversation(conversationId: String) {
+        // Files first — once the rows are gone we lose the paths and the
+        // .ogg blobs become orphaned in the audio cache directory.
+        val paths = messageDao.audioPathsForConversation(conversationId)
+        for (path in paths) {
+            runCatching { java.io.File(path).delete() }
+        }
+        messageDao.deleteAllForConversation(conversationId)
+    }
+
     override suspend fun getPendingRetries(limit: Int): List<Message> {
         return messageDao.getPendingRetries(limit).map { it.toDomain() }
     }

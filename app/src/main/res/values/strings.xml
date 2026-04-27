@@ -10,7 +10,7 @@
     <string name="common_dismiss">Dismiss</string>
     <string name="main_play_last_original">Replay last</string>
     <string name="main_stop_last_original">Stop playback</string>
-    <string name="main_drain_pending_label">pending</string>
+    <string name="main_drain_pending_label">Pending</string>
     <string name="tile_record_label">Voice to Merlin</string>
     <string name="tile_no_primary">Pick a primary target first in Settings</string>
     <string name="common_cancel">Cancel</string>
@@ -269,6 +269,10 @@
     <string name="stats_last_7_days">Last 7 days</string>
     <string name="stats_no_data">No data to show yet.</string>
     <string name="history_choose_conversation">Choose conversation</string>
+    <string name="history_clear_cd">Clear conversation history</string>
+    <string name="history_clear_title">Clear this conversation?</string>
+    <string name="history_clear_body">This deletes every message and voice file for this conversation from the phone. Messages on Telegram\'s servers stay intact and will sync back if a new reply arrives. This can\'t be undone.</string>
+    <string name="history_clear_confirm">Clear</string>
     <string name="history_empty">No messages yet.</string>
     <string name="history_empty_sub">When Merlin or another pinned chat sends you a voice or text, it\'ll appear here.</string>
     <string name="history_direction_incoming">Incoming</string>
