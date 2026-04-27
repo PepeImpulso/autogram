@@ -124,14 +124,22 @@ interface MessageDao {
     @Query("SELECT COUNT(*) FROM messages WHERE state = 'PENDING_PLAYBACK'")
     fun pendingPlaybackCount(): Flow<Int>
 
-    // Badge counter: incoming messages received since the user last replied to
-    // that conversation. Joins with conversations.lastRepliedAt; NULL means the
-    // user has never replied, so every incoming still counts.
+    // Badge counter: incoming messages received since the user last replied
+    // to that conversation AND not yet played. Joins with
+    // conversations.lastRepliedAt; NULL means the user has never replied,
+    // so every incoming still counts.
+    //
+    // v1.20.20: PLAYED rows are excluded so a message that auto-played (or
+    // was drained from the pending queue, or replayed manually) clears the
+    // badge without requiring an outgoing reply or a History view. The
+    // badge tracks "stuff I haven't dealt with yet" — once you've heard
+    // it, it's dealt with even if you don't reply.
     @Query("""
         SELECT m.conversationId AS conversationId, COUNT(*) AS count
         FROM messages m
         INNER JOIN conversations c ON c.id = m.conversationId
         WHERE m.direction = 'INCOMING'
+          AND m.state != 'PLAYED'
           AND m.createdAt > COALESCE(c.lastRepliedAt, 0)
         GROUP BY m.conversationId
     """)
