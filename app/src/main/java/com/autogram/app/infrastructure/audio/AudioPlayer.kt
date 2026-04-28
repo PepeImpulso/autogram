@@ -191,19 +191,28 @@ class AudioPlayer @Inject constructor(
     ) {
         try {
             val routedDevices = getRoutedDevices(audioManager, attributes)
-            // When a projected Android Auto sink (BUS / USB / HDMI) is on
-            // the system's output list, the OS default route silently
-            // routes our MediaPlayer into the AA media session, which
-            // never gets surfaced because we're not the active AA media
-            // app. Net result: tapping the headphones icon on the phone
-            // produced silence whenever USB-AA was active.
+            // Routing logic when an Android Auto sink (BUS / USB / HDMI)
+            // is on the system's output list:
             //
-            // The semantic of phone-side play() is "play this on the
-            // phone now". So instead of yielding to the OS when projected
-            // outputs are present, we explicitly walk the personal-output
-            // priority (Bluetooth A2DP → wired headset → built-in
-            // speaker) so the user actually hears the message coming out
-            // of their phone or paired headphones.
+            // Pre-v1.20.21 we forced playback to the phone's built-in
+            // speaker as a last resort so the user "always heard
+            // something" — but that fired the phone-speaker even while
+            // the user was driving with the phone in a pocket /
+            // cupholder, which is the worst possible spot for audio.
+            // Reported as "audio doesn't come out of the car speakers"
+            // even though the messages were technically playing.
+            //
+            // New behaviour: if a personal output that routes to the
+            // car is available (Bluetooth A2DP, wired headset, etc.),
+            // use it — that's what carries audio to the car's audio
+            // system in most setups. If NO such personal output is
+            // present (USB-AA only, no BT pair) we leave routing to
+            // the OS instead of forcing the phone speaker. The OS may
+            // surface our playback through AA's media stream, which
+            // works on modern Gearhead even when we're not the active
+            // media app; if it doesn't, silence is no worse than an
+            // inaudible phone speaker buzzing in a pocket. BT/wired
+            // users hear the message through the car regardless.
             val carPresent = (routedDevices + outputSnapshot)
                 .any { isProjectedCarOutputType(it.type) }
             if (carPresent) {
@@ -211,14 +220,16 @@ class AudioPlayer @Inject constructor(
                 if (phoneDevice != null) {
                     val accepted = player.setPreferredDevice(phoneDevice)
                     Timber.i(
-                        "AudioPlayer: projected car output present, forcing phone " +
-                            "output type=${phoneDevice.type} accepted=$accepted " +
+                        "AudioPlayer: AA connected, routing through personal output " +
+                            "type=${phoneDevice.type} accepted=$accepted " +
                             "(routed=${routedDevices.typeSummary()}, outputs=${outputSnapshot.typeSummary()})"
                     )
                 } else {
-                    Timber.w(
-                        "AudioPlayer: projected car output present but no phone-side " +
-                            "personal output found; falling back to OS default " +
+                    Timber.i(
+                        "AudioPlayer: AA connected and no BT/wired output found; " +
+                            "leaving routing to OS so audio has a chance to reach " +
+                            "the car's media stream rather than the phone's " +
+                            "built-in speaker " +
                             "(routed=${routedDevices.typeSummary()}, outputs=${outputSnapshot.typeSummary()})"
                     )
                 }
@@ -325,13 +336,15 @@ class AudioPlayer @Inject constructor(
         )
 
         // Personal outputs ranked in the order we want to fall back to
-        // when a projected car sink is present. BLUETOOTH_A2DP and wired
-        // headsets are the most "personal" (user's own ears). BUILTIN
-        // speaker is the guaranteed-available last resort so the user
-        // always hears something coming out of the phone itself rather
-        // than silence routed into the AA session they can't see.
-        private val PHONE_FALLBACK_PRIORITY = PERSONAL_OUTPUT_PRIORITY +
-            listOf(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER)
+        // when a projected car sink is present. BLUETOOTH_A2DP and
+        // wired headsets are the most "personal" (user's own ears) AND
+        // route to the car's audio system in most car setups, which is
+        // what we actually want when AA is connected. v1.20.21 dropped
+        // TYPE_BUILTIN_SPEAKER from this list — falling back to the
+        // phone speaker while driving was useless (phone in pocket) and
+        // just produced the "audio didn't play" reports. If no entry
+        // here is available we now leave routing to the OS instead.
+        private val PHONE_FALLBACK_PRIORITY = PERSONAL_OUTPUT_PRIORITY
 
         internal fun choosePreferredOutputType(
             routedTypes: List<Int>,
@@ -350,20 +363,22 @@ class AudioPlayer @Inject constructor(
     }
 
     /**
-     * Pick a phone-side personal output (phone speaker, Bluetooth
-     * headset, etc.) when a projected car sink is present. Prefers the
-     * currently-routed personal output if any, then the highest-
-     * priority personal output in the system's device snapshot, and
-     * finally TYPE_BUILTIN_SPEAKER so we never return null when the
-     * built-in speaker exists — the user always hears SOMETHING from
-     * the phone rather than having audio disappear into the AA session.
+     * Pick a non-projected, non-built-in-speaker output (Bluetooth
+     * A2DP, wired headset, etc.) when a projected car sink is present.
+     * Returning null is allowed and means "no good route — let the OS
+     * decide." Pre-v1.20.21 we returned BUILTIN_SPEAKER as a last
+     * resort; with AA active that just produced inaudible playback
+     * from the user's pocketed phone, so we no longer fall back to it.
      */
     private fun pickPhonePersonalOutput(
         outputs: List<AudioDeviceInfo>,
         routed: List<AudioDeviceInfo>
     ): AudioDeviceInfo? {
         val combined = (routed + outputs).distinctBy { it.id }
-        val personal = combined.filter { !isProjectedCarOutputType(it.type) }
+        val personal = combined.filter {
+            !isProjectedCarOutputType(it.type) &&
+                it.type != AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+        }
         if (personal.isEmpty()) return null
         val byType = personal.groupBy { it.type }
         for (type in PHONE_FALLBACK_PRIORITY) {
