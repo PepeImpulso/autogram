@@ -35,6 +35,23 @@ class QuickReplyRepositoryImpl @Inject constructor(
         quickReplyDao.delete(id)
     }
 
+    override suspend fun reorder(orderedIds: List<String>) {
+        // Two-phase write so drag-reorder doesn't ever observe a state
+        // where two shortcuts share the same position (which would
+        // make ORDER BY position ASC return them in arbitrary order
+        // and the editor feed would visibly flicker mid-drag).
+        // Phase 1 pushes everyone past the existing max so positions
+        // are unique-but-temporary; phase 2 writes the final 0..N-1.
+        val all = quickReplyDao.getAll()
+        val maxPos = all.maxOfOrNull { it.position } ?: 0
+        orderedIds.forEachIndexed { index, id ->
+            quickReplyDao.setPosition(id, maxPos + 1 + index)
+        }
+        orderedIds.forEachIndexed { index, id ->
+            quickReplyDao.setPosition(id, index)
+        }
+    }
+
     private fun QuickReplyEntity.toDomain() = QuickReply(
         id = id,
         label = label,

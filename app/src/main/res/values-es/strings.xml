@@ -78,6 +78,7 @@
     <string name="quick_replies_title">Respuestas rápidas</string>
     <string name="quick_replies_empty">Crea tus propias respuestas rápidas para enviar con un toque desde la pantalla principal.</string>
     <string name="quick_replies_new">Nueva</string>
+    <string name="quick_replies_reorder_cd">Arrastrar para reordenar</string>
     <string name="quick_replies_dialog_new_title">Nueva respuesta</string>
     <string name="quick_replies_dialog_edit_title">Editar respuesta</string>
     <string name="quick_replies_label">Etiqueta (chip)</string>

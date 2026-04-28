@@ -40,8 +40,8 @@ android {
         applicationId = "com.autogram.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 91
-        versionName = "1.20.21"
+        versionCode = 92
+        versionName = "1.20.22"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -120,6 +120,8 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.extended)
     debugImplementation(libs.androidx.compose.ui.tooling)
+    // Drag-and-drop reordering for the Shortcuts editor LazyColumn.
+    implementation(libs.reorderable)
 
     // Android Auto
     implementation(libs.androidx.car.app)

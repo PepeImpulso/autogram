@@ -240,6 +240,9 @@ interface QuickReplyDao {
 
     @Query("DELETE FROM quick_replies WHERE id = :id")
     suspend fun delete(id: String)
+
+    @Query("UPDATE quick_replies SET position = :position WHERE id = :id")
+    suspend fun setPosition(id: String, position: Int)
 }
 
 @Dao

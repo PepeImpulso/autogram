@@ -73,6 +73,7 @@
     <string name="quick_replies_title">Shortcuts</string>
     <string name="quick_replies_empty">Create your own shortcuts to send text with one tap from the home screen.</string>
     <string name="quick_replies_new">New</string>
+    <string name="quick_replies_reorder_cd">Drag to reorder</string>
     <string name="quick_replies_dialog_new_title">New shortcut</string>
     <string name="quick_replies_dialog_edit_title">Edit shortcut</string>
     <string name="quick_replies_label">Label (chip)</string>

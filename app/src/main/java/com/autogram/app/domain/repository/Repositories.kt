@@ -67,4 +67,13 @@ interface QuickReplyRepository {
     suspend fun getAll(): List<QuickReply>
     suspend fun upsert(reply: QuickReply)
     suspend fun delete(id: String)
+    /**
+     * Persist a new ordering for the shortcut list. [orderedIds] is the
+     * full list of shortcut IDs in the order the user wants them to
+     * appear; this method writes `position = index` for each so the
+     * home-screen and editor feeds (both `ORDER BY position ASC`) reflect
+     * the new order. Used by the drag-reorder UX in the Shortcuts
+     * editor.
+     */
+    suspend fun reorder(orderedIds: List<String>)
 }

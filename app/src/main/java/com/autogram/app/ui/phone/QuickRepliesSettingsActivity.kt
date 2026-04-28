@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
@@ -44,6 +45,8 @@ import com.autogram.app.domain.model.QuickReplyKind
 import com.autogram.app.domain.repository.QuickReplyRepository
 import com.autogram.app.infrastructure.audio.AudioRecorder
 import com.autogram.app.ui.theme.AutogramTheme
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -250,6 +253,19 @@ class QuickRepliesSettingsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Persist the drag-reorder. [orderedIds] is the full shortcut list
+     * in the order the user dragged them into. Repository writes
+     * `position = index` for each id and the home + editor feeds
+     * (both ORDER BY position ASC) reflect the new order on the next
+     * Flow emission. Called from the Shortcuts editor on drag-drop.
+     */
+    fun reorder(orderedIds: List<String>) {
+        viewModelScope.launch {
+            repo.reorder(orderedIds)
+        }
+    }
+
     fun startRecording() {
         if (_voiceState.value is VoiceRecordState.Recording) return
         // MediaRecorder.prepare()+start() can block 50-300ms on cold mic on
@@ -430,21 +446,50 @@ private fun QuickRepliesScreen(
             QuickRepliesEmptyState(modifier = Modifier.fillMaxSize().padding(padding))
             return@Scaffold
         }
+        // Drag-reorder: keep an optional draft order that wins over the
+        // upstream Flow while a drag is in progress, so the dragged item
+        // glides smoothly without flicker. Cleared once the persisted
+        // order matches the draft (LaunchedEffect below).
+        var draftOrder by remember { mutableStateOf<List<QuickReply>?>(null) }
+        val displayList = draftOrder ?: replies
+
+        LaunchedEffect(replies, draftOrder) {
+            val draftIds = draftOrder?.map { it.id }
+            if (draftIds != null && draftIds == replies.map { it.id }) {
+                draftOrder = null
+            }
+        }
+
+        val lazyListState = androidx.compose.foundation.lazy.rememberLazyListState()
+        val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
+            val current = draftOrder ?: replies
+            draftOrder = current.toMutableList().apply { add(to.index, removeAt(from.index)) }
+        }
+
         LazyColumn(
+            state = lazyListState,
             modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            items(replies, key = { it.id }) { r ->
-                QuickReplyCard(
-                    reply = r,
-                    onTap = {
-                        target = if (r.kind == QuickReplyKind.VOICE) EditorTarget.Voice(r)
-                                 else EditorTarget.Text(r)
-                    },
-                    onDelete = { viewModel.delete(r) },
-                    onEnabledChange = { viewModel.setEnabled(r, it) }
-                )
+            items(displayList, key = { it.id }) { r ->
+                ReorderableItem(reorderableState, key = r.id) { isDragging ->
+                    QuickReplyCard(
+                        reply = r,
+                        isDragging = isDragging,
+                        dragHandleModifier = Modifier.draggableHandle(
+                            onDragStopped = {
+                                draftOrder?.let { d -> viewModel.reorder(d.map { it.id }) }
+                            }
+                        ),
+                        onTap = {
+                            target = if (r.kind == QuickReplyKind.VOICE) EditorTarget.Voice(r)
+                                     else EditorTarget.Text(r)
+                        },
+                        onDelete = { viewModel.delete(r) },
+                        onEnabledChange = { viewModel.setEnabled(r, it) }
+                    )
+                }
             }
             item { Spacer(Modifier.height(72.dp)) }
         }
@@ -513,6 +558,8 @@ private fun QuickRepliesEmptyState(modifier: Modifier = Modifier) {
 @Composable
 private fun QuickReplyCard(
     reply: QuickReply,
+    isDragging: Boolean,
+    dragHandleModifier: Modifier,
     onTap: () -> Unit,
     onDelete: () -> Unit,
     onEnabledChange: (Boolean) -> Unit
@@ -529,14 +576,34 @@ private fun QuickReplyCard(
             containerColor = if (reply.isEnabled) MaterialTheme.colorScheme.surface
                              else MaterialTheme.colorScheme.surfaceVariant
         ),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp)
+        elevation = CardDefaults.elevatedCardElevation(
+            defaultElevation = if (isDragging) 8.dp else 1.dp
+        )
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .padding(start = 4.dp, end = 14.dp)
+                .padding(vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Drag handle on the leading edge so the card's main click
+            // target (tap-to-edit) and the drag affordance don't fight
+            // for the same gesture surface. .draggableHandle() comes
+            // from sh.calvin.reorderable; long-press isn't required —
+            // a press-and-drag from the handle starts the reorder.
+            Box(
+                modifier = dragHandleModifier
+                    .size(40.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.DragHandle,
+                    contentDescription = stringResource(R.string.quick_replies_reorder_cd),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.width(6.dp))
             Surface(
                 shape = CircleShape,
                 color = if (isVoice) MaterialTheme.colorScheme.tertiaryContainer
