@@ -374,21 +374,25 @@ private fun AudioBubbleHeader(
             )
         }
         Spacer(Modifier.width(10.dp))
-        Column(modifier = Modifier.weight(1f, fill = false)) {
-            Icon(
-                Icons.Filled.GraphicEq,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(18.dp)
-            )
-            Text(
-                stringResource(R.string.history_voice_note, duration),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+        // v1.20.23 — replaced the GraphicEq + duration line with a
+        // proper waveform visual + duration. The waveform is
+        // decorative (deterministic per message id, not real
+        // amplitudes); progress overlay paints bars in tertiary while
+        // playing this message. Layout: waveform takes the available
+        // width, duration anchored on the trailing edge.
+        Waveform(
+            messageId = message.id,
+            progress = if (isPlayingThis) 0.5f else 0f,
+            modifier = Modifier
+                .weight(1f)
+                .height(28.dp)
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            duration,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -435,11 +439,18 @@ private fun SummaryInlineBlock(message: Message) {
         }
         SummaryState.DONE -> message.summary?.let { text ->
             Spacer(Modifier.height(8.dp))
+            // AI Summary uses tertiaryContainer (warm brown tonal) so it
+            // visually distinguishes from the transcription card sitting
+            // below it. Both follow the same shape language; tint hue is
+            // the only differentiator.
             InlineBlock(
                 icon = Icons.Filled.Summarize,
                 label = stringResource(R.string.history_summary_label),
-                tint = MaterialTheme.colorScheme.primary,
-                body = text
+                tint = MaterialTheme.colorScheme.tertiary,
+                background = MaterialTheme.colorScheme.tertiaryContainer,
+                onBackground = MaterialTheme.colorScheme.onTertiaryContainer,
+                body = text,
+                timestamp = formatBubbleTime(message.createdAt)
             )
         }
         SummaryState.FAILED -> {
@@ -476,11 +487,19 @@ private fun TranscriptionInlineBlock(message: Message) {
         }
         TranscriptionState.DONE -> message.transcription?.let { text ->
             Spacer(Modifier.height(8.dp))
+            // Transcription card uses surfaceContainerHigh — neutral
+            // dark surface, distinguished from the warm brown AI
+            // Summary card by hue. Label is the explicit "Transcription"
+            // string from v1.20.23 so the user can tell the cards apart
+            // at a glance even when summary is missing.
             InlineBlock(
                 icon = Icons.AutoMirrored.Filled.ShortText,
-                label = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                body = "“$text”"
+                label = stringResource(R.string.history_transcription_label),
+                tint = MaterialTheme.colorScheme.primary,
+                background = MaterialTheme.colorScheme.surfaceContainerHigh,
+                onBackground = MaterialTheme.colorScheme.onSurface,
+                body = text,
+                timestamp = formatBubbleTime(message.createdAt)
             )
         }
         TranscriptionState.UNAVAILABLE -> {
@@ -503,23 +522,30 @@ private fun TranscriptionInlineBlock(message: Message) {
 }
 
 /**
- * Inset panel inside a chat bubble — used for both summary and transcription.
- * One consistent visual so the user learns "indented block = derived content"
- * and stops conflating it with the message body.
+ * Inset panel inside a chat bubble — used for both summary and
+ * transcription. v1.20.23 added a [background] parameter so the two
+ * cards can have distinct hues (Summary = warm brown tertiary,
+ * Transcription = neutral surfaceContainerHigh) while keeping the
+ * same shape + spacing language. Optional [timestamp] mirrors the
+ * mockup's right-aligned time stamp inside each card.
  */
 @Composable
 private fun InlineBlock(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String?,
     tint: Color,
-    body: String
+    background: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    onBackground: Color = MaterialTheme.colorScheme.onSurface,
+    body: String,
+    timestamp: String? = null
 ) {
     Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(12.dp),
+        color = background,
+        contentColor = onBackground,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     icon,
@@ -537,12 +563,22 @@ private fun InlineBlock(
                     )
                 }
             }
-            if (label != null) Spacer(Modifier.height(3.dp))
+            if (label != null) Spacer(Modifier.height(4.dp))
             Text(
                 body,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface
+                color = onBackground
             )
+            if (timestamp != null) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    timestamp,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = onBackground.copy(alpha = 0.6f),
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.End
+                )
+            }
         }
     }
 }
@@ -555,6 +591,8 @@ private fun InlineBlock(
 private fun bubbleShape(outgoing: Boolean): RoundedCornerShape =
     if (outgoing) RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomEnd = 4.dp, bottomStart = 18.dp)
     else RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomEnd = 18.dp, bottomStart = 4.dp)
+
+private fun formatBubbleTime(ms: Long): String = timeFormat.format(Date(ms))
 
 private fun formatDuration(ms: Long?): String {
     if (ms == null || ms <= 0) return "0:00"

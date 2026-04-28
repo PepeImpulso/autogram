@@ -270,6 +270,7 @@ class MainActivity : BaseLocaleActivity() {
                                 )
                             },
                             onOpenStats = { startActivity(Intent(this, StatsActivity::class.java)) },
+                            onOpenPendingQueue = { startActivity(Intent(this, PendingQueueActivity::class.java)) },
                             onManagePinned = { startActivity(Intent(this, ManagePinnedActivity::class.java)) },
                             onManageQuickReplies = { startActivity(Intent(this, QuickRepliesSettingsActivity::class.java)) }
                         )
@@ -352,6 +353,7 @@ private fun MainScreen(
     onOpenHistory: () -> Unit,
     onOpenHistoryFor: (conversationId: String) -> Unit,
     onOpenStats: () -> Unit,
+    onOpenPendingQueue: () -> Unit,
     onManagePinned: () -> Unit,
     onManageQuickReplies: () -> Unit,
     viewModel: MainViewModel = hiltViewModel(),
@@ -473,7 +475,10 @@ private fun MainScreen(
                 isPlayingLast = isAnyPlaying,
                 pendingCount = pendingPlaybackCount,
                 onToggleLastOriginal = viewModel::toggleLastOriginal,
-                onDrainPending = viewModel::drainPending
+                // v1.20.23 — opens the new Pending Queue screen instead
+                // of draining immediately, so the user sees what's
+                // queued and can choose Play All from inside.
+                onDrainPending = onOpenPendingQueue
             )
 
             if (folders.isNotEmpty()) {

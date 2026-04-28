@@ -47,6 +47,15 @@
     <string name="status_error">Error ✗</string>
     <string name="status_error_generic">Error: %s</string>
     <string name="status_pending_count">%d pending messages</string>
+    <string name="pending_queue_title">Pending Queue</string>
+    <string name="pending_queue_play_all">Play All</string>
+    <string name="pending_queue_filter_all">All</string>
+    <string name="pending_queue_filter_voice">Voice</string>
+    <string name="pending_queue_filter_text">Text</string>
+    <string name="pending_queue_row_voice">Voice message · %1$s</string>
+    <string name="pending_queue_row_text_generic">Text message</string>
+    <string name="pending_queue_now_playing">Now Playing</string>
+    <string name="pending_queue_empty">Queue is empty.</string>
     <string name="status_queued_offline">Queued offline</string>
     <string name="status_queued_offline_count">Queued offline · %d</string>
     <string name="status_outbox_count">%d queued · sent when online</string>
@@ -180,7 +189,8 @@
     <string name="settings_summary_llm_api_key">API key</string>
     <string name="settings_summary_llm_model">Model</string>
     <string name="settings_summary_llm_model_hint">gpt-4o-mini</string>
-    <string name="history_summary_label">Summary</string>
+    <string name="history_summary_label">AI Summary</string>
+    <string name="history_transcription_label">Transcription</string>
     <string name="history_summary_in_progress">Summarizing…</string>
     <string name="history_summary_unavailable">Summary engine not configured</string>
     <string name="history_summary_failed">Couldn\'t summarize</string>

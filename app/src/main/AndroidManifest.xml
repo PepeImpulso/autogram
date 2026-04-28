@@ -92,6 +92,11 @@
             android:label="@string/history_title" />
 
         <activity
+            android:name=".ui.phone.PendingQueueActivity"
+            android:exported="false"
+            android:label="@string/pending_queue_title" />
+
+        <activity
             android:name=".ui.phone.StatsActivity"
             android:exported="false"
             android:label="@string/stats_title" />

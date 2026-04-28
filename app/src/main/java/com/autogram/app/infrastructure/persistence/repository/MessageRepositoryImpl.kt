@@ -76,6 +76,12 @@ class MessageRepositoryImpl @Inject constructor(
             rows.associate { it.conversationId to it.count }
         }
 
+    override fun observePendingPlaybackQueue(): Flow<List<Message>> =
+        messageDao.observePendingPlaybackQueue().map { it.map { e -> e.toDomain() } }
+
+    override fun observeNowPlaying(): Flow<Message?> =
+        messageDao.observeNowPlaying().map { it?.toDomain() }
+
     private fun MessageEntity.toDomain() = Message(
         id = id,
         conversationId = conversationId,

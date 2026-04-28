@@ -124,6 +124,30 @@ interface MessageDao {
     @Query("SELECT COUNT(*) FROM messages WHERE state = 'PENDING_PLAYBACK'")
     fun pendingPlaybackCount(): Flow<Int>
 
+    // Queue contents for the Pending Queue screen. Joins with
+    // pending_playbacks so the list shows in enqueue order (which is
+    // also drain order). The state filter excludes rows that have
+    // already been promoted to PLAYING / PLAYED but for some reason
+    // still have a pending_playbacks row — defensive against the kind
+    // of race v1.20.18 fixed.
+    @Query("""
+        SELECT m.* FROM messages m
+        INNER JOIN pending_playbacks p ON p.messageId = m.id
+        WHERE m.state = 'PENDING_PLAYBACK'
+        ORDER BY p.enqueuedAt ASC
+    """)
+    fun observePendingPlaybackQueue(): Flow<List<MessageEntity>>
+
+    // Currently-playing message for the Now Playing panel. There's at
+    // most one (PlaybackStartLock guarantees serial playback).
+    @Query("""
+        SELECT * FROM messages
+        WHERE state = 'PLAYING' OR state = 'PAUSED'
+        ORDER BY playedAt DESC
+        LIMIT 1
+    """)
+    fun observeNowPlaying(): Flow<MessageEntity?>
+
     // Badge counter: incoming messages received since the user last replied
     // to that conversation AND not yet played. Joins with
     // conversations.lastRepliedAt; NULL means the user has never replied,

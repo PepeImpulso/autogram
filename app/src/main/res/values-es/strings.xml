@@ -50,6 +50,15 @@
     <string name="status_error">Error ✗</string>
     <string name="status_error_generic">Error: %s</string>
     <string name="status_pending_count">%d mensajes pendientes</string>
+    <string name="pending_queue_title">Cola pendiente</string>
+    <string name="pending_queue_play_all">Reproducir todo</string>
+    <string name="pending_queue_filter_all">Todos</string>
+    <string name="pending_queue_filter_voice">Voz</string>
+    <string name="pending_queue_filter_text">Texto</string>
+    <string name="pending_queue_row_voice">Mensaje de voz · %1$s</string>
+    <string name="pending_queue_row_text_generic">Mensaje de texto</string>
+    <string name="pending_queue_now_playing">Reproduciendo</string>
+    <string name="pending_queue_empty">No hay mensajes pendientes.</string>
     <string name="status_queued_offline">En cola · sin conexión</string>
     <string name="status_queued_offline_count">En cola sin conexión · %d</string>
     <string name="status_sending_queue">Enviando cola · %d</string>
@@ -183,7 +192,8 @@
     <string name="settings_summary_llm_api_key">Clave API</string>
     <string name="settings_summary_llm_model">Modelo</string>
     <string name="settings_summary_llm_model_hint">gpt-4o-mini</string>
-    <string name="history_summary_label">Resumen</string>
+    <string name="history_summary_label">Resumen IA</string>
+    <string name="history_transcription_label">Transcripción</string>
     <string name="history_summary_in_progress">Resumiendo…</string>
     <string name="history_summary_unavailable">Motor de resumen no configurado</string>
     <string name="history_summary_failed">No se pudo resumir</string>

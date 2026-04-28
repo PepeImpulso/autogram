@@ -27,6 +27,10 @@ interface MessageRepository {
     suspend fun resetStuckSending(): Int
     fun observeOutboxCount(): Flow<Int>
     fun observePendingReplyCounts(): Flow<Map<String, Int>>
+    /** Live queue contents for the Pending Queue screen, in drain order. */
+    fun observePendingPlaybackQueue(): Flow<List<Message>>
+    /** Single currently-playing (or paused) message, for Now Playing panel. */
+    fun observeNowPlaying(): Flow<Message?>
 }
 
 interface ConversationRepository {

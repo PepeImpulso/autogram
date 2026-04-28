@@ -139,6 +139,22 @@ class AudioPlayer @Inject constructor(
     fun isPlaying(): Boolean = isPlaying
 
     /**
+     * Current playback position in milliseconds, or null when nothing is
+     * loaded. Used by the Pending Queue's Now Playing scrubber. The
+     * underlying MediaPlayer.getCurrentPosition() can throw
+     * IllegalStateException if the player is in an Error state, so we
+     * wrap it.
+     */
+    fun currentPositionMs(): Int? = runCatching { mediaPlayer?.currentPosition }.getOrNull()
+
+    /**
+     * Total duration of the loaded track in milliseconds, or null when
+     * nothing is loaded. Same IllegalStateException risk as
+     * [currentPositionMs].
+     */
+    fun durationMs(): Int? = runCatching { mediaPlayer?.duration }.getOrNull()
+
+    /**
      * Request temporary audio focus for voice reply playback. Uses
      * AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK so the Android Auto host / Google
      * Maps navigation prompts are more likely to grant it — the "may duck"

@@ -636,6 +636,39 @@ class PlayReplyUseCase @Inject constructor(
     fun pendingCount(): Int = synchronized(pendingQueue) { pendingQueue.size }
 
     /**
+     * Pending Queue Now-Playing transport: stop the current message and
+     * jump to the next queued one. No-op when the queue is empty (the
+     * current playback is just stopped). Used by the skip-next button
+     * in the Pending Queue screen's Now Playing panel.
+     */
+    suspend fun skipNext() {
+        audioPlayer.stop()
+        ttsPlayer.stop()
+        currentPlayingId = null
+        playNext()
+    }
+
+    /**
+     * Restart the currently-playing message from the beginning. Used by
+     * the skip-previous button in the Pending Queue's Now Playing panel.
+     * If nothing is playing, no-op. We don't track played history, so
+     * "previous" can't go back to a finished message — restart is the
+     * sensible interpretation.
+     */
+    suspend fun restartCurrent() {
+        val playingId = currentPlayingId ?: return
+        val msg = messageRepository.getById(playingId) ?: return
+        audioPlayer.stop()
+        ttsPlayer.stop()
+        currentPlayingId = null
+        playQueued(msg)
+    }
+
+    /** AudioPlayer pass-through for the Now Playing scrubber. Returns null for TTS. */
+    fun currentPositionMs(): Int? = audioPlayer.currentPositionMs()
+    fun durationMs(): Int? = audioPlayer.durationMs()
+
+    /**
      * Drops every queued message belonging to [conversationId] from the
      * in-memory pending queue, and stops current playback if the message
      * being played belongs to the same conversation. Used by the History
