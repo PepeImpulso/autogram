@@ -1,12 +1,15 @@
 package com.autogram.app.service
 
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import com.autogram.app.domain.model.Conversation
 import com.autogram.app.domain.model.Message
+import com.autogram.app.ui.phone.MainActivity
 import dagger.hilt.android.qualifiers.ApplicationContext
 import timber.log.Timber
 import javax.inject.Inject
@@ -82,6 +85,12 @@ class AutogramMediaPlaybackController @Inject constructor(
             // Empty initial state so AA / system controls show the
             // session as available even before the first playback.
             setPlaybackState(idleState())
+            // v1.22.3 — wire the activity to launch when the user taps
+            // the Now Playing area in AA / lock-screen media controls.
+            // Without this, AA's Now Playing card may have no tap
+            // affordance and the user can't deep-link from the car
+            // back to Autogram on the phone.
+            setSessionActivity(buildSessionActivityIntent())
             // v1.22.2 — activate the session immediately so Android Auto
             // and Bluetooth car stereos can discover it on connect, not
             // only after the first incoming-message playback. Without
@@ -90,6 +99,18 @@ class AutogramMediaPlaybackController @Inject constructor(
             // listed in the car's media picker at all.
             isActive = true
         }
+    }
+
+    private fun buildSessionActivityIntent(): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        return PendingIntent.getActivity(
+            context,
+            SESSION_ACTIVITY_REQUEST_CODE,
+            intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
     }
 
     fun setListener(l: Listener) { listener = l }
@@ -114,8 +135,35 @@ class AutogramMediaPlaybackController @Inject constructor(
         session.setPlaybackState(playingState(positionMs))
     }
 
+    /**
+     * v1.22.3 — refresh just the metadata (title / subtitle / duration)
+     * for the currently-playing message without touching the playback
+     * state. PlayReplyUseCase calls this from a fire-and-forget
+     * coroutine after the conversation lookup completes, so AA's
+     * "now playing" name updates from the immediate fallback ("Autogram")
+     * to the real contact title once Room hands the row back.
+     * Decoupled from [markPlaying] so we don't reset playback position
+     * to 0 every time we enrich metadata.
+     */
+    fun updateMetadata(message: Message, conversation: Conversation?, durationMs: Long? = null) {
+        session.setMetadata(metadataFor(message, conversation, durationMs))
+    }
+
     fun markPaused(positionMs: Long = 0L) {
         session.setPlaybackState(pausedState(positionMs))
+    }
+
+    /**
+     * v1.22.3 — bring the session back to PLAYING after a [markPaused]
+     * without rebuilding metadata. Cheaper + race-free vs going through
+     * [markPlaying] again (which would re-do the conversation lookup +
+     * reset position to 0). Used by `PlayReplyUseCase.resume()` so the
+     * session state flips back the same instant the audio resumes,
+     * not after a Room round-trip.
+     */
+    fun markResumed(positionMs: Long = 0L) {
+        if (!session.isActive) session.isActive = true
+        session.setPlaybackState(playingState(positionMs))
     }
 
     /** Playback fully stopped — keep the session active so AA still shows our app. */
@@ -164,7 +212,11 @@ class AutogramMediaPlaybackController @Inject constructor(
     private fun pausedState(positionMs: Long): PlaybackStateCompat =
         PlaybackStateCompat.Builder()
             .setActions(TRANSPORT_ACTIONS)
-            .setState(PlaybackStateCompat.STATE_PAUSED, positionMs, 1.0f)
+            // Speed 0.0f freezes AA / system controls' progress bar at
+            // `positionMs`. v1.22.x-pre passed 1.0f, which made AA keep
+            // extrapolating position while paused — progress bar drifted
+            // past the real pause point.
+            .setState(PlaybackStateCompat.STATE_PAUSED, positionMs, 0.0f)
             .build()
 
     private fun idleState(): PlaybackStateCompat =
@@ -175,6 +227,7 @@ class AutogramMediaPlaybackController @Inject constructor(
 
     companion object {
         private const val SESSION_TAG = "AutogramMediaSession"
+        private const val SESSION_ACTIVITY_REQUEST_CODE = 0xA10
         private const val TRANSPORT_ACTIONS =
             PlaybackStateCompat.ACTION_PLAY or
                 PlaybackStateCompat.ACTION_PAUSE or

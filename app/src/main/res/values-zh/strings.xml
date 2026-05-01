@@ -263,6 +263,10 @@
     <string name="history_tab_history">历史</string>
     <string name="contact_filter_all">全部</string>
     <string name="history_row_sent_prefix">已发送：%1$s</string>
+    <string name="media_browser_pending">待播放</string>
+    <string name="media_browser_history">历史</string>
+    <string name="media_browser_kind_voice">语音</string>
+    <string name="media_browser_kind_text">文本</string>
     <string name="history_state_sent">已发送</string>
     <string name="history_state_sending">发送中…</string>
     <string name="history_state_queued">排队中</string>

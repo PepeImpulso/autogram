@@ -264,6 +264,10 @@
     <string name="history_tab_history">Historique</string>
     <string name="contact_filter_all">Tous</string>
     <string name="history_row_sent_prefix">Envoyé : %1$s</string>
+    <string name="media_browser_pending">En attente</string>
+    <string name="media_browser_history">Historique</string>
+    <string name="media_browser_kind_voice">Vocal</string>
+    <string name="media_browser_kind_text">Texte</string>
     <string name="history_state_sent">Envoyé</string>
     <string name="history_state_sending">Envoi…</string>
     <string name="history_state_queued">En file</string>

@@ -16,6 +16,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -65,7 +66,18 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
     override fun onCreate() {
         super.onCreate()
         sessionToken = mediaPlayback.sessionToken()
-        Timber.i("AutogramMediaBrowserService onCreate — session attached")
+        // v1.22.3 — explicitly read playReplyUseCase so R8's "remove unused
+        // fields" optimization can't strip the @Inject lateinit var. The
+        // injection itself triggers PlayReplyUseCase's init {} block which
+        // registers the MediaSessionCompat listener; without that, AA
+        // transport callbacks (Play / Pause / PlayFromMediaId) would log
+        // "before listener attached" and silently drop. Hilt's generated
+        // proguard rules already preserve @Inject fields, but reading the
+        // hashCode here is bulletproof insurance.
+        Timber.i(
+            "AutogramMediaBrowserService onCreate — session attached, " +
+                "playReplyUseCase=${playReplyUseCase.hashCode()}"
+        )
     }
 
     /**
@@ -107,37 +119,38 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
     }
 
     private fun rootChildren(): MutableList<MediaItem> = mutableListOf(
-        browseable(PENDING_ID, "Pending"),
-        browseable(HISTORY_ID, "History")
+        browseable(PENDING_ID, getString(com.autogram.app.R.string.media_browser_pending)),
+        browseable(HISTORY_ID, getString(com.autogram.app.R.string.media_browser_history))
     )
 
     private suspend fun pendingChildren(): List<MediaItem> {
-        // Use the canonical pending-queue Flow in drain order — same
-        // source the Pending tab uses. Avoids the v1.22.1 bug of
-        // loading every message in the DB and filtering in-memory.
-        val pending = runCatching {
-            messageRepository.observePendingPlaybackQueue().first()
-        }.getOrDefault(emptyList())
+        // v1.22.3 — wrap in withTimeoutOrNull so a stuck DB query doesn't
+        // freeze AA's UI. AA waits indefinitely on result.detach() until
+        // sendResult fires, so a hung query == frozen browser. 5s is more
+        // than enough for a normal Room read; on timeout we surface an
+        // empty list and AA shows the folder as empty.
+        val pending = withTimeoutOrNull(BROWSER_QUERY_TIMEOUT_MS) {
+            runCatching { messageRepository.observePendingPlaybackQueue().first() }
+                .getOrDefault(emptyList())
+        } ?: emptyList()
         val convos = conversationsById()
         return pending.map { msg -> playableItem(msg, convos[msg.conversationId]) }
     }
 
     private suspend fun historyChildren(): List<MediaItem> {
-        // No dedicated "recent N incoming voice" query exists, so the
-        // in-memory filter on getAll() is what we have. Capped at 50
-        // so the AA browser doesn't churn on heavy history. A future
-        // dedicated DAO query can drop the in-memory filter.
-        val recent = runCatching {
-            messageRepository.getAll()
-                .asSequence()
-                .filter {
-                    it.direction == com.autogram.app.domain.model.MessageDirection.INCOMING &&
-                        !it.audioFilePath.isNullOrBlank()
-                }
-                .sortedByDescending { it.createdAt }
-                .take(50)
-                .toList()
-        }.getOrDefault(emptyList())
+        val recent = withTimeoutOrNull(BROWSER_QUERY_TIMEOUT_MS) {
+            runCatching {
+                messageRepository.getAll()
+                    .asSequence()
+                    .filter {
+                        it.direction == com.autogram.app.domain.model.MessageDirection.INCOMING &&
+                            !it.audioFilePath.isNullOrBlank()
+                    }
+                    .sortedByDescending { it.createdAt }
+                    .take(50)
+                    .toList()
+            }.getOrDefault(emptyList())
+        } ?: emptyList()
         val convos = conversationsById()
         return recent.map { msg -> playableItem(msg, convos[msg.conversationId]) }
     }
@@ -173,13 +186,20 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
     private fun subtitleFor(message: Message): String {
         val time = ROW_TIME_FORMAT.format(Date(message.createdAt))
         val voice = !message.audioFilePath.isNullOrBlank()
-        return if (voice) "Voice · $time" else "Text · $time"
+        val kind = getString(
+            if (voice) com.autogram.app.R.string.media_browser_kind_voice
+            else com.autogram.app.R.string.media_browser_kind_text
+        )
+        return "$kind · $time"
     }
 
     companion object {
         const val ROOT_ID = "/"
         const val PENDING_ID = "pending"
         const val HISTORY_ID = "history"
+
+        /** Cap browser DB reads so a stuck query doesn't hang AA's UI. */
+        private const val BROWSER_QUERY_TIMEOUT_MS: Long = 5_000
 
         private val ROW_TIME_FORMAT = SimpleDateFormat("HH:mm", Locale.getDefault())
     }

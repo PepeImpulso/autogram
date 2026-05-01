@@ -70,13 +70,30 @@ class PlayReplyUseCase @Inject constructor(
                     }
                 }
             }
-            override fun onPause() = pause()
-            override fun onStop() { stopAll() }
+            // v1.22.3 — every callback dispatches through playbackScope so
+            // none runs on the MediaSession binder thread. pause() and
+            // stopAll() touch the audioPlayer + the playbackScope itself
+            // (stopAll cancels and recreates it); doing that synchronously
+            // on the binder thread races with in-flight DB writes from
+            // earlier completion callbacks and risks ANR-ing the car UI.
+            override fun onPause() { playbackScope.launch { pause() } }
+            override fun onStop() { playbackScope.launch { stopAll() } }
             override fun onSkipToNext() { playbackScope.launch { skipNext() } }
             override fun onSkipToPrevious() { playbackScope.launch { restartCurrent() } }
             override fun onPlayFromMediaId(mediaId: String, extras: android.os.Bundle?) {
                 playbackScope.launch {
-                    val msg = messageRepository.getById(mediaId) ?: return@launch
+                    val msg = messageRepository.getById(mediaId)
+                    if (msg == null) {
+                        // Message was deleted between catalog load and AA tap.
+                        // Without this, AA would update its UI to PLAYING
+                        // because the callback returned successfully — and
+                        // the user would tap pause / stop on a session
+                        // that has nothing to pause. Reset session state
+                        // so AA / lock-screen reflect "nothing's playing".
+                        Timber.w("onPlayFromMediaId: no message for $mediaId — reverting session to idle")
+                        mediaPlayback.markStopped()
+                        return@launch
+                    }
                     playFromHere(msg)
                 }
             }
@@ -258,6 +275,7 @@ class PlayReplyUseCase @Inject constructor(
         currentPlayingId = message.id
         messageRepository.update(message.copy(state = MessageState.PLAYING))
         _playbackStatus.value = PlaybackStatus.Playing(message.id)
+        markMediaSessionPlaying(message)
         val speed = settingsRepository.get().playbackSpeed
         val result = audioPlayer.play(audioFile, speed = speed) { playResult ->
             playbackScope.launch {
@@ -304,6 +322,7 @@ class PlayReplyUseCase @Inject constructor(
         currentPlayingId = message.id
         messageRepository.update(message.copy(state = MessageState.PLAYING))
         _playbackStatus.value = PlaybackStatus.Playing(message.id)
+        markMediaSessionPlaying(message)
         val uiLocale = if (settings.languageTag.isNotBlank())
             java.util.Locale.forLanguageTag(settings.languageTag)
         else java.util.Locale.getDefault()
@@ -517,23 +536,39 @@ class PlayReplyUseCase @Inject constructor(
      */
     fun pause() {
         audioPlayer.pause()
+        // v1.22.3 — markPaused gated on currentPlayingId so a pause tap
+        // when nothing is playing (e.g. AA's pause button after audio
+        // finished naturally and currentPlayingId was cleared in
+        // onCompletion) doesn't transition the session from STOPPED to
+        // a spurious PAUSED state. Symmetric with resume()'s guard.
+        // Pass the audio player's current position so AA's progress bar
+        // freezes at the right moment instead of jumping back to 0.
         currentPlayingId?.let {
             _playbackStatus.value = PlaybackStatus.Paused(it)
+            val pos = audioPlayer.currentPositionMs()?.toLong() ?: 0L
+            mediaPlayback.markPaused(pos)
         }
-        mediaPlayback.markPaused()
     }
 
     /**
      * Reanuda la reproducción pausada.
+     *
+     * v1.22.3 — flip the session back to PLAYING via [markResumed] so
+     * the lock-screen / AA UI updates the same instant audio resumes
+     * (instead of waiting on the Room round-trip + async metadata
+     * enrich that the previous version's launch did). Metadata stays
+     * whatever it was when we paused — we're resuming the same message,
+     * no re-fetch needed.
      */
     fun resume() {
         audioPlayer.resume()
         currentPlayingId?.let { id ->
             _playbackStatus.value = PlaybackStatus.Playing(id)
-            playbackScope.launch {
-                val msg = messageRepository.getById(id)
-                if (msg != null) markMediaSessionPlaying(msg)
-            }
+            // Pass the audio player's current position so AA's progress
+            // bar resumes from the correct spot rather than restarting
+            // its extrapolation from 0.
+            val pos = audioPlayer.currentPositionMs()?.toLong() ?: 0L
+            mediaPlayback.markResumed(pos)
         }
     }
 
@@ -702,18 +737,34 @@ class PlayReplyUseCase @Inject constructor(
     /**
      * v1.22.1 — push the now-playing metadata + PLAYING state to the
      * MediaSessionCompat so Android Auto / Bluetooth car / lock-screen
-     * media controls reflect what's currently in flight. Resolves the
-     * conversation lazily on [playbackScope] so this stays callable
-     * from the synchronous `withLock` blocks higher up. Failures fall
-     * back to no conversation metadata — the session still gets the
-     * message-level title/duration.
+     * media controls reflect what's currently in flight.
+     *
+     * v1.22.3 — split into two phases to avoid two earlier traps:
+     *   - **Sync** [AutogramMediaPlaybackController.markPlaying] with
+     *     `conversation = null`: state PLAYING goes to AA immediately
+     *     so the lock-screen / car widget show "now playing" the same
+     *     instant audio starts. Title falls back to "Autogram" until
+     *     the conversation lookup returns.
+     *   - **Async** [AutogramMediaPlaybackController.updateMetadata]
+     *     on `playbackScope`: enriches the title with the real contact
+     *     name once Room returns. Doesn't touch playback state, so
+     *     position isn't reset.
+     *
+     * Was suspend in an earlier rc, but several callers invoke this
+     * from inside `playbackStartLock.withLock { ... }` — making
+     * markMediaSessionPlaying suspend held the mutex across the Room
+     * read, which serialized unrelated playback starts under load.
+     * Sync-fire-then-async-enrich avoids both that mutex hold and the
+     * "session shows STOPPED for 50ms" hole the suspend version was
+     * trying to fix.
      */
     private fun markMediaSessionPlaying(message: Message) {
+        mediaPlayback.markPlaying(message, conversation = null)
         playbackScope.launch {
             val convo = runCatching {
                 conversationRepository.getById(message.conversationId)
             }.getOrNull()
-            mediaPlayback.markPlaying(message, convo)
+            if (convo != null) mediaPlayback.updateMetadata(message, convo)
         }
     }
 

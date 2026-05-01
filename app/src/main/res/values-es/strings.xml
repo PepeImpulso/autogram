@@ -301,6 +301,10 @@
     <string name="history_tab_history">Historial</string>
     <string name="contact_filter_all">Todos</string>
     <string name="history_row_sent_prefix">Enviado: %1$s</string>
+    <string name="media_browser_pending">Pendientes</string>
+    <string name="media_browser_history">Historial</string>
+    <string name="media_browser_kind_voice">Voz</string>
+    <string name="media_browser_kind_text">Texto</string>
     <string name="history_state_sent">Enviado</string>
     <string name="history_state_sending">Enviando…</string>
     <string name="history_state_queued">En cola</string>
