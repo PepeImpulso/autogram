@@ -271,6 +271,14 @@
     <string name="assistant_perm_grant">授予权限</string>
     <string name="assistant_idle_title">与 Merlín 对话</string>
     <string name="assistant_idle_title_for">与 %1$s 对话</string>
+    <string name="assistant_transcribing_title">正在聆听指令…</string>
+    <string name="assistant_transcribing_subtitle">如果你的录音匹配 \"play pending\"、\"repeat\"、\"pause\"、\"resume\" 或 \"stop\"，我会执行。否则会作为语音消息发送。</string>
+    <string name="assistant_action_done_prefix">完成 · %1$s</string>
+    <string name="assistant_action_play_pending">播放待播放</string>
+    <string name="assistant_action_repeat_last">重播最后一条</string>
+    <string name="assistant_action_pause">已暂停</string>
+    <string name="assistant_action_resume">已继续</string>
+    <string name="assistant_action_stop">已停止</string>
     <string name="assistant_idle_button">开始录音</string>
     <string name="assistant_listening_title">正在聆听…</string>
     <string name="assistant_listening_subtitle">点按发送给 %1$s</string>

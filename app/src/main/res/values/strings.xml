@@ -304,6 +304,14 @@
     <string name="assistant_perm_grant">Grant access</string>
     <string name="assistant_idle_title">Talk to Merlín</string>
     <string name="assistant_idle_title_for">Talk to %1$s</string>
+    <string name="assistant_transcribing_title">Listening for commands…</string>
+    <string name="assistant_transcribing_subtitle">If your recording matches \"play pending\", \"repeat\", \"pause\", \"resume\", or \"stop\", I\'ll do that. Otherwise I\'ll send it as a voice note.</string>
+    <string name="assistant_action_done_prefix">Done · %1$s</string>
+    <string name="assistant_action_play_pending">Playing pending</string>
+    <string name="assistant_action_repeat_last">Replaying last</string>
+    <string name="assistant_action_pause">Paused</string>
+    <string name="assistant_action_resume">Resumed</string>
+    <string name="assistant_action_stop">Stopped</string>
     <string name="assistant_idle_button">Start recording</string>
     <string name="assistant_listening_title">Listening…</string>
     <string name="assistant_listening_subtitle">Tap to send to %1$s</string>

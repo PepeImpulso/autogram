@@ -272,6 +272,14 @@
     <string name="assistant_perm_grant">Autoriser</string>
     <string name="assistant_idle_title">Parler à Merlín</string>
     <string name="assistant_idle_title_for">Parler à %1$s</string>
+    <string name="assistant_transcribing_title">Écoute des commandes…</string>
+    <string name="assistant_transcribing_subtitle">Si l\'enregistrement correspond à \"play pending\", \"repeat\", \"pause\", \"resume\" ou \"stop\", j\'exécuterai. Sinon je l\'envoie comme note vocale.</string>
+    <string name="assistant_action_done_prefix">Fait · %1$s</string>
+    <string name="assistant_action_play_pending">Lecture des en attente</string>
+    <string name="assistant_action_repeat_last">Relecture du dernier</string>
+    <string name="assistant_action_pause">En pause</string>
+    <string name="assistant_action_resume">Reprise</string>
+    <string name="assistant_action_stop">Arrêté</string>
     <string name="assistant_idle_button">Démarrer l\'enregistrement</string>
     <string name="assistant_listening_title">Écoute…</string>
     <string name="assistant_listening_subtitle">Touchez pour envoyer à %1$s</string>

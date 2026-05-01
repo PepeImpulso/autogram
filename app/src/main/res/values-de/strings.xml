@@ -272,6 +272,14 @@
     <string name="assistant_perm_grant">Erlauben</string>
     <string name="assistant_idle_title">Mit Merlín sprechen</string>
     <string name="assistant_idle_title_for">Mit %1$s sprechen</string>
+    <string name="assistant_transcribing_title">Höre auf Befehle…</string>
+    <string name="assistant_transcribing_subtitle">Wenn die Aufnahme \"play pending\", \"repeat\", \"pause\", \"resume\" oder \"stop\" enthält, führe ich das aus. Sonst sende ich sie als Sprachnachricht.</string>
+    <string name="assistant_action_done_prefix">Erledigt · %1$s</string>
+    <string name="assistant_action_play_pending">Spiele Ausstehende</string>
+    <string name="assistant_action_repeat_last">Wiederhole Letztes</string>
+    <string name="assistant_action_pause">Pausiert</string>
+    <string name="assistant_action_resume">Fortgesetzt</string>
+    <string name="assistant_action_stop">Gestoppt</string>
     <string name="assistant_idle_button">Aufnahme starten</string>
     <string name="assistant_listening_title">Ich höre…</string>
     <string name="assistant_listening_subtitle">Tippen, um an %1$s zu senden</string>

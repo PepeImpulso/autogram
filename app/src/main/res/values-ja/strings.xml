@@ -271,6 +271,14 @@
     <string name="assistant_perm_grant">許可する</string>
     <string name="assistant_idle_title">Merlín と話す</string>
     <string name="assistant_idle_title_for">%1$s と話す</string>
+    <string name="assistant_transcribing_title">コマンドを聞き取り中…</string>
+    <string name="assistant_transcribing_subtitle">録音が \"play pending\"、\"repeat\"、\"pause\"、\"resume\"、\"stop\" と一致すれば実行します。一致しなければ音声メモとして送信します。</string>
+    <string name="assistant_action_done_prefix">完了 · %1$s</string>
+    <string name="assistant_action_play_pending">保留中を再生</string>
+    <string name="assistant_action_repeat_last">最後を再再生</string>
+    <string name="assistant_action_pause">一時停止</string>
+    <string name="assistant_action_resume">再開</string>
+    <string name="assistant_action_stop">停止</string>
     <string name="assistant_idle_button">録音を開始</string>
     <string name="assistant_listening_title">聞き取り中…</string>
     <string name="assistant_listening_subtitle">タップして %1$s に送信</string>

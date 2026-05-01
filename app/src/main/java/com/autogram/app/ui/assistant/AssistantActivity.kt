@@ -108,10 +108,15 @@ private fun AssistantScreen(
         permissionGranted = granted
     }
 
-    // Auto-close once Merlin's reply has arrived. Existing autoplay
-    // pipeline takes over and reads it aloud.
+    // Auto-close once Merlin's reply has arrived (existing autoplay
+    // pipeline reads it aloud) OR after a voice command's brief
+    // confirmation flashes.
     LaunchedEffect(state) {
         if (state is AssistantViewModel.State.Replied) {
+            onClose()
+        }
+        if (state is AssistantViewModel.State.ActionExecuted) {
+            kotlinx.coroutines.delay(1200)
             onClose()
         }
     }
@@ -175,9 +180,10 @@ private fun AssistantScreen(
                 )
                 state is AssistantViewModel.State.Listening -> ListeningContent(
                     targetTitle = (state as AssistantViewModel.State.Listening).targetTitle,
-                    onStop = viewModel::stopAndSend,
+                    onStop = viewModel::stopAndProcess,
                     onCancel = viewModel::cancel
                 )
+                state is AssistantViewModel.State.Transcribing -> TranscribingContent()
                 state is AssistantViewModel.State.Sending -> SendingContent(
                     targetTitle = (state as AssistantViewModel.State.Sending).targetTitle
                 )
@@ -193,6 +199,9 @@ private fun AssistantScreen(
                         style = MaterialTheme.typography.titleMedium
                     )
                 }
+                state is AssistantViewModel.State.ActionExecuted -> ActionExecutedContent(
+                    command = (state as AssistantViewModel.State.ActionExecuted).command
+                )
             }
             } // inner centered Column
         } // outer Column wrapping picker + content
@@ -302,6 +311,47 @@ private fun ListeningContent(
     TextButton(onClick = onCancel) {
         Text(stringResource(R.string.assistant_listening_cancel))
     }
+}
+
+@Composable
+private fun TranscribingContent() {
+    CircularProgressIndicator(modifier = Modifier.size(64.dp))
+    Spacer(Modifier.height(20.dp))
+    Text(
+        stringResource(R.string.assistant_transcribing_title),
+        style = MaterialTheme.typography.titleMedium,
+        textAlign = TextAlign.Center
+    )
+    Spacer(Modifier.height(8.dp))
+    Text(
+        stringResource(R.string.assistant_transcribing_subtitle),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center
+    )
+}
+
+@Composable
+private fun ActionExecutedContent(command: AssistantCommandParser.Command) {
+    val labelRes = when (command) {
+        AssistantCommandParser.Command.PlayPending -> R.string.assistant_action_play_pending
+        AssistantCommandParser.Command.RepeatLast -> R.string.assistant_action_repeat_last
+        AssistantCommandParser.Command.Pause -> R.string.assistant_action_pause
+        AssistantCommandParser.Command.Resume -> R.string.assistant_action_resume
+        AssistantCommandParser.Command.Stop -> R.string.assistant_action_stop
+    }
+    Icon(
+        imageVector = Icons.Filled.Mic,
+        contentDescription = null,
+        tint = MaterialTheme.colorScheme.tertiary,
+        modifier = Modifier.size(56.dp)
+    )
+    Spacer(Modifier.height(16.dp))
+    Text(
+        stringResource(R.string.assistant_action_done_prefix, stringResource(labelRes)),
+        style = MaterialTheme.typography.titleMedium,
+        textAlign = TextAlign.Center
+    )
 }
 
 @Composable

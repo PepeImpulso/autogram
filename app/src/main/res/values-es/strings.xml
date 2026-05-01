@@ -309,6 +309,14 @@
     <string name="assistant_perm_grant">Conceder permiso</string>
     <string name="assistant_idle_title">Habla con Merlín</string>
     <string name="assistant_idle_title_for">Habla con %1$s</string>
+    <string name="assistant_transcribing_title">Escuchando comandos…</string>
+    <string name="assistant_transcribing_subtitle">Si tu grabación coincide con \"reproducir pendientes\", \"repetir\", \"pausa\", \"reanuda\" o \"para\", lo haré. Si no, la enviaré como nota de voz.</string>
+    <string name="assistant_action_done_prefix">Hecho · %1$s</string>
+    <string name="assistant_action_play_pending">Reproduciendo pendientes</string>
+    <string name="assistant_action_repeat_last">Repitiendo último</string>
+    <string name="assistant_action_pause">Pausado</string>
+    <string name="assistant_action_resume">Reanudado</string>
+    <string name="assistant_action_stop">Detenido</string>
     <string name="assistant_idle_button">Empezar a grabar</string>
     <string name="assistant_listening_title">Escuchando…</string>
     <string name="assistant_listening_subtitle">Toca para enviar a %1$s</string>

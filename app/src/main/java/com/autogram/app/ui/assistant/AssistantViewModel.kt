@@ -6,7 +6,10 @@ import com.autogram.app.domain.model.Conversation
 import com.autogram.app.domain.model.MessageDirection
 import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.MessageRepository
+import com.autogram.app.domain.repository.SettingsRepository
+import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.domain.usecase.SendVoiceMtprotoUseCase
+import com.autogram.app.infrastructure.transcription.TranscriptionEngine
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -19,44 +22,49 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import timber.log.Timber
+import java.io.File
+import java.util.Locale
+import java.util.UUID
 import javax.inject.Inject
 
 /**
  * v1.22.0 / issue #63 Phase 2 — drives the assistant turn:
  *   Idle → Listening → Sending → WaitingForReply → Replied / Failed.
  *
- * v1.23.0-rc.2 / Phase 5 starter — the assistant can now route the
- * voice note to any pinned contact, not just the configured primary
- * target. [selectedTargetId] is pre-resolved to the primary target's
- * id on init (so the default behavior is unchanged) and updated when
- * the user taps a contact chip in [AssistantActivity].
+ * v1.23.0-rc.2 / Phase 5 starter — added [selectedTargetId] so the
+ * assistant can route the voice note to any pinned contact (default
+ * still the configured primary target).
  *
- * Reuses the existing [SendVoiceMtprotoUseCase] for record+send so the
- * assistant rides the same MTProto pipeline as Autogram's primary
- * voice flow. The "reply" is the next incoming message on the same
- * conversation: we observe [MessageRepository.observeAll] and watch
- * for an INCOMING message with createdAt > the moment the user
- * stopped recording.
- *
- * If the user backs out of [AssistantActivity] mid-turn the VM
- * disappears and this watcher dies — but the reply still lands via
- * [com.autogram.app.service.MtprotoReceiverService] and plays through
- * the existing autoplay pipeline. So the assistant UX gracefully
- * degrades into Autogram's normal incoming-message behavior.
+ * v1.23.0-rc.3 / Phase 5 voice commands — after the user stops
+ * recording, the audio is transcribed locally and parsed for action
+ * keywords (play pending / repeat last / pause / resume / stop). When
+ * a command matches, the audio is discarded and the action runs;
+ * otherwise the recording is sent as a normal voice note. The state
+ * machine grew two intermediate states: [State.Transcribing] (visible
+ * while the on-device engine works) and [State.ActionExecuted] (brief
+ * confirmation after a command runs, then the activity closes).
  */
 @HiltViewModel
 class AssistantViewModel @Inject constructor(
     private val sendVoiceMtprotoUseCase: SendVoiceMtprotoUseCase,
     private val conversationRepository: ConversationRepository,
-    private val messageRepository: MessageRepository
+    private val messageRepository: MessageRepository,
+    private val playReplyUseCase: PlayReplyUseCase,
+    private val transcriptionEngine: TranscriptionEngine,
+    private val settingsRepository: SettingsRepository
 ) : ViewModel() {
 
     sealed class State {
         object Idle : State()
         data class Listening(val targetTitle: String) : State()
+        /** Audio recorded; running on-device transcription + command parsing. */
+        object Transcribing : State()
         data class Sending(val targetTitle: String) : State()
         data class WaitingForReply(val targetTitle: String) : State()
         object Replied : State()
+        /** A voice command matched and was dispatched. Brief confirmation before close. */
+        data class ActionExecuted(val command: AssistantCommandParser.Command) : State()
         data class Failed(val reason: String) : State()
         object NoTarget : State()
     }
@@ -69,7 +77,7 @@ class AssistantViewModel @Inject constructor(
         conversationRepository.observePinned()
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    /** Currently selected target for the assistant turn. Defaults to the primary target on init. */
+    /** Currently selected target for the assistant turn. */
     private val _selectedTargetId = MutableStateFlow<String?>(null)
     val selectedTargetId: StateFlow<String?> = _selectedTargetId.asStateFlow()
 
@@ -111,29 +119,61 @@ class AssistantViewModel @Inject constructor(
     }
 
     /**
-     * Stop recording, send to the selected target, wait up to 60s for a
-     * reply. The "stop tap moment" is the watermark for the reply
-     * watcher — any incoming message in the same conversation after
-     * that timestamp is treated as the contact's reply.
+     * Stop recording, transcribe locally, parse for commands. If a
+     * command matches → execute, drop the audio, brief confirmation,
+     * close. Otherwise fall through to the normal voice-send path
+     * with the same reply-watcher behavior as Phase 2.
      */
-    fun stopAndSend() {
+    fun stopAndProcess() {
         val current = _state.value as? State.Listening ?: return
         val stoppedAt = System.currentTimeMillis()
-        _state.value = State.Sending(current.targetTitle)
+        val targetTitle = current.targetTitle
+        _state.value = State.Transcribing
         viewModelScope.launch {
             val target = resolveTarget()
             if (target == null) {
                 _state.value = State.Failed("Target disappeared during send")
                 return@launch
             }
-            val result = sendVoiceMtprotoUseCase.stopAndSend(skipPreview = true)
-            if (result.isFailure) {
+            val audioFile = sendVoiceMtprotoUseCase.stopWithoutSending()
+            if (audioFile == null || !audioFile.exists()) {
+                _state.value = State.Failed("Couldn't save the recording")
+                return@launch
+            }
+            val locale = settingsLocale()
+            val transcript = runCatching {
+                transcriptionEngine.transcribe(audioFile, locale)
+            }.getOrNull()
+            val text = (transcript as? TranscriptionEngine.Result.Success)?.text
+            val command = AssistantCommandParser.parse(text)
+
+            if (command != null) {
+                Timber.i("assistant voice command matched: $command (transcript: '$text')")
+                runCatching { audioFile.delete() }
+                executeCommand(command)
+                _state.value = State.ActionExecuted(command)
+                return@launch
+            }
+
+            // No command matched — send the recording as a normal voice note.
+            val durationMs = audioFile.length().let { bytes ->
+                // Best-effort estimation — TDLib will refine the duration server-side.
+                // OPUS bitrate ~24kbps = 3KB/s; floor at 0.
+                ((bytes * 1000L) / 3000L).coerceAtLeast(0L)
+            }
+            _state.value = State.Sending(targetTitle)
+            val send = sendVoiceMtprotoUseCase.sendVoiceShortcut(
+                audioFilePath = audioFile.absolutePath,
+                audioDurationMs = durationMs,
+                targetConversationId = target.id
+            )
+            if (send.isFailure) {
                 _state.value = State.Failed(
-                    result.exceptionOrNull()?.message ?: "Send failed"
+                    send.exceptionOrNull()?.message ?: "Send failed"
                 )
                 return@launch
             }
-            _state.value = State.WaitingForReply(current.targetTitle)
+            _state.value = State.WaitingForReply(targetTitle)
             startReplyWatcher(target.id, stoppedAt)
         }
     }
@@ -181,6 +221,37 @@ class AssistantViewModel @Inject constructor(
         }
         return conversationRepository.getActive()
     }
+
+    /**
+     * Locale to feed the transcription engine. Honors the user's
+     * configured language tag from Settings; falls back to device
+     * default. Same resolution PlayReplyUseCase uses.
+     */
+    private suspend fun settingsLocale(): Locale {
+        val tag = settingsRepository.get().languageTag
+        return if (tag.isNotBlank()) Locale.forLanguageTag(tag) else Locale.getDefault()
+    }
+
+    private fun executeCommand(command: AssistantCommandParser.Command) {
+        viewModelScope.launch {
+            when (command) {
+                AssistantCommandParser.Command.PlayPending -> playReplyUseCase.playAllPending()
+                AssistantCommandParser.Command.RepeatLast -> {
+                    val last = lastPlayableMessage() ?: return@launch
+                    playReplyUseCase.playManually(last)
+                }
+                AssistantCommandParser.Command.Pause -> playReplyUseCase.pause()
+                AssistantCommandParser.Command.Resume -> playReplyUseCase.resume()
+                AssistantCommandParser.Command.Stop -> playReplyUseCase.stopAll()
+            }
+        }
+    }
+
+    /** Most-recent incoming voice message, for "repeat last" — null when there's nothing to replay. */
+    private suspend fun lastPlayableMessage() =
+        messageRepository.getAll()
+            .filter { it.direction == MessageDirection.INCOMING && !it.audioFilePath.isNullOrBlank() }
+            .maxByOrNull { it.createdAt }
 
     private fun startReplyWatcher(conversationId: String, since: Long) {
         replyWatcher?.cancel()

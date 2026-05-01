@@ -145,6 +145,28 @@ class SendVoiceMtprotoUseCase @Inject constructor(
     }
 
     /**
+     * v1.23.0-rc.3 — stop the in-flight recording but DON'T send.
+     * Returns the audio file for the caller to inspect (transcribe,
+     * parse, etc.) and decide what to do with it. Caller is responsible
+     * for either dispatching the file via [sendVoiceShortcut] or
+     * deleting it. Used by the assistant's voice-command path so the
+     * recorded audio can be transcribed locally before deciding
+     * whether to send it as a voice note or treat it as a control
+     * command.
+     */
+    suspend fun stopWithoutSending(): File? {
+        val audioFile = audioRecorder.stop()
+        currentAudioFile = null
+        currentTargetId = null
+        _activeTargetId.value = null
+        _status.value = SendStatus.Idle
+        recordingSounds.playEnd()
+        hapticCues.playEnd()
+        playReplyUseCase.drainPendingIfAutoPlay()
+        return audioFile
+    }
+
+    /**
      * @param skipPreview If true, the caller's `previewBeforeSend` setting is
      * bypassed and the recording goes straight to the send path. AA passes
      * true because NavigationTemplate has no preview sheet — honoring the
