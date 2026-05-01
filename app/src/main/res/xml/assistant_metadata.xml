@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    v1.23.0-rc.4 / issue #63 Phase 1b — declaration the OS reads when
+    Autogram is selected as the default digital assistant. Tells
+    Android which session service to bind on the assistant gesture
+    (sessionService) and that Autogram supports the assist flow + the
+    keyguard-launch path. We don't ship our own RecognitionService;
+    the session simply launches AssistantActivity and lets that
+    activity drive the existing voice loop / Phase 5 command parser.
+-->
+<voice-interaction-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:sessionService="com.autogram.app.ui.assistant.AutogramVoiceInteractionSessionService"
+    android:supportsAssist="true"
+    android:supportsLaunchVoiceAssistFromKeyguard="true" />

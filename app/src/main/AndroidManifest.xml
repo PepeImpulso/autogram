@@ -157,6 +157,30 @@
             android:name="androidx.car.app.theme"
             android:resource="@style/Theme.Autogram.Car" />
 
+        <!-- Issue #63 Phase 1b (v1.23.0-rc.4) — VoiceInteractionService
+             chain so Samsung's long-press-home / side-key assistant
+             gesture actually routes to Autogram. ACTION_ASSIST alone
+             only registers Autogram in the Default-assistant picker;
+             this service is what the OS BINDS when the gesture fires.
+             Both services need android:permission="android.permission.
+             BIND_VOICE_INTERACTION" — system-only permission, prevents
+             non-system processes from impersonating us. -->
+        <service
+            android:name=".ui.assistant.AutogramVoiceInteractionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION">
+            <meta-data
+                android:name="android.voice_interaction"
+                android:resource="@xml/assistant_metadata" />
+            <intent-filter>
+                <action android:name="android.service.voice.VoiceInteractionService" />
+            </intent-filter>
+        </service>
+        <service
+            android:name=".ui.assistant.AutogramVoiceInteractionSessionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION" />
+
         <!-- Android Auto: official templated messaging experience.
              Google documents MESSAGING + template + notification as the
              supported path for chat apps; using NAVIGATION/IOT to draw a
