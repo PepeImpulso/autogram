@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Summarize
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -38,9 +39,111 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
+enum class HistoryTab { PENDING, HISTORY }
+
+/**
+ * v1.21.0 — unified Pending + History screen. Hosts both views as tabs so the
+ * user always has a stable entry point to the pending playback queue (the
+ * old standalone PendingQueueActivity was reachable only from the home
+ * banner, which disappears when no messages are pending). Playback state
+ * is shared via the singleton [PlayReplyUseCase] so starting playback in
+ * one tab and switching to the other does not interrupt audio.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HistoryScreen(viewModel: HistoryViewModel, onBack: () -> Unit) {
+fun HistoryWithPendingTabsScreen(
+    historyViewModel: HistoryViewModel,
+    pendingViewModel: PendingQueueViewModel,
+    initialTab: HistoryTab,
+    onBack: () -> Unit
+) {
+    var selectedTab by rememberSaveable { mutableStateOf(initialTab) }
+    val pendingCount by pendingViewModel.queue.collectAsState()
+
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        topBar = {
+            Column {
+                TopAppBar(
+                    title = {
+                        Text(
+                            stringResource(R.string.history_title),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                stringResource(R.string.common_back)
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                    )
+                )
+                TabRow(
+                    selectedTabIndex = if (selectedTab == HistoryTab.PENDING) 0 else 1,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                ) {
+                    Tab(
+                        selected = selectedTab == HistoryTab.PENDING,
+                        onClick = { selectedTab = HistoryTab.PENDING },
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(stringResource(R.string.history_tab_pending))
+                                if (pendingCount.isNotEmpty()) {
+                                    Spacer(Modifier.width(8.dp))
+                                    TabCountBadge(count = pendingCount.size)
+                                }
+                            }
+                        }
+                    )
+                    Tab(
+                        selected = selectedTab == HistoryTab.HISTORY,
+                        onClick = { selectedTab = HistoryTab.HISTORY },
+                        text = { Text(stringResource(R.string.history_tab_history)) }
+                    )
+                }
+            }
+        }
+    ) { padding ->
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+            when (selectedTab) {
+                HistoryTab.PENDING -> PendingQueueTabContent(viewModel = pendingViewModel)
+                HistoryTab.HISTORY -> HistoryTabContent(viewModel = historyViewModel)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TabCountBadge(count: Int) {
+    Surface(
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        modifier = Modifier.defaultMinSize(minWidth = 22.dp, minHeight = 22.dp)
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = if (count > 99) "99+" else count.toString(),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 1.dp)
+            )
+        }
+    }
+}
+
+/**
+ * History tab body — message list grouped by day. The conversation chooser
+ * (formerly in the TopAppBar) is now an inline header row at the top of
+ * this tab's body so the parent tab host can stay generic.
+ */
+@Composable
+private fun HistoryTabContent(viewModel: HistoryViewModel) {
     val messages by viewModel.messages.collectAsState()
     val playback by viewModel.playbackStatus.collectAsState()
     val conversation by viewModel.conversation.collectAsState()
@@ -48,140 +151,111 @@ fun HistoryScreen(viewModel: HistoryViewModel, onBack: () -> Unit) {
     var dropdownOpen by remember { mutableStateOf(false) }
     var clearConfirmOpen by remember { mutableStateOf(false) }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        topBar = {
-            TopAppBar(
-                title = {
-                    // v1.20.16 — title row is a tap target that opens a
-                    // dropdown with every pinned conversation, so the
-                    // user can browse any circle's history without
-                    // bouncing back to Home. Visual cue: tiny chevron
-                    // next to the conversation name.
-                    Box {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = if (pinned.size > 1) {
-                                Modifier.clickable { dropdownOpen = true }
-                            } else Modifier
-                        ) {
-                            Column {
-                                Text(
-                                    stringResource(R.string.history_title),
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                conversation?.let { conv ->
-                                    val subtitle = conv.topicName?.takeIf { it.isNotBlank() }
-                                        ?: conv.targetTitle?.takeIf { it.isNotBlank() }
-                                        ?: stringResource(R.string.main_default_primary_name)
-                                    Text(
-                                        subtitle,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                            if (pinned.size > 1) {
-                                Icon(
-                                    imageVector = Icons.Filled.ArrowDropDown,
-                                    contentDescription = stringResource(R.string.history_choose_conversation),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(start = 4.dp)
-                                )
-                            }
-                        }
-                        DropdownMenu(
-                            expanded = dropdownOpen,
-                            onDismissRequest = { dropdownOpen = false }
-                        ) {
-                            pinned.forEach { conv ->
-                                val label = conv.topicName?.takeIf { it.isNotBlank() }
-                                    ?: conv.targetTitle?.takeIf { it.isNotBlank() }
-                                    ?: stringResource(R.string.main_default_primary_name)
-                                val isCurrent = conv.id == conversation?.id
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            label,
-                                            fontWeight = if (isCurrent) FontWeight.SemiBold
-                                                         else FontWeight.Normal
-                                        )
-                                    },
-                                    onClick = {
-                                        viewModel.selectConversation(conv.id)
-                                        dropdownOpen = false
-                                    }
-                                )
-                            }
-                        }
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
+    if (clearConfirmOpen) {
+        AlertDialog(
+            onDismissRequest = { clearConfirmOpen = false },
+            title = { Text(stringResource(R.string.history_clear_title)) },
+            text = { Text(stringResource(R.string.history_clear_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.clearHistory()
+                    clearConfirmOpen = false
+                }) {
+                    Text(stringResource(R.string.history_clear_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { clearConfirmOpen = false }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            }
+        )
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(modifier = Modifier.weight(1f)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = if (pinned.size > 1) {
+                        Modifier.clickable { dropdownOpen = true }
+                    } else Modifier
+                ) {
+                    val subtitle = conversation?.let { conv ->
+                        conv.topicName?.takeIf { it.isNotBlank() }
+                            ?: conv.targetTitle?.takeIf { it.isNotBlank() }
+                            ?: stringResource(R.string.main_default_primary_name)
+                    } ?: stringResource(R.string.main_default_primary_name)
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (pinned.size > 1) {
                         Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            stringResource(R.string.common_back)
+                            imageVector = Icons.Filled.ArrowDropDown,
+                            contentDescription = stringResource(R.string.history_choose_conversation),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 2.dp)
                         )
                     }
-                },
-                actions = {
-                    // v1.20.17 — clear conversation. Hidden when the
-                    // conversation is already empty so a fresh chat
-                    // doesn't show a destructive icon with nothing to
-                    // act on. Confirmation dialog is mandatory; this
-                    // wipes both DB rows AND the .ogg files on disk.
-                    if (messages.isNotEmpty()) {
-                        IconButton(onClick = { clearConfirmOpen = true }) {
-                            Icon(
-                                Icons.Filled.DeleteSweep,
-                                stringResource(R.string.history_clear_cd)
-                            )
-                        }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-                )
-            )
-        }
-    ) { padding ->
-        if (clearConfirmOpen) {
-            AlertDialog(
-                onDismissRequest = { clearConfirmOpen = false },
-                title = { Text(stringResource(R.string.history_clear_title)) },
-                text = { Text(stringResource(R.string.history_clear_body)) },
-                confirmButton = {
-                    TextButton(onClick = {
-                        viewModel.clearHistory()
-                        clearConfirmOpen = false
-                    }) {
-                        Text(stringResource(R.string.history_clear_confirm))
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { clearConfirmOpen = false }) {
-                        Text(stringResource(R.string.common_cancel))
+                }
+                DropdownMenu(
+                    expanded = dropdownOpen,
+                    onDismissRequest = { dropdownOpen = false }
+                ) {
+                    pinned.forEach { conv ->
+                        val label = conv.topicName?.takeIf { it.isNotBlank() }
+                            ?: conv.targetTitle?.takeIf { it.isNotBlank() }
+                            ?: stringResource(R.string.main_default_primary_name)
+                        val isCurrent = conv.id == conversation?.id
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    label,
+                                    fontWeight = if (isCurrent) FontWeight.SemiBold
+                                                 else FontWeight.Normal
+                                )
+                            },
+                            onClick = {
+                                viewModel.selectConversation(conv.id)
+                                dropdownOpen = false
+                            }
+                        )
                     }
                 }
-            )
-        }
-        if (messages.isEmpty()) {
-            HistoryEmptyState(modifier = Modifier.fillMaxSize().padding(padding))
-            return@Scaffold
+            }
+            if (messages.isNotEmpty()) {
+                IconButton(onClick = { clearConfirmOpen = true }) {
+                    Icon(
+                        Icons.Filled.DeleteSweep,
+                        stringResource(R.string.history_clear_cd)
+                    )
+                }
+            }
         }
 
-        // Reverse-chronological — newest at top. Users asked for this so
-        // a fresh reply is the first thing they see when opening History,
-        // without having to scroll to the bottom of a long log. Day
-        // groups inherit the ordering: Today appears first, then
-        // Yesterday, then older.
+        if (messages.isEmpty()) {
+            HistoryEmptyState(modifier = Modifier.fillMaxSize())
+            return
+        }
+
+        // Reverse-chronological — newest at top so a fresh reply is the first
+        // thing the user sees, without scrolling. Day groups inherit the
+        // ordering: Today first, then Yesterday, then older.
         val ordered = remember(messages) { messages.sortedByDescending { it.createdAt } }
         val grouped = groupByDay(ordered)
 
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
+            modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
@@ -374,12 +448,6 @@ private fun AudioBubbleHeader(
             )
         }
         Spacer(Modifier.width(10.dp))
-        // v1.20.23 — replaced the GraphicEq + duration line with a
-        // proper waveform visual + duration. The waveform is
-        // decorative (deterministic per message id, not real
-        // amplitudes); progress overlay paints bars in tertiary while
-        // playing this message. Layout: waveform takes the available
-        // width, duration anchored on the trailing edge.
         Waveform(
             messageId = message.id,
             progress = if (isPlayingThis) 0.5f else 0f,
@@ -398,9 +466,6 @@ private fun AudioBubbleHeader(
 
 @Composable
 private fun OutgoingAudioHeader(durationMs: Long?) {
-    // Outgoing audio: we don't let the user replay their own recording (the
-    // file gets released after successful send in most cases), but we show
-    // a subtle header so the card still reads as "a voice reply".
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(
             Icons.Filled.Mic,
@@ -439,10 +504,6 @@ private fun SummaryInlineBlock(message: Message) {
         }
         SummaryState.DONE -> message.summary?.let { text ->
             Spacer(Modifier.height(8.dp))
-            // AI Summary uses tertiaryContainer (warm brown tonal) so it
-            // visually distinguishes from the transcription card sitting
-            // below it. Both follow the same shape language; tint hue is
-            // the only differentiator.
             InlineBlock(
                 icon = Icons.Filled.Summarize,
                 label = stringResource(R.string.history_summary_label),
@@ -487,11 +548,6 @@ private fun TranscriptionInlineBlock(message: Message) {
         }
         TranscriptionState.DONE -> message.transcription?.let { text ->
             Spacer(Modifier.height(8.dp))
-            // Transcription card uses surfaceContainerHigh — neutral
-            // dark surface, distinguished from the warm brown AI
-            // Summary card by hue. Label is the explicit "Transcription"
-            // string from v1.20.23 so the user can tell the cards apart
-            // at a glance even when summary is missing.
             InlineBlock(
                 icon = Icons.AutoMirrored.Filled.ShortText,
                 label = stringResource(R.string.history_transcription_label),
@@ -521,14 +577,6 @@ private fun TranscriptionInlineBlock(message: Message) {
     }
 }
 
-/**
- * Inset panel inside a chat bubble — used for both summary and
- * transcription. v1.20.23 added a [background] parameter so the two
- * cards can have distinct hues (Summary = warm brown tertiary,
- * Transcription = neutral surfaceContainerHigh) while keeping the
- * same shape + spacing language. Optional [timestamp] mirrors the
- * mockup's right-aligned time stamp inside each card.
- */
 @Composable
 private fun InlineBlock(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -583,11 +631,6 @@ private fun InlineBlock(
     }
 }
 
-/**
- * Chat-bubble corner radii: the corner closest to the conversation edge is
- * clipped flatter than the others, which reads as "this bubble belongs to
- * the side it's aligned to" without needing arrows or tails.
- */
 private fun bubbleShape(outgoing: Boolean): RoundedCornerShape =
     if (outgoing) RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomEnd = 4.dp, bottomStart = 18.dp)
     else RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomEnd = 18.dp, bottomStart = 4.dp)
@@ -615,8 +658,6 @@ private fun stateLabelOrNull(state: MessageState): String? = when (state) {
     MessageState.PLAYING -> stringResource(R.string.history_state_playing)
     MessageState.PAUSED -> stringResource(R.string.history_state_paused)
     MessageState.PLAYED -> stringResource(R.string.history_state_played) + " ✓"
-    // The transient record-side states are meaningless once the message has
-    // landed in History; skip them so the row doesn't get visually noisy.
     MessageState.IDLE,
     MessageState.RECORDING,
     MessageState.RECORDED,
@@ -640,11 +681,6 @@ private val dayFormat: SimpleDateFormat by lazy {
     SimpleDateFormat("EEEE d MMMM", Locale.getDefault())
 }
 
-/**
- * Groups messages by calendar day, labelling today / yesterday explicitly and
- * spelling out the date for older chunks. Returns the days in chronological
- * order (oldest first) so a LazyColumn reads top-to-bottom.
- */
 @Composable
 private fun groupByDay(messages: List<Message>): List<Pair<String, List<Message>>> {
     val today = stringResource(R.string.history_today)

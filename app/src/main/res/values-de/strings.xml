@@ -118,7 +118,7 @@
     <string name="settings_no_target">Kein Ziel konfiguriert.</string>
     <string name="settings_change_target">Ziel ändern</string>
     <string name="settings_choose_target">Ziel wählen</string>
-    <string name="settings_manage_pinned">Kürzel verwalten</string>
+    <string name="settings_manage_pinned">Startbildschirm-Kontakte</string>
     <string name="settings_manage_pinned_sub">Sekundäre Kreise mit ihren Fotos.</string>
     <string name="settings_autoplay">Antworten automatisch abspielen</string>
     <string name="settings_playback_speed">Wiedergabegeschwindigkeit</string>
@@ -260,6 +260,8 @@
     <string name="history_no_content">(kein Inhalt)</string>
     <string name="history_today">Heute</string>
     <string name="history_yesterday">Gestern</string>
+    <string name="history_tab_pending">Ausstehend</string>
+    <string name="history_tab_history">Verlauf</string>
     <string name="history_state_sent">Gesendet</string>
     <string name="history_state_sending">Sende…</string>
     <string name="history_state_queued">In Warteschlange</string>

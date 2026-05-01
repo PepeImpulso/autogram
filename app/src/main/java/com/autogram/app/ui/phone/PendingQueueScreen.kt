@@ -1,8 +1,5 @@
 package com.autogram.app.ui.phone
 
-import android.os.Bundle
-import androidx.activity.compose.setContent
-import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -14,7 +11,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.GraphicEq
@@ -23,7 +19,6 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,13 +33,9 @@ import androidx.lifecycle.viewModelScope
 import com.autogram.app.R
 import com.autogram.app.domain.model.Conversation
 import com.autogram.app.domain.model.Message
-import com.autogram.app.domain.model.MessageDirection
-import com.autogram.app.domain.model.MessageState
 import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.domain.usecase.PlayReplyUseCase
-import com.autogram.app.ui.theme.AutogramTheme
-import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -60,29 +51,6 @@ import java.util.Date
 import java.util.Locale
 import javax.inject.Inject
 
-/**
- * v1.20.23 — full-screen pending-queue + Now Playing controller. Reached
- * by tapping the "▶ N Pending" button on Home. Replaces the old
- * tap-to-drain-immediately behaviour with a transparent list of what's
- * queued, plus a media-style transport in the Now Playing panel for
- * pause / skip-next / restart-current.
- */
-@AndroidEntryPoint
-class PendingQueueActivity : BaseLocaleActivity() {
-    private val viewModel: PendingQueueViewModel by viewModels()
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContent {
-            AutogramTheme {
-                DebugScreenshotOverlay {
-                    PendingQueueScreen(viewModel = viewModel, onBack = { finish() })
-                }
-            }
-        }
-    }
-}
-
 enum class QueueFilter { ALL, VOICE, TEXT }
 
 @HiltViewModel
@@ -95,7 +63,6 @@ class PendingQueueViewModel @Inject constructor(
     private val _filter = MutableStateFlow(QueueFilter.ALL)
     val filter: StateFlow<QueueFilter> = _filter.asStateFlow()
 
-    /** Conversations indexed by id, used to resolve avatar/title for each queue row. */
     private val conversationsById: StateFlow<Map<String, Conversation>> =
         conversationRepository.observePinned()
             .map { list -> list.associateBy { it.id } }
@@ -118,7 +85,6 @@ class PendingQueueViewModel @Inject constructor(
 
     val playbackStatus: StateFlow<PlayReplyUseCase.PlaybackStatus> = playReplyUseCase.playbackStatus
 
-    /** Conversation lookup for a message — exposed so the screen can render avatar + title. */
     fun conversationFor(message: Message): Conversation? = conversationsById.value[message.conversationId]
 
     fun setFilter(f: QueueFilter) { _filter.value = f }
@@ -138,108 +104,67 @@ class PendingQueueViewModel @Inject constructor(
     fun durationMs(): Int? = playReplyUseCase.durationMs()
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Tab content for the Pending Queue. Hosted inside [HistoryWithPendingTabsScreen]
+ * since v1.21.0 — owns no Scaffold or top bar; the parent renders those. The
+ * "Play All" affordance previously sitting in the screen's TopAppBar moves into
+ * the body as a filter-row trailing action so the parent tab host stays clean.
+ */
 @Composable
-private fun PendingQueueScreen(viewModel: PendingQueueViewModel, onBack: () -> Unit) {
+internal fun PendingQueueTabContent(viewModel: PendingQueueViewModel) {
     val queue by viewModel.queue.collectAsState()
     val nowPlaying by viewModel.nowPlaying.collectAsState()
     val playback by viewModel.playbackStatus.collectAsState()
     val filter by viewModel.filter.collectAsState()
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            stringResource(R.string.pending_queue_title),
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        if (queue.isNotEmpty()) {
-                            Spacer(Modifier.width(10.dp))
-                            CountBadge(count = queue.size)
-                        }
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back))
-                    }
-                },
-                actions = {
-                    if (queue.isNotEmpty()) {
-                        PlayAllButton(onClick = { viewModel.playAll() })
-                        Spacer(Modifier.width(8.dp))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
-            )
-        }
-    ) { padding ->
-        Column(
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             FilterRow(
                 selected = filter,
                 onSelect = viewModel::setFilter,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                modifier = Modifier.weight(1f)
             )
-
-            if (queue.isEmpty() && nowPlaying == null) {
-                EmptyQueue(modifier = Modifier.weight(1f).fillMaxWidth())
-            } else {
-                LazyColumn(
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(queue, key = { it.id }) { msg ->
-                        QueueRow(
-                            message = msg,
-                            conversation = viewModel.conversationFor(msg),
-                            onClick = { viewModel.playFromHere(msg) }
-                        )
-                    }
-                    item { Spacer(Modifier.height(8.dp)) }
-                }
+            if (queue.isNotEmpty()) {
+                Spacer(Modifier.width(8.dp))
+                PlayAllButton(onClick = { viewModel.playAll() })
             }
-
-            NowPlayingPanel(
-                message = nowPlaying,
-                conversation = nowPlaying?.let { viewModel.conversationFor(it) },
-                playback = playback,
-                positionMsProvider = { viewModel.currentPositionMs() },
-                durationMsProvider = { viewModel.durationMs() },
-                onPause = viewModel::pause,
-                onResume = viewModel::resume,
-                onSkipNext = { viewModel.skipNext() },
-                onRestart = { viewModel.restartCurrent() }
-            )
         }
-    }
-}
 
-@Composable
-private fun CountBadge(count: Int) {
-    Surface(
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.tertiaryContainer,
-        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-        modifier = Modifier.defaultMinSize(minWidth = 28.dp, minHeight = 28.dp)
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(
-                text = if (count > 99) "99+" else count.toString(),
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp)
-            )
+        if (queue.isEmpty() && nowPlaying == null) {
+            EmptyQueue(modifier = Modifier.weight(1f).fillMaxWidth())
+        } else {
+            LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(queue, key = { it.id }) { msg ->
+                    QueueRow(
+                        message = msg,
+                        conversation = viewModel.conversationFor(msg),
+                        onClick = { viewModel.playFromHere(msg) }
+                    )
+                }
+                item { Spacer(Modifier.height(8.dp)) }
+            }
         }
+
+        NowPlayingPanel(
+            message = nowPlaying,
+            conversation = nowPlaying?.let { viewModel.conversationFor(it) },
+            playback = playback,
+            positionMsProvider = { viewModel.currentPositionMs() },
+            durationMsProvider = { viewModel.durationMs() },
+            onPause = viewModel::pause,
+            onResume = viewModel::resume,
+            onSkipNext = { viewModel.skipNext() },
+            onRestart = { viewModel.restartCurrent() }
+        )
     }
 }
 
@@ -250,14 +175,14 @@ private fun PlayAllButton(onClick: () -> Unit) {
         shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.primaryContainer,
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        modifier = Modifier.height(40.dp)
+        modifier = Modifier.height(36.dp)
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp),
+            modifier = Modifier.padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
+            Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
             Text(
                 stringResource(R.string.pending_queue_play_all),
                 style = MaterialTheme.typography.labelLarge,
@@ -417,7 +342,6 @@ private fun NowPlayingPanel(
     if (message == null) return
     var expanded by remember { mutableStateOf(true) }
 
-    // Poll position every 250ms while playing so the scrubber animates.
     var positionMs by remember { mutableIntStateOf(positionMsProvider() ?: 0) }
     var durationMs by remember { mutableIntStateOf(durationMsProvider() ?: 0) }
     val isPlaying = playback is PlayReplyUseCase.PlaybackStatus.Playing
@@ -434,7 +358,6 @@ private fun NowPlayingPanel(
         shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
-            // Header row with collapse/expand chevron.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

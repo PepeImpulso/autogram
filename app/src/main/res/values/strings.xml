@@ -133,7 +133,7 @@
     <string name="settings_no_target">No target configured.</string>
     <string name="settings_change_target">Change target</string>
     <string name="settings_choose_target">Choose target</string>
-    <string name="settings_manage_pinned">Manage shortcuts</string>
+    <string name="settings_manage_pinned">Home contacts</string>
     <string name="settings_manage_pinned_sub">Secondary circles with their photos.</string>
     <string name="settings_autoplay">Auto-play replies</string>
     <string name="settings_autoplay_sub">When ON, incoming voice + text replies play out loud as soon as they arrive. When OFF, they\'re queued for you to play later from the Home screen \"▶ N pending\" button.</string>
@@ -292,6 +292,8 @@
     <string name="history_no_content">(no content)</string>
     <string name="history_today">Today</string>
     <string name="history_yesterday">Yesterday</string>
+    <string name="history_tab_pending">Pending</string>
+    <string name="history_tab_history">History</string>
     <string name="history_state_sent">Sent</string>
     <string name="history_state_sending">Sending…</string>
     <string name="history_state_queued">Queued</string>

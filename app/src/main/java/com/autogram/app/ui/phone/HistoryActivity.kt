@@ -1,41 +1,40 @@
 package com.autogram.app.ui.phone
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import com.autogram.app.domain.model.Message
-import com.autogram.app.domain.model.MessageDirection
-import com.autogram.app.domain.model.MessageState
 import com.autogram.app.ui.theme.AutogramTheme
 import dagger.hilt.android.AndroidEntryPoint
-import java.text.SimpleDateFormat
-import java.util.*
 
 /**
- * Actividad de historial de mensajes.
+ * v1.21.0 — hosts the unified History + Pending Queue screen. Reads
+ * [EXTRA_INITIAL_TAB] to decide which tab the screen opens on; the home
+ * banner deep-links into the Pending tab so a user with queued messages
+ * still lands where they expect, and entry from the navbar / per-circle
+ * badge defaults to History. The standalone PendingQueueActivity was
+ * removed in this version: its only entry point was the home banner,
+ * which made the screen unreachable when no messages were pending.
  */
 @AndroidEntryPoint
 class HistoryActivity : BaseLocaleActivity() {
-    private val viewModel: HistoryViewModel by viewModels()
+    private val historyViewModel: HistoryViewModel by viewModels()
+    private val pendingViewModel: PendingQueueViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val initialTab = when (intent.getStringExtra(EXTRA_INITIAL_TAB)) {
+            TAB_PENDING -> HistoryTab.PENDING
+            else -> HistoryTab.HISTORY
+        }
         setContent {
             AutogramTheme {
                 DebugScreenshotOverlay {
-                    HistoryScreen(viewModel = viewModel, onBack = { finish() })
+                    HistoryWithPendingTabsScreen(
+                        historyViewModel = historyViewModel,
+                        pendingViewModel = pendingViewModel,
+                        initialTab = initialTab,
+                        onBack = { finish() }
+                    )
                 }
             }
         }
@@ -50,5 +49,14 @@ class HistoryActivity : BaseLocaleActivity() {
          * and land on that circle's message history.
          */
         const val EXTRA_CONVERSATION_ID: String = "conversationId"
+
+        /**
+         * Optional intent extra picking the tab to open on. Accepts
+         * [TAB_PENDING] or [TAB_HISTORY]; anything else (or absent)
+         * defaults to History.
+         */
+        const val EXTRA_INITIAL_TAB: String = "initialTab"
+        const val TAB_PENDING: String = "pending"
+        const val TAB_HISTORY: String = "history"
     }
 }

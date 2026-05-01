@@ -270,7 +270,13 @@ class MainActivity : BaseLocaleActivity() {
                                 )
                             },
                             onOpenStats = { startActivity(Intent(this, StatsActivity::class.java)) },
-                            onOpenPendingQueue = { startActivity(Intent(this, PendingQueueActivity::class.java)) },
+                            onOpenPendingQueue = {
+                                startActivity(
+                                    Intent(this, HistoryActivity::class.java).apply {
+                                        putExtra(HistoryActivity.EXTRA_INITIAL_TAB, HistoryActivity.TAB_PENDING)
+                                    }
+                                )
+                            },
                             onManagePinned = { startActivity(Intent(this, ManagePinnedActivity::class.java)) },
                             onManageQuickReplies = { startActivity(Intent(this, QuickRepliesSettingsActivity::class.java)) }
                         )

@@ -54,6 +54,7 @@
         <activity
             android:name=".ui.phone.MainActivity"
             android:exported="true"
+            android:screenOrientation="portrait"
             android:theme="@style/Theme.Autogram">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -64,52 +65,56 @@
         <activity
             android:name=".ui.phone.SettingsActivity"
             android:exported="false"
-            android:label="@string/settings_title" />
+            android:label="@string/settings_title"
+            android:screenOrientation="portrait" />
 
         <activity
             android:name=".ui.phone.TargetPickerActivity"
             android:exported="false"
-            android:label="@string/target_picker_title" />
+            android:label="@string/target_picker_title"
+            android:screenOrientation="portrait" />
 
         <activity
             android:name=".ui.phone.ManagePinnedActivity"
             android:exported="false"
-            android:label="@string/pinned_title" />
+            android:label="@string/pinned_title"
+            android:screenOrientation="portrait" />
 
         <activity
             android:name=".ui.phone.PinnedPickerActivity"
             android:exported="false"
-            android:label="@string/picker_add_shortcut_title" />
+            android:label="@string/picker_add_shortcut_title"
+            android:screenOrientation="portrait" />
 
         <activity
             android:name=".ui.phone.QuickRepliesSettingsActivity"
             android:exported="false"
-            android:label="@string/quick_replies_title" />
+            android:label="@string/quick_replies_title"
+            android:screenOrientation="portrait" />
 
         <activity
             android:name=".ui.phone.HistoryActivity"
             android:exported="false"
-            android:label="@string/history_title" />
-
-        <activity
-            android:name=".ui.phone.PendingQueueActivity"
-            android:exported="false"
-            android:label="@string/pending_queue_title" />
+            android:label="@string/history_title"
+            android:screenOrientation="portrait" />
 
         <activity
             android:name=".ui.phone.StatsActivity"
             android:exported="false"
-            android:label="@string/stats_title" />
+            android:label="@string/stats_title"
+            android:screenOrientation="portrait" />
 
         <activity
             android:name=".ui.phone.TelegramLoginActivity"
             android:exported="false"
-            android:label="@string/app_name" />
+            android:label="@string/app_name"
+            android:screenOrientation="portrait" />
 
         <activity
             android:name=".ui.phone.OnboardingActivity"
             android:exported="false"
-            android:label="@string/app_name" />
+            android:label="@string/app_name"
+            android:screenOrientation="portrait" />
 
         <!-- Android Auto -->
         <meta-data

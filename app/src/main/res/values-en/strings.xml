@@ -92,7 +92,7 @@
     <string name="settings_no_target">No target configured.</string>
     <string name="settings_change_target">Change target</string>
     <string name="settings_choose_target">Choose target</string>
-    <string name="settings_manage_pinned">Manage shortcuts</string>
+    <string name="settings_manage_pinned">Home contacts</string>
     <string name="settings_manage_pinned_sub">Secondary circles with their photos.</string>
     <string name="settings_autoplay">Auto-play replies</string>
     <string name="settings_autoplay_sub">When ON, incoming voice + text replies play out loud as soon as they arrive. When OFF, they\'re queued for you to play later from the Home screen \"▶ N pending\" button.</string>

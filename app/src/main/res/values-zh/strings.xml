@@ -117,7 +117,7 @@
     <string name="settings_no_target">未配置目标。</string>
     <string name="settings_change_target">更改目标</string>
     <string name="settings_choose_target">选择目标</string>
-    <string name="settings_manage_pinned">管理快捷</string>
+    <string name="settings_manage_pinned">主屏联系人</string>
     <string name="settings_manage_pinned_sub">带图片的次要圆圈。</string>
     <string name="settings_autoplay">自动播放回复</string>
     <string name="settings_playback_speed">播放速度</string>
@@ -259,6 +259,8 @@
     <string name="history_no_content">（无内容）</string>
     <string name="history_today">今天</string>
     <string name="history_yesterday">昨天</string>
+    <string name="history_tab_pending">待播放</string>
+    <string name="history_tab_history">历史</string>
     <string name="history_state_sent">已发送</string>
     <string name="history_state_sending">发送中…</string>
     <string name="history_state_queued">排队中</string>

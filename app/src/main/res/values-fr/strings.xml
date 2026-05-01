@@ -118,7 +118,7 @@
     <string name="settings_no_target">Aucun destinataire configuré.</string>
     <string name="settings_change_target">Changer de destinataire</string>
     <string name="settings_choose_target">Choisir un destinataire</string>
-    <string name="settings_manage_pinned">Gérer les raccourcis</string>
+    <string name="settings_manage_pinned">Contacts d\'accueil</string>
     <string name="settings_manage_pinned_sub">Cercles secondaires avec leurs photos.</string>
     <string name="settings_autoplay">Lecture automatique des réponses</string>
     <string name="settings_playback_speed">Vitesse de lecture</string>
@@ -260,6 +260,8 @@
     <string name="history_no_content">(aucun contenu)</string>
     <string name="history_today">Aujourd\'hui</string>
     <string name="history_yesterday">Hier</string>
+    <string name="history_tab_pending">En attente</string>
+    <string name="history_tab_history">Historique</string>
     <string name="history_state_sent">Envoyé</string>
     <string name="history_state_sending">Envoi…</string>
     <string name="history_state_queued">En file</string>

@@ -136,7 +136,7 @@
     <string name="settings_no_target">No hay destino configurado.</string>
     <string name="settings_change_target">Cambiar destino</string>
     <string name="settings_choose_target">Elegir destino</string>
-    <string name="settings_manage_pinned">Gestionar accesos rápidos</string>
+    <string name="settings_manage_pinned">Contactos del inicio</string>
     <string name="settings_manage_pinned_sub">Círculos secundarios con sus fotos.</string>
     <string name="settings_autoplay">Auto-reproducir respuestas</string>
     <string name="settings_autoplay_sub">Cuando está activado, las respuestas (voz y texto) suenan en alto al recibirse. Cuando está desactivado, se encolan para reproducirlas después desde el botón \"▶ N pendientes\" de la pantalla principal.</string>
@@ -297,6 +297,8 @@
     <string name="history_no_content">(sin contenido)</string>
     <string name="history_today">Hoy</string>
     <string name="history_yesterday">Ayer</string>
+    <string name="history_tab_pending">Pendientes</string>
+    <string name="history_tab_history">Historial</string>
     <string name="history_state_sent">Enviado</string>
     <string name="history_state_sending">Enviando…</string>
     <string name="history_state_queued">En cola</string>

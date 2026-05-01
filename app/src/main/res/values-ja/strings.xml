@@ -117,7 +117,7 @@
     <string name="settings_no_target">送信先が未設定です。</string>
     <string name="settings_change_target">送信先を変更</string>
     <string name="settings_choose_target">送信先を選択</string>
-    <string name="settings_manage_pinned">ショートカットを管理</string>
+    <string name="settings_manage_pinned">ホーム連絡先</string>
     <string name="settings_manage_pinned_sub">写真付きのサブサークル。</string>
     <string name="settings_autoplay">返信を自動再生</string>
     <string name="settings_playback_speed">再生速度</string>
@@ -259,6 +259,8 @@
     <string name="history_no_content">（コンテンツなし）</string>
     <string name="history_today">今日</string>
     <string name="history_yesterday">昨日</string>
+    <string name="history_tab_pending">保留中</string>
+    <string name="history_tab_history">履歴</string>
     <string name="history_state_sent">送信済み</string>
     <string name="history_state_sending">送信中…</string>
     <string name="history_state_queued">キュー中</string>
