@@ -327,6 +327,10 @@
     <string name="assistant_no_target_title">No target configured</string>
     <string name="assistant_no_target_body">Pick the chat where Merlín lives in Settings, then come back and try again.</string>
     <string name="assistant_no_target_open_settings">Open Settings</string>
+    <string name="media_browser_pending">Pending</string>
+    <string name="media_browser_history">History</string>
+    <string name="media_browser_kind_voice">Voice</string>
+    <string name="media_browser_kind_text">Text</string>
     <string name="history_state_sent">Sent</string>
     <string name="history_state_sending">Sending…</string>
     <string name="history_state_queued">Queued</string>

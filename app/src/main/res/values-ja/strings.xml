@@ -294,6 +294,10 @@
     <string name="assistant_no_target_title">送信先が未設定</string>
     <string name="assistant_no_target_body">設定で Merlín のいるチャットを選んでから、もう一度お試しください。</string>
     <string name="assistant_no_target_open_settings">設定を開く</string>
+    <string name="media_browser_pending">保留中</string>
+    <string name="media_browser_history">履歴</string>
+    <string name="media_browser_kind_voice">音声</string>
+    <string name="media_browser_kind_text">テキスト</string>
     <string name="history_state_sent">送信済み</string>
     <string name="history_state_sending">送信中…</string>
     <string name="history_state_queued">キュー中</string>

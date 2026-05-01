@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -85,6 +86,29 @@ class MainViewModel @Inject constructor(
     val sendStatus: StateFlow<SendVoiceMtprotoUseCase.SendStatus> = sendMessageUseCase.status
     val playbackStatus: StateFlow<PlayReplyUseCase.PlaybackStatus> = playReplyUseCase.playbackStatus
     val activeTargetId: StateFlow<String?> = sendMessageUseCase.activeTargetId
+
+    /**
+     * v1.22.4 — conversationId of the message currently playing back, or null
+     * if nothing is playing. Drives the pulsing ring on the Home circle so the
+     * user can tell at a glance which contact's message is being read aloud
+     * (especially useful when audio is routed to the car speakers and the
+     * phone screen is glanceable rather than focused).
+     *
+     * Resolves the messageId from PlaybackStatus.Playing through MessageRepository.
+     * Distinct on messageId so the Room lookup only fires when the active
+     * message changes, not on every internal state emission.
+     */
+    val currentlyPlayingConversationId: StateFlow<String?> =
+        playReplyUseCase.playbackStatus
+            .map { st ->
+                when (st) {
+                    is PlayReplyUseCase.PlaybackStatus.Playing -> st.messageId
+                    else -> null
+                }
+            }
+            .distinctUntilChanged()
+            .map { messageId -> messageId?.let { messageRepository.getById(it)?.conversationId } }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     /**
      * Most-recent incoming voice with a playable audio file, across

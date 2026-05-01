@@ -16,4 +16,12 @@
          Keeping just `template` forces Gearhead to open our ListTemplate
          with the pinned conversations and recent messages populated. -->
     <uses name="template" />
+    <!-- v1.22.1 — declare media so Autogram appears in Android Auto's
+         media tab alongside Spotify / Apple Music. The MediaBrowser-
+         ServiceCompat at .service.AutogramMediaBrowserService surfaces
+         pending + history voice messages as a browseable catalog, and
+         playback runs through a MediaSessionCompat AA recognizes —
+         which is what actually fixes audio routing on USB AA where the
+         phone speaker is muted by AA's audio policy. -->
+    <uses name="media" />
 </automotiveApp>

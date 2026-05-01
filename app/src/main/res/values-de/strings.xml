@@ -295,6 +295,10 @@
     <string name="assistant_no_target_title">Kein Ziel konfiguriert</string>
     <string name="assistant_no_target_body">Wähle in den Einstellungen den Chat aus, in dem Merlín lebt, und versuche es erneut.</string>
     <string name="assistant_no_target_open_settings">Einstellungen öffnen</string>
+    <string name="media_browser_pending">Ausstehend</string>
+    <string name="media_browser_history">Verlauf</string>
+    <string name="media_browser_kind_voice">Sprache</string>
+    <string name="media_browser_kind_text">Text</string>
     <string name="history_state_sent">Gesendet</string>
     <string name="history_state_sending">Sende…</string>
     <string name="history_state_queued">In Warteschlange</string>

@@ -295,6 +295,10 @@
     <string name="assistant_no_target_title">Aucun destinataire configuré</string>
     <string name="assistant_no_target_body">Choisissez dans les Réglages le chat où vit Merlín, puis réessayez.</string>
     <string name="assistant_no_target_open_settings">Ouvrir les Réglages</string>
+    <string name="media_browser_pending">En attente</string>
+    <string name="media_browser_history">Historique</string>
+    <string name="media_browser_kind_voice">Vocal</string>
+    <string name="media_browser_kind_text">Texte</string>
     <string name="history_state_sent">Envoyé</string>
     <string name="history_state_sending">Envoi…</string>
     <string name="history_state_queued">En file</string>

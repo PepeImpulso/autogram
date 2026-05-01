@@ -7,11 +7,14 @@ import com.autogram.app.domain.model.MessageState
 import com.autogram.app.domain.model.PendingReason
 import com.autogram.app.domain.model.SummaryState
 import com.autogram.app.domain.model.TranscriptionState
+import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.infrastructure.audio.AudioPlayer
+import com.autogram.app.infrastructure.audio.AudioRecorder
 import com.autogram.app.infrastructure.audio.TtsPlayer
 import com.autogram.app.infrastructure.persistence.dao.PendingPlaybackDao
+import com.autogram.app.service.AutogramMediaPlaybackController
 import com.autogram.app.infrastructure.persistence.entity.PendingPlaybackEntity
 import com.autogram.app.infrastructure.platform.PendingReplyNotifier
 import io.mockk.coEvery
@@ -42,10 +45,13 @@ class PlayReplyUseCaseTest {
 
     private lateinit var audioPlayer: AudioPlayer
     private lateinit var ttsPlayer: TtsPlayer
+    private lateinit var audioRecorder: AudioRecorder
     private lateinit var messageRepository: MessageRepository
     private lateinit var settingsRepository: SettingsRepository
+    private lateinit var conversationRepository: ConversationRepository
     private lateinit var pendingPlaybackDao: PendingPlaybackDao
     private lateinit var pendingReplyNotifier: PendingReplyNotifier
+    private lateinit var mediaPlayback: AutogramMediaPlaybackController
     private lateinit var useCase: PlayReplyUseCase
 
     private lateinit var existingAudio: File
@@ -54,13 +60,17 @@ class PlayReplyUseCaseTest {
     @Before fun setUp() {
         audioPlayer = mockk(relaxed = true)
         ttsPlayer = mockk(relaxed = true)
+        audioRecorder = mockk(relaxed = true)
         messageRepository = mockk(relaxed = true)
         settingsRepository = mockk(relaxed = true)
+        conversationRepository = mockk(relaxed = true)
         pendingPlaybackDao = mockk(relaxed = true)
         pendingReplyNotifier = mockk(relaxed = true)
+        mediaPlayback = mockk(relaxed = true)
 
         every { audioPlayer.isPlaying() } returns false
         every { audioPlayer.play(any(), any(), any()) } returns Result.success(Unit)
+        every { audioRecorder.isRecording() } returns false
         coEvery { settingsRepository.get() } returns defaultSettings
 
         existingAudio = File.createTempFile("autogram-test-", ".ogg").apply { writeText("dummy") }
@@ -68,10 +78,13 @@ class PlayReplyUseCaseTest {
         useCase = PlayReplyUseCase(
             audioPlayer = audioPlayer,
             ttsPlayer = ttsPlayer,
+            audioRecorder = audioRecorder,
             messageRepository = messageRepository,
             settingsRepository = settingsRepository,
+            conversationRepository = conversationRepository,
             pendingPlaybackDao = pendingPlaybackDao,
-            pendingReplyNotifier = pendingReplyNotifier
+            pendingReplyNotifier = pendingReplyNotifier,
+            mediaPlayback = mediaPlayback
         )
     }
 

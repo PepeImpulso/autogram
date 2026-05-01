@@ -37,6 +37,23 @@
 # Timber
 -dontwarn timber.log.Timber
 
+# v1.22.3 — MediaSessionCompat.Callback overrides MUST survive R8. Android
+# Auto / Bluetooth car / lock-screen media controls dispatch transport
+# callbacks (Play / Pause / Stop / Skip / PlayFromMediaId) by name, so any
+# rename/strip silently breaks the buttons. Keep the compat callback +
+# every subclass and its public methods.
+-keep class android.support.v4.media.session.MediaSessionCompat$Callback { *; }
+-keep class * extends android.support.v4.media.session.MediaSessionCompat$Callback {
+    public *;
+}
+-keep class androidx.media.session.MediaButtonReceiver { *; }
+# MediaBrowserServiceCompat exposes onLoadChildren / onGetRoot via the
+# binder; the abstract overrides shouldn't be obfuscated.
+-keep class androidx.media.MediaBrowserServiceCompat { *; }
+-keep class * extends androidx.media.MediaBrowserServiceCompat {
+    public *;
+}
+
 # TDLib — JNI uses reflection on TdApi classes, so keep everything in the
 # org.drinkless.tdlib package intact (no renaming, no removal of fields).
 -keep class org.drinkless.tdlib.** { *; }

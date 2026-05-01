@@ -19,6 +19,12 @@
          is parsed but doesn't enforce a budget. Newer targets use
          SPECIAL_USE above. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- v1.22.1 — needed for the MediaBrowserServiceCompat that
+         surfaces Autogram in Android Auto's media tab. The media
+         browser service binds Auto's media controller; it doesn't
+         actually run as a foreground service today, but the perm
+         covers the case if we promote it later. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -59,6 +65,15 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- v1.22.4 — declares Autogram as a target for AA/Assistant
+                 voice search ("Hey Google, play X on Autogram"). Paired with
+                 the MediaSessionCompat.Callback.onPlayFromSearch override in
+                 AutogramMediaPlaybackController; without both, voice-launched
+                 playback can't reach the app. -->
+            <intent-filter>
+                <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
 
@@ -181,6 +196,26 @@
             android:exported="true"
             android:permission="android.permission.BIND_VOICE_INTERACTION" />
 
+        <!-- v1.22.1 — MediaBrowserServiceCompat that makes Autogram a
+             "media app" in Android Auto's media tab. Required for
+             audio playback to route through the car's media stream
+             (especially on USB AA where the phone speaker is muted by
+             AA's audio policy and audio without a registered Media-
+             Session ends up in the void). The service exposes a
+             browseable catalog (pending + history) and publishes the
+             same MediaSessionCompat token the AutogramMediaPlayback-
+             Controller updates from PlayReplyUseCase, so AA observes
+             our PLAYING state. -->
+        <service
+            android:name=".service.AutogramMediaBrowserService"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.media.browse.MediaBrowserService" />
+            </intent-filter>
+        </service>
+
         <!-- Android Auto: official templated messaging experience.
              Google documents MESSAGING + template + notification as the
              supported path for chat apps; using NAVIGATION/IOT to draw a
@@ -215,6 +250,20 @@
         <receiver
             android:name=".infrastructure.platform.NotificationActionReceiver"
             android:exported="false" />
+
+        <!-- v1.22.4 — routes hardware media-button events (Bluetooth headset
+             play/pause, wired headset remote, keyboard play key) to the
+             topmost active MediaSession. Without this, Bluetooth headsets
+             paired to the phone can't pause/resume Autogram playback;
+             AA itself uses a controller-binder path so it isn't affected,
+             but headset users in the car would lose transport control. -->
+        <receiver
+            android:name="androidx.media.session.MediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
 
         <!-- Quick Settings tile for instant "record voice to primary target".
              Drag-and-drop into the QS panel from the edit screen on Android.

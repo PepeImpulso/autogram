@@ -332,6 +332,10 @@
     <string name="assistant_no_target_title">Sin destino configurado</string>
     <string name="assistant_no_target_body">Elige en Ajustes el chat donde vive Merlín y vuelve a intentarlo.</string>
     <string name="assistant_no_target_open_settings">Abrir Ajustes</string>
+    <string name="media_browser_pending">Pendientes</string>
+    <string name="media_browser_history">Historial</string>
+    <string name="media_browser_kind_voice">Voz</string>
+    <string name="media_browser_kind_text">Texto</string>
     <string name="history_state_sent">Enviado</string>
     <string name="history_state_sending">Enviando…</string>
     <string name="history_state_queued">En cola</string>

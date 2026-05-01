@@ -294,6 +294,10 @@
     <string name="assistant_no_target_title">未配置目标</string>
     <string name="assistant_no_target_body">在设置中选择 Merlín 所在的聊天，然后重试。</string>
     <string name="assistant_no_target_open_settings">打开设置</string>
+    <string name="media_browser_pending">待播放</string>
+    <string name="media_browser_history">历史</string>
+    <string name="media_browser_kind_voice">语音</string>
+    <string name="media_browser_kind_text">文本</string>
     <string name="history_state_sent">已发送</string>
     <string name="history_state_sending">发送中…</string>
     <string name="history_state_queued">排队中</string>
