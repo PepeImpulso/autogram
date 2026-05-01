@@ -245,30 +245,29 @@ private fun HistoryTabContent(viewModel: HistoryViewModel) {
 
         if (messages.isEmpty()) {
             HistoryEmptyState(modifier = Modifier.fillMaxSize())
-            return
-        }
+        } else {
+            // Reverse-chronological — newest at top so a fresh reply is the
+            // first thing the user sees, without scrolling. Day groups inherit
+            // the ordering: Today first, then Yesterday, then older.
+            val ordered = remember(messages) { messages.sortedByDescending { it.createdAt } }
+            val grouped = groupByDay(ordered)
 
-        // Reverse-chronological — newest at top so a fresh reply is the first
-        // thing the user sees, without scrolling. Day groups inherit the
-        // ordering: Today first, then Yesterday, then older.
-        val ordered = remember(messages) { messages.sortedByDescending { it.createdAt } }
-        val grouped = groupByDay(ordered)
-
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            grouped.forEach { (dayLabel, items) ->
-                item(key = "header-$dayLabel") { DayDivider(dayLabel) }
-                items(items, key = { it.id }) { message ->
-                    MessageBubble(
-                        message = message,
-                        playback = playback,
-                        onPlay = { viewModel.onPlayClicked(message) },
-                        onPause = { viewModel.onPauseClicked() },
-                        onResume = { viewModel.onResumeClicked() }
-                    )
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                grouped.forEach { (dayLabel, items) ->
+                    item(key = "header-$dayLabel") { DayDivider(dayLabel) }
+                    items(items, key = { it.id }) { message ->
+                        MessageBubble(
+                            message = message,
+                            playback = playback,
+                            onPlay = { viewModel.onPlayClicked(message) },
+                            onPause = { viewModel.onPauseClicked() },
+                            onResume = { viewModel.onResumeClicked() }
+                        )
+                    }
                 }
             }
         }
@@ -611,7 +610,9 @@ private fun InlineBlock(
                     )
                 }
             }
-            if (label != null) Spacer(Modifier.height(4.dp))
+            if (label != null) {
+                Spacer(Modifier.height(4.dp))
+            }
             Text(
                 body,
                 style = MaterialTheme.typography.bodySmall,
