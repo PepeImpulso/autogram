@@ -66,6 +66,15 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- v1.22.4 — declares Autogram as a target for AA/Assistant
+                 voice search ("Hey Google, play X on Autogram"). Paired with
+                 the MediaSessionCompat.Callback.onPlayFromSearch override in
+                 AutogramMediaPlaybackController; without both, voice-launched
+                 playback can't reach the app. -->
+            <intent-filter>
+                <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
         </activity>
 
         <activity
@@ -188,6 +197,20 @@
         <receiver
             android:name=".infrastructure.platform.NotificationActionReceiver"
             android:exported="false" />
+
+        <!-- v1.22.4 — routes hardware media-button events (Bluetooth headset
+             play/pause, wired headset remote, keyboard play key) to the
+             topmost active MediaSession. Without this, Bluetooth headsets
+             paired to the phone can't pause/resume Autogram playback;
+             AA itself uses a controller-binder path so it isn't affected,
+             but headset users in the car would lose transport control. -->
+        <receiver
+            android:name="androidx.media.session.MediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
 
         <!-- Quick Settings tile for instant "record voice to primary target".
              Drag-and-drop into the QS panel from the edit screen on Android.

@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -95,6 +96,38 @@ class PlayReplyUseCase @Inject constructor(
                         return@launch
                     }
                     playFromHere(msg)
+                }
+            }
+            override fun onPlayFromSearch(query: String, extras: android.os.Bundle?) {
+                // v1.22.4 — entry point for "Hey Google, play <X> on Autogram"
+                // dispatched from AA / Assistant. Empty query == "play
+                // anything" (drain pending). Non-empty query is matched
+                // case-insensitively against pinned conversation titles;
+                // first hit's most-recent unread voice/text is played. If
+                // nothing matches, fall through to draining pending so the
+                // user always hears *something* rather than silence.
+                playbackScope.launch {
+                    if (query.isBlank()) {
+                        playAllPending()
+                        return@launch
+                    }
+                    val q = query.trim().lowercase()
+                    val match = runCatching { conversationRepository.getAll() }
+                        .getOrDefault(emptyList())
+                        .firstOrNull { conv ->
+                            val title = conv.topicName?.takeIf { it.isNotBlank() } ?: conv.targetTitle
+                            title?.lowercase()?.contains(q) == true
+                        }
+                    if (match == null) {
+                        Timber.i("onPlayFromSearch: no convo matched '$query', draining pending")
+                        playAllPending()
+                        return@launch
+                    }
+                    val recent = runCatching {
+                        messageRepository.observeAll(match.id).first()
+                            .maxByOrNull { it.createdAt }
+                    }.getOrNull()
+                    if (recent != null) playFromHere(recent) else playAllPending()
                 }
             }
         })

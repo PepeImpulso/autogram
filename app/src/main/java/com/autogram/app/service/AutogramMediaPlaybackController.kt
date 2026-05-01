@@ -54,6 +54,13 @@ class AutogramMediaPlaybackController @Inject constructor(
         fun onSkipToPrevious()
         fun onStop()
         fun onPlayFromMediaId(mediaId: String, extras: Bundle?)
+        /**
+         * v1.22.4 — entry-point for AA / Assistant voice search:
+         * "Hey Google, play X on Autogram". Empty query means generic
+         * "play something" — drain pending. Non-empty query is matched
+         * against pinned conversation titles (best-effort substring).
+         */
+        fun onPlayFromSearch(query: String, extras: Bundle?)
     }
 
     @Volatile private var listener: Listener? = null
@@ -80,6 +87,10 @@ class AutogramMediaPlaybackController @Inject constructor(
                     if (mediaId == null) return
                     listener?.onPlayFromMediaId(mediaId, extras)
                         ?: Timber.w("MediaSession.onPlayFromMediaId before listener attached")
+                }
+                override fun onPlayFromSearch(query: String?, extras: Bundle?) {
+                    listener?.onPlayFromSearch(query.orEmpty(), extras)
+                        ?: Timber.w("MediaSession.onPlayFromSearch before listener attached")
                 }
             })
             // Empty initial state so AA / system controls show the

@@ -11,11 +11,18 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -368,6 +375,7 @@ private fun MainScreen(
     val ctx = LocalContext.current
     val sendStatus by viewModel.sendStatus.collectAsState()
     val playback by viewModel.playbackStatus.collectAsState()
+    val playingConversationId by viewModel.currentlyPlayingConversationId.collectAsState()
     val quickReplies by viewModel.quickReplies.collectAsState()
     val pinned by viewModel.pinned.collectAsState()
     val activeTargetId by viewModel.activeTargetId.collectAsState()
@@ -513,6 +521,7 @@ private fun MainScreen(
                     primary = primary,
                     isRecordingThis = activeTargetId == primary.id &&
                         sendStatus is SendVoiceMtprotoUseCase.SendStatus.Recording,
+                    isPlayingThis = playingConversationId == primary.id,
                     pendingCount = if (showPendingBadges) (pendingCounts[primary.id] ?: 0) else 0,
                     hasPermission = hasMicPermission,
                     quickReplies = quickReplies,
@@ -534,6 +543,7 @@ private fun MainScreen(
             SecondaryCirclesRow(
                 circles = secondary,
                 activeTargetId = activeTargetId,
+                playingConversationId = playingConversationId,
                 sendStatus = sendStatus,
                 pendingCounts = if (showPendingBadges) pendingCounts else emptyMap(),
                 hasPermission = hasMicPermission,
@@ -999,7 +1009,8 @@ private fun RecordCircle(
     onStart: () -> Unit,
     onSend: () -> Unit,
     onCancel: () -> Unit,
-    onPendingBadgeClick: (() -> Unit)? = null
+    onPendingBadgeClick: (() -> Unit)? = null,
+    isPlayingThis: Boolean = false
 ) {
     val scale by animateFloatAsState(
         targetValue = if (isRecordingThis) 1.1f else 1f,
@@ -1007,6 +1018,32 @@ private fun RecordCircle(
         label = "circle-scale"
     )
     val haloColor = MaterialTheme.colorScheme.error.copy(alpha = if (isRecordingThis) 0.25f else 0f)
+
+    // v1.22.4 — pulsing gold ring around the circle whose message is currently
+    // being played. Lets the user identify the speaking contact at a glance,
+    // matters most when the phone screen is glanceable while audio routes to
+    // car speakers. rememberInfiniteTransition is unconditional so the
+    // animation stays cheap when nothing is playing (only read when drawn).
+    val playPulse = rememberInfiniteTransition(label = "play-pulse")
+    val ringAlpha by playPulse.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.95f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "ring-alpha"
+    )
+    val ringWidthDp by playPulse.animateFloat(
+        initialValue = 2f,
+        targetValue = 4f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "ring-width"
+    )
+    val ringColor = MaterialTheme.colorScheme.primary
 
     Box(modifier = Modifier.size(size + 24.dp)) {
         // Pulse halo when recording
@@ -1018,6 +1055,18 @@ private fun RecordCircle(
                 .clip(CircleShape)
                 .background(haloColor)
         )
+        if (isPlayingThis) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(size + 12.dp)
+                    .border(
+                        width = ringWidthDp.dp,
+                        color = ringColor.copy(alpha = ringAlpha),
+                        shape = CircleShape
+                    )
+            )
+        }
         Box(
             modifier = Modifier
                 .align(Alignment.Center)
@@ -1160,6 +1209,7 @@ private fun PendingBadge(
 private fun SecondaryCirclesRow(
     circles: List<Conversation>,
     activeTargetId: String?,
+    playingConversationId: String?,
     sendStatus: SendVoiceMtprotoUseCase.SendStatus,
     pendingCounts: Map<String, Int>,
     hasPermission: Boolean,
@@ -1187,6 +1237,7 @@ private fun SecondaryCirclesRow(
                     size = 72.dp,
                     isRecordingThis = activeTargetId == conv.id &&
                         sendStatus is SendVoiceMtprotoUseCase.SendStatus.Recording,
+                    isPlayingThis = playingConversationId == conv.id,
                     pendingCount = pendingCounts[conv.id] ?: 0,
                     hasPermission = hasPermission,
                     onRequestPermission = onRequestPermission,
@@ -1239,6 +1290,7 @@ private fun SecondaryCirclesRow(
 private fun PrimaryRow(
     primary: Conversation,
     isRecordingThis: Boolean,
+    isPlayingThis: Boolean,
     pendingCount: Int,
     hasPermission: Boolean,
     quickReplies: List<com.autogram.app.domain.model.QuickReply>,
@@ -1284,6 +1336,7 @@ private fun PrimaryRow(
                     conversation = primary,
                     size = 176.dp,
                     isRecordingThis = isRecordingThis,
+                    isPlayingThis = isPlayingThis,
                     pendingCount = pendingCount,
                     hasPermission = hasPermission,
                     onRequestPermission = onRequestPermission,
