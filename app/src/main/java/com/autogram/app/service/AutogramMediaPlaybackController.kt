@@ -82,6 +82,13 @@ class AutogramMediaPlaybackController @Inject constructor(
             // Empty initial state so AA / system controls show the
             // session as available even before the first playback.
             setPlaybackState(idleState())
+            // v1.22.2 — activate the session immediately so Android Auto
+            // and Bluetooth car stereos can discover it on connect, not
+            // only after the first incoming-message playback. Without
+            // this, an AA session connected during an idle period would
+            // see the session as "not available" and the app may not be
+            // listed in the car's media picker at all.
+            isActive = true
         }
     }
 

@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.text.SimpleDateFormat
@@ -49,6 +50,15 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
     @Inject lateinit var mediaPlayback: AutogramMediaPlaybackController
     @Inject lateinit var messageRepository: MessageRepository
     @Inject lateinit var conversationRepository: ConversationRepository
+    // v1.22.1 — injecting PlayReplyUseCase here is intentional, even
+    // though the field isn't read directly. PlayReplyUseCase's @Inject
+    // constructor registers itself as the MediaSessionCompat listener
+    // in its `init {}` block. If it weren't constructed before AA
+    // tapped a media item, `onPlayFromMediaId` would log "before
+    // listener attached" and silently drop the play request. Hilt
+    // singleton construction is lazy-on-first-injection — listing it
+    // here forces the dependency before AA binds the browser.
+    @Inject lateinit var playReplyUseCase: com.autogram.app.domain.usecase.PlayReplyUseCase
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -102,35 +112,41 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
     )
 
     private suspend fun pendingChildren(): List<MediaItem> {
+        // Use the canonical pending-queue Flow in drain order — same
+        // source the Pending tab uses. Avoids the v1.22.1 bug of
+        // loading every message in the DB and filtering in-memory.
         val pending = runCatching {
-            // observePendingPlaybackQueue is a Flow — for a one-shot
-            // load we just take the first emission via getAll +
-            // filter by state, which the impl backs with the same
-            // query.
-            messageRepository.getAll().filter {
-                it.state == com.autogram.app.domain.model.MessageState.PENDING_PLAYBACK
-            }.sortedByDescending { it.createdAt }
+            messageRepository.observePendingPlaybackQueue().first()
         }.getOrDefault(emptyList())
         val convos = conversationsById()
         return pending.map { msg -> playableItem(msg, convos[msg.conversationId]) }
     }
 
     private suspend fun historyChildren(): List<MediaItem> {
+        // No dedicated "recent N incoming voice" query exists, so the
+        // in-memory filter on getAll() is what we have. Capped at 50
+        // so the AA browser doesn't churn on heavy history. A future
+        // dedicated DAO query can drop the in-memory filter.
         val recent = runCatching {
             messageRepository.getAll()
+                .asSequence()
                 .filter {
                     it.direction == com.autogram.app.domain.model.MessageDirection.INCOMING &&
                         !it.audioFilePath.isNullOrBlank()
                 }
                 .sortedByDescending { it.createdAt }
                 .take(50)
+                .toList()
         }.getOrDefault(emptyList())
         val convos = conversationsById()
         return recent.map { msg -> playableItem(msg, convos[msg.conversationId]) }
     }
 
     private suspend fun conversationsById(): Map<String, Conversation> =
-        runCatching { conversationRepository.getPinned().associateBy { it.id } }
+        // getAll() over getPinned() so messages from non-pinned (e.g.
+        // archived) conversations also resolve to the right contact name
+        // in AA's media tab instead of falling back to "Autogram".
+        runCatching { conversationRepository.getAll().associateBy { it.id } }
             .getOrDefault(emptyMap())
 
     private fun browseable(mediaId: String, title: String): MediaItem {
