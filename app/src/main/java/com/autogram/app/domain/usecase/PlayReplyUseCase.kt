@@ -44,9 +44,45 @@ class PlayReplyUseCase @Inject constructor(
     private val audioRecorder: AudioRecorder,
     private val messageRepository: MessageRepository,
     private val settingsRepository: SettingsRepository,
+    private val conversationRepository: ConversationRepository,
     private val pendingPlaybackDao: PendingPlaybackDao,  // BUG-05: Persist pending queue
-    private val pendingReplyNotifier: PendingReplyNotifier
+    private val pendingReplyNotifier: PendingReplyNotifier,
+    private val mediaPlayback: com.autogram.app.service.AutogramMediaPlaybackController
 ) {
+
+    init {
+        // v1.22.1 — bridge AA / Bluetooth-car / lock-screen transport
+        // taps back into our use case. The MediaSessionCompat callback
+        // fires on the system binder thread, so each handler dispatches
+        // through `playbackScope` (Dispatchers.IO) for the suspend
+        // methods.
+        mediaPlayback.setListener(object : com.autogram.app.service.AutogramMediaPlaybackController.Listener {
+            override fun onPlay() {
+                playbackScope.launch {
+                    if (audioPlayer.isPlaying() || ttsPlayer.isSpeaking()) {
+                        // Already playing — treat the tap as resume after a paused-by-OS state.
+                        resume()
+                    } else if (pendingCount() > 0) {
+                        // Idle with queue → drain it.
+                        playAllPending()
+                    } else {
+                        resume() // no-op when nothing's loaded
+                    }
+                }
+            }
+            override fun onPause() = pause()
+            override fun onStop() { stopAll() }
+            override fun onSkipToNext() { playbackScope.launch { skipNext() } }
+            override fun onSkipToPrevious() { playbackScope.launch { restartCurrent() } }
+            override fun onPlayFromMediaId(mediaId: String, extras: android.os.Bundle?) {
+                playbackScope.launch {
+                    val msg = messageRepository.getById(mediaId) ?: return@launch
+                    playFromHere(msg)
+                }
+            }
+        })
+    }
+
     private val _playbackStatus = MutableStateFlow<PlaybackStatus>(PlaybackStatus.Idle)
     val playbackStatus: StateFlow<PlaybackStatus> = _playbackStatus
 
@@ -139,6 +175,7 @@ class PlayReplyUseCase @Inject constructor(
             currentPlayingId = message.id
             messageRepository.update(message.copy(state = MessageState.PLAYING))
             _playbackStatus.value = PlaybackStatus.Playing(message.id)
+            markMediaSessionPlaying(message)
 
             val result = audioPlayer.play(audioFile, speed = settings.playbackSpeed) { playResult ->
             // Use a scoped coroutine (not runBlocking) so the MediaPlayer
@@ -237,6 +274,7 @@ class PlayReplyUseCase @Inject constructor(
                 }
                 currentPlayingId = null
                 _playbackStatus.value = PlaybackStatus.Idle
+                mediaPlayback.markStopped()
             }
         }
         if (result.isFailure) {
@@ -246,6 +284,7 @@ class PlayReplyUseCase @Inject constructor(
             ))
             currentPlayingId = null
             _playbackStatus.value = PlaybackStatus.Idle
+            mediaPlayback.markStopped()
         }
     }
 
@@ -277,6 +316,7 @@ class PlayReplyUseCase @Inject constructor(
                 ))
                 currentPlayingId = null
                 _playbackStatus.value = PlaybackStatus.Idle
+                mediaPlayback.markStopped()
             }
         }
     }
@@ -369,6 +409,7 @@ class PlayReplyUseCase @Inject constructor(
             currentPlayingId = message.id
             messageRepository.update(message.copy(state = MessageState.PLAYING))
             _playbackStatus.value = PlaybackStatus.Playing(message.id)
+            markMediaSessionPlaying(message)
             val uiLocale = if (settings.languageTag.isNotBlank())
                 java.util.Locale.forLanguageTag(settings.languageTag)
             else java.util.Locale.getDefault()
@@ -448,6 +489,7 @@ class PlayReplyUseCase @Inject constructor(
             currentPlayingId = message.id
             messageRepository.update(message.copy(state = MessageState.PLAYING))
             _playbackStatus.value = PlaybackStatus.Playing(message.id)
+            markMediaSessionPlaying(message)
 
             // Detect locale from the text so a Spanish reply isn't read
             // by an English voice. Fallback = user's UI locale (from
@@ -478,6 +520,7 @@ class PlayReplyUseCase @Inject constructor(
         currentPlayingId?.let {
             _playbackStatus.value = PlaybackStatus.Paused(it)
         }
+        mediaPlayback.markPaused()
     }
 
     /**
@@ -485,8 +528,12 @@ class PlayReplyUseCase @Inject constructor(
      */
     fun resume() {
         audioPlayer.resume()
-        currentPlayingId?.let {
-            _playbackStatus.value = PlaybackStatus.Playing(it)
+        currentPlayingId?.let { id ->
+            _playbackStatus.value = PlaybackStatus.Playing(id)
+            playbackScope.launch {
+                val msg = messageRepository.getById(id)
+                if (msg != null) markMediaSessionPlaying(msg)
+            }
         }
     }
 
@@ -517,6 +564,7 @@ class PlayReplyUseCase @Inject constructor(
             _playbackStatus.value = PlaybackStatus.Idle
             pendingReplyNotifier.cancel()
         }
+        mediaPlayback.markStopped()
         // BUG-44 FIX: Cancel and recreate playback scope so MediaPlayer
         // completion callbacks for the just-stopped playback don't fire
         // DB updates against a "now playing" row that's no longer playing.
@@ -589,6 +637,7 @@ class PlayReplyUseCase @Inject constructor(
         if (isEmpty || next == null) {
             _playbackStatus.value = PlaybackStatus.Idle
             pendingReplyNotifier.cancel()
+            mediaPlayback.markStopped()
             return
         }
         pendingReplyNotifier.notifyPending(pendingCount())
@@ -648,6 +697,24 @@ class PlayReplyUseCase @Inject constructor(
             }
         }
         playQueued(first)
+    }
+
+    /**
+     * v1.22.1 — push the now-playing metadata + PLAYING state to the
+     * MediaSessionCompat so Android Auto / Bluetooth car / lock-screen
+     * media controls reflect what's currently in flight. Resolves the
+     * conversation lazily on [playbackScope] so this stays callable
+     * from the synchronous `withLock` blocks higher up. Failures fall
+     * back to no conversation metadata — the session still gets the
+     * message-level title/duration.
+     */
+    private fun markMediaSessionPlaying(message: Message) {
+        playbackScope.launch {
+            val convo = runCatching {
+                conversationRepository.getById(message.conversationId)
+            }.getOrNull()
+            mediaPlayback.markPlaying(message, convo)
+        }
     }
 
     /**

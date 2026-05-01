@@ -40,8 +40,8 @@ android {
         applicationId = "com.autogram.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 95
-        versionName = "1.22.0"
+        versionCode = 100
+        versionName = "1.22.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -126,6 +126,10 @@ dependencies {
     // Android Auto
     implementation(libs.androidx.car.app)
     implementation(libs.androidx.car.app.projected)
+    // androidx.media — MediaBrowserServiceCompat + MediaSessionCompat. Lets
+    // Autogram appear as a media app in Android Auto's media tab and routes
+    // audio through the car's media stream during playback.
+    implementation(libs.androidx.media)
 
     // Hilt
     implementation(libs.hilt.android)

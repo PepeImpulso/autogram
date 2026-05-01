@@ -27,6 +27,7 @@ espresso = "3.6.1"
 mockk = "1.13.13"
 turbine = "1.2.0"
 reorderable = "2.4.3"
+media = "1.7.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -77,6 +78,7 @@ espresso-core = { group = "androidx.test.espresso", name = "espresso-core", vers
 mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
 turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
 reorderable = { group = "sh.calvin.reorderable", name = "reorderable", version.ref = "reorderable" }
+androidx-media = { group = "androidx.media", name = "media", version.ref = "media" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
