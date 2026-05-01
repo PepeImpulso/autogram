@@ -61,6 +61,12 @@ class AutogramMediaPlaybackController @Inject constructor(
          * against pinned conversation titles (best-effort substring).
          */
         fun onPlayFromSearch(query: String, extras: Bundle?)
+        /**
+         * v1.23.0-rc.6 — AA's progress bar / lock-screen scrubber sends a
+         * tap-to-position here. PlayReplyUseCase forwards to AudioPlayer
+         * and re-publishes the resulting position to the session.
+         */
+        fun onSeekTo(positionMs: Long)
     }
 
     @Volatile private var listener: Listener? = null
@@ -91,6 +97,10 @@ class AutogramMediaPlaybackController @Inject constructor(
                 override fun onPlayFromSearch(query: String?, extras: Bundle?) {
                     listener?.onPlayFromSearch(query.orEmpty(), extras)
                         ?: Timber.w("MediaSession.onPlayFromSearch before listener attached")
+                }
+                override fun onSeekTo(pos: Long) {
+                    listener?.onSeekTo(pos)
+                        ?: Timber.w("MediaSession.onSeekTo before listener attached")
                 }
             })
             // Empty initial state so AA / system controls show the
@@ -246,6 +256,8 @@ class AutogramMediaPlaybackController @Inject constructor(
                 PlaybackStateCompat.ACTION_STOP or
                 PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
                 PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
-                PlaybackStateCompat.ACTION_PLAY_FROM_MEDIA_ID
+                PlaybackStateCompat.ACTION_PLAY_FROM_MEDIA_ID or
+                PlaybackStateCompat.ACTION_PLAY_FROM_SEARCH or
+                PlaybackStateCompat.ACTION_SEEK_TO
     }
 }

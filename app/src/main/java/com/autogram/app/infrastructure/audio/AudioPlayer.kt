@@ -155,6 +155,24 @@ class AudioPlayer @Inject constructor(
     fun durationMs(): Int? = runCatching { mediaPlayer?.duration }.getOrNull()
 
     /**
+     * v1.23.0-rc.6 — jumps the underlying [mediaPlayer] to [positionMs]
+     * (clamped to [0, duration]). No-op if nothing is loaded or the
+     * MediaPlayer is in an Error state. Drives the tap-to-seek interaction
+     * on the Pending Queue's Now Playing waveform and on AA's progress bar
+     * via [MediaSessionCompat.Callback.onSeekTo].
+     */
+    fun seekTo(positionMs: Int) {
+        runCatching {
+            val mp = mediaPlayer ?: return
+            val clamped = positionMs.coerceAtLeast(0).let { p ->
+                val d = mp.duration
+                if (d > 0) p.coerceAtMost(d) else p
+            }
+            mp.seekTo(clamped)
+        }
+    }
+
+    /**
      * Request temporary audio focus for voice reply playback. Uses
      * AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK so the Android Auto host / Google
      * Maps navigation prompts are more likely to grant it — the "may duck"

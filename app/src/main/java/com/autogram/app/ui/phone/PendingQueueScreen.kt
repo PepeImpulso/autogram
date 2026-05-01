@@ -5,7 +5,12 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -106,6 +111,8 @@ class PendingQueueViewModel @Inject constructor(
 
     fun currentPositionMs(): Int? = playReplyUseCase.currentPositionMs()
     fun durationMs(): Int? = playReplyUseCase.durationMs()
+
+    fun seekTo(positionMs: Int) = playReplyUseCase.seekTo(positionMs)
 }
 
 /**
@@ -165,7 +172,9 @@ internal fun PendingQueueTabContent(viewModel: PendingQueueViewModel) {
                         isPausedThis = isPausedThis,
                         onPlay = { viewModel.playFromHere(msg) },
                         onPause = viewModel::pause,
-                        onResume = viewModel::resume
+                        onResume = viewModel::resume,
+                        positionMsProvider = { viewModel.currentPositionMs() },
+                        durationMsProvider = { viewModel.durationMs() }
                     )
                 }
                 item { Spacer(Modifier.height(8.dp)) }
@@ -181,7 +190,8 @@ internal fun PendingQueueTabContent(viewModel: PendingQueueViewModel) {
             onPause = viewModel::pause,
             onResume = viewModel::resume,
             onSkipNext = { viewModel.skipNext() },
-            onRestart = { viewModel.restartCurrent() }
+            onRestart = { viewModel.restartCurrent() },
+            onSeek = viewModel::seekTo
         )
     }
 }
@@ -242,7 +252,8 @@ private fun NowPlayingPanel(
     onPause: () -> Unit,
     onResume: () -> Unit,
     onSkipNext: () -> Unit,
-    onRestart: () -> Unit
+    onRestart: () -> Unit,
+    onSeek: (Int) -> Unit
 ) {
     if (message == null) return
     var expanded by remember { mutableStateOf(true) }
@@ -316,12 +327,40 @@ private fun NowPlayingPanel(
                     }
 
                     Spacer(Modifier.height(10.dp))
+                    // v1.23.0-rc.6 — tap or horizontal-drag on the waveform
+                    // jumps playback to that position. We track the
+                    // measured pixel width via onSizeChanged so taps
+                    // translate to a 0..1 fraction of the audio that's
+                    // independent of the device width / orientation.
+                    var waveformWidthPx by remember { mutableIntStateOf(0) }
+                    val seekFromX: (Float) -> Unit = { x ->
+                        val width = waveformWidthPx
+                        val total = if (durationMs > 0) durationMs else (message.audioDurationMs?.toInt() ?: 0)
+                        if (width > 0 && total > 0) {
+                            val fraction = (x / width.toFloat()).coerceIn(0f, 1f)
+                            val target = (fraction * total).toInt()
+                            // Update local state immediately so the UI
+                            // doesn't briefly show the old position
+                            // before AudioPlayer reports the new one.
+                            positionMs = target
+                            onSeek(target)
+                        }
+                    }
                     Waveform(
                         messageId = message.id,
                         progress = if (durationMs > 0) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(36.dp)
+                            .onSizeChanged { size: IntSize -> waveformWidthPx = size.width }
+                            .pointerInput(message.id, durationMs) {
+                                detectTapGestures(onTap = { offset -> seekFromX(offset.x) })
+                            }
+                            .pointerInput(message.id, durationMs) {
+                                detectHorizontalDragGestures { change, _ ->
+                                    seekFromX(change.position.x)
+                                }
+                            }
                     )
                     Spacer(Modifier.height(2.dp))
                     Row(modifier = Modifier.fillMaxWidth()) {
@@ -422,10 +461,3 @@ private fun ConversationAvatarLocal(conversation: Conversation?, size: androidx.
     }
 }
 
-private fun formatDurationMs(ms: Long): String {
-    if (ms <= 0) return "0:00"
-    val total = ms / 1000
-    val m = total / 60
-    val s = total % 60
-    return "%d:%02d".format(m, s)
-}

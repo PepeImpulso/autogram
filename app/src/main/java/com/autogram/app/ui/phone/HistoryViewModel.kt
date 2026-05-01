@@ -119,6 +119,15 @@ class HistoryViewModel @Inject constructor(
     }
 
     /**
+     * v1.23.0-rc.6 — passthroughs for the live `0:15 / 1:30` readout in
+     * [MessageRow]. Both are polled at ~250 ms by the row when it's the
+     * active playback target. Returning null suppresses the readout for
+     * that frame (e.g. TTS playback or MediaPlayer not yet loaded).
+     */
+    fun currentPositionMs(): Int? = playReplyUseCase.currentPositionMs()
+    fun durationMs(): Int? = playReplyUseCase.durationMs()
+
+    /**
      * Wipe every message in the currently-filtered conversation. Disabled
      * when the filter is null (no all-conversations clear — too
      * destructive). Stops in-flight playback for the same conversation

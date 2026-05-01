@@ -14,6 +14,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -97,6 +98,12 @@ class PlayReplyUseCase @Inject constructor(
                     }
                     playFromHere(msg)
                 }
+            }
+            override fun onSeekTo(positionMs: Long) {
+                // No coroutine launch needed — seekTo() is non-blocking
+                // (MediaPlayer.seekTo is async; AA's session state push
+                // is fire-and-forget on playbackScope already).
+                seekTo(positionMs.toInt())
             }
             override fun onPlayFromSearch(query: String, extras: android.os.Bundle?) {
                 // v1.22.4 — entry point for "Hey Google, play <X> on Autogram"
@@ -817,7 +824,27 @@ class PlayReplyUseCase @Inject constructor(
     suspend fun drainPendingIfAutoPlay() {
         if (pendingCount() == 0) return
         if (!settingsRepository.get().autoPlayReplies) return
-        if (audioPlayer.isPlaying() || ttsPlayer.isSpeaking()) return
+        // v1.23.0-rc.6 — extend the busy check to include the recorder.
+        // Pre-rc.6 we only checked audioPlayer / ttsPlayer; if the user
+        // started a NEW recording immediately after sending (or while
+        // the network round-trip was still in flight), the queue would
+        // start playing back over the new mic. The recorder guard at
+        // the playVoiceMessage level already exists, but this defense
+        // catches the drain path too.
+        if (audioRecorder.isRecording() || audioPlayer.isPlaying() || ttsPlayer.isSpeaking()) return
+        // v1.23.0-rc.6 — give the user a 2 s beat after the mic releases
+        // before the queue starts auto-playing. Without this, the audio
+        // of the first queued message steps on the user's own
+        // context-switch (they've just finished sending a voice note,
+        // and immediate playback of someone else's reply feels jarring
+        // and can clip into the recording's tail haptic). After the
+        // delay we re-evaluate the guards: if a new recording started,
+        // playback already began from another path, or autoplay was
+        // toggled off, we abort the drain.
+        delay(POST_RECORDING_DRAIN_DELAY_MS)
+        if (pendingCount() == 0) return
+        if (!settingsRepository.get().autoPlayReplies) return
+        if (audioRecorder.isRecording() || audioPlayer.isPlaying() || ttsPlayer.isSpeaking()) return
         playAllPending()
     }
 
@@ -853,6 +880,34 @@ class PlayReplyUseCase @Inject constructor(
     /** AudioPlayer pass-through for the Now Playing scrubber. Returns null for TTS. */
     fun currentPositionMs(): Int? = audioPlayer.currentPositionMs()
     fun durationMs(): Int? = audioPlayer.durationMs()
+
+    /**
+     * v1.23.0-rc.6 — relays a tap on the Now Playing waveform (or AA's
+     * progress bar via [MediaSessionCompat.Callback.onSeekTo]) to the
+     * underlying audio player. Also pushes the new position to the
+     * MediaSession state synchronously so AA / lock-screen don't briefly
+     * snap back to the old position before the next 1 s refresh — without
+     * this push, the progress bar shows a one-frame jump-back that reads
+     * as a dropped seek.
+     */
+    fun seekTo(positionMs: Int) {
+        audioPlayer.seekTo(positionMs)
+        val playing = _playbackStatus.value is PlaybackStatus.Playing
+        val currentId = currentPlayingId
+        if (currentId == null) return
+        playbackScope.launch {
+            val msg = runCatching { messageRepository.getById(currentId) }.getOrNull()
+                ?: return@launch
+            val convo = runCatching {
+                conversationRepository.getById(msg.conversationId)
+            }.getOrNull()
+            if (playing) {
+                mediaPlayback.markPlaying(msg, convo, positionMs = positionMs.toLong())
+            } else {
+                mediaPlayback.markPaused(positionMs.toLong())
+            }
+        }
+    }
 
     /**
      * Drops every queued message belonging to [conversationId] from the
@@ -944,6 +999,17 @@ class PlayReplyUseCase @Inject constructor(
         }
         pendingReplyNotifier.notifyPending(pendingCount())
         playQueued(message)
+    }
+
+    companion object {
+        /**
+         * v1.23.0-rc.6 — beat between the mic releasing and the auto-play
+         * drain kicking in. 2 s is long enough to feel like a deliberate
+         * gap (so the queued voice note doesn't step on the user's
+         * context-switch), short enough that the user doesn't think the
+         * queue is stuck.
+         */
+        private const val POST_RECORDING_DRAIN_DELAY_MS: Long = 2_000L
     }
 
     private suspend fun playQueued(message: Message) {

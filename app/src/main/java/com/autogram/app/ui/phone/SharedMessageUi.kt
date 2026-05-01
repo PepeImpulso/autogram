@@ -28,6 +28,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,6 +40,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import com.autogram.app.R
 import com.autogram.app.domain.model.Conversation
 import com.autogram.app.domain.model.Message
@@ -51,6 +57,19 @@ import java.util.Locale
  * messages share the same row layout but get a "Sent: …" prefix and
  * no play button (we don't replay user's own recordings).
  */
+/**
+ * v1.23.0-rc.6 — formats a duration in milliseconds as `m:ss`. Shared
+ * by [MessageRow]'s elapsed/total readout and by the Now Playing panel
+ * in PendingQueueScreen.
+ */
+internal fun formatDurationMs(ms: Long): String {
+    if (ms <= 0) return "0:00"
+    val total = ms / 1000
+    val m = total / 60
+    val s = total % 60
+    return "%d:%02d".format(m, s)
+}
+
 @Composable
 internal fun MessageRow(
     message: Message,
@@ -59,7 +78,15 @@ internal fun MessageRow(
     isPausedThis: Boolean,
     onPlay: () -> Unit,
     onPause: () -> Unit,
-    onResume: () -> Unit
+    onResume: () -> Unit,
+    /**
+     * v1.23.0-rc.6 — when the row is the active playing one, polled at
+     * ~250 ms to surface a `0:15 / 1:30` readout under the subtitle. Both
+     * providers may return null (TTS playback, MediaPlayer not yet
+     * loaded) — in that case the readout is suppressed for this frame.
+     */
+    positionMsProvider: () -> Int? = { null },
+    durationMsProvider: () -> Int? = { null }
 ) {
     val isOutgoing = message.direction == MessageDirection.OUTGOING
     val hasAudio = !message.audioFilePath.isNullOrBlank()
@@ -91,6 +118,31 @@ internal fun MessageRow(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
+                // v1.23.0-rc.6 — live `0:15 / 1:30` readout while THIS row
+                // is the active playback target. Stops polling on pause /
+                // stop / row change. Total duration falls back to the
+                // message's stored audioDurationMs if MediaPlayer hasn't
+                // reported one yet (first ~250 ms of playback).
+                if (isPlayingThis && hasAudio) {
+                    var positionMs by remember(message.id) { mutableIntStateOf(positionMsProvider() ?: 0) }
+                    var durationMs by remember(message.id) { mutableIntStateOf(durationMsProvider() ?: 0) }
+                    LaunchedEffect(message.id, isPlayingThis) {
+                        while (isPlayingThis) {
+                            positionMs = positionMsProvider() ?: positionMs
+                            durationMs = durationMsProvider() ?: durationMs
+                            delay(250)
+                        }
+                    }
+                    val totalMs = (message.audioDurationMs ?: durationMs.toLong())
+                        .coerceAtLeast(0L)
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = "${formatDurationMs(positionMs.toLong())} / ${formatDurationMs(totalMs)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
             Spacer(Modifier.width(8.dp))
             Column(horizontalAlignment = Alignment.End) {

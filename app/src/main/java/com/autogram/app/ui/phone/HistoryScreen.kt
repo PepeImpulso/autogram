@@ -203,7 +203,9 @@ private fun HistoryTabContent(viewModel: HistoryViewModel) {
                         isPausedThis = isPausedThis,
                         onPlay = { viewModel.onPlayClicked(message) },
                         onPause = viewModel::onPauseClicked,
-                        onResume = viewModel::onResumeClicked
+                        onResume = viewModel::onResumeClicked,
+                        positionMsProvider = { viewModel.currentPositionMs() },
+                        durationMsProvider = { viewModel.durationMs() }
                     )
                 }
                 item { Spacer(Modifier.height(8.dp)) }
