@@ -212,5 +212,12 @@ enum class PendingReason {
     SILENT_MODE,
     IN_CALL,
     USER_PAUSED,
-    AUDIO_FOCUS_DENIED
+    AUDIO_FOCUS_DENIED,
+    /**
+     * v1.22.0 — incoming message arrived while the user was recording
+     * a voice note. Autoplay defers so playback can't talk over the
+     * user mid-record (or contaminate the new recording's audio).
+     * Drained after recording ends if [AppSettings.autoPlayReplies] is on.
+     */
+    USER_RECORDING
 }

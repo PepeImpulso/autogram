@@ -5,6 +5,7 @@ import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.infrastructure.audio.AudioPlayer
+import com.autogram.app.infrastructure.audio.AudioRecorder
 import com.autogram.app.infrastructure.audio.TtsPlayer
 import com.autogram.app.infrastructure.persistence.dao.PendingPlaybackDao
 import com.autogram.app.infrastructure.persistence.entity.PendingPlaybackEntity
@@ -40,6 +41,7 @@ import javax.inject.Singleton
 class PlayReplyUseCase @Inject constructor(
     private val audioPlayer: AudioPlayer,
     private val ttsPlayer: TtsPlayer,
+    private val audioRecorder: AudioRecorder,
     private val messageRepository: MessageRepository,
     private val settingsRepository: SettingsRepository,
     private val pendingPlaybackDao: PendingPlaybackDao,  // BUG-05: Persist pending queue
@@ -83,6 +85,15 @@ class PlayReplyUseCase @Inject constructor(
         if (respectUserGates && isCallActive) {
             Timber.i("playVoiceMessage ${message.id} → enqueue (in-call)")
             enqueuePending(message, PendingReason.IN_CALL)
+            return
+        }
+        // v1.22.0 — never autoplay over an in-flight recording. The mic
+        // is hot, so any output would (a) talk over the user mid-thought
+        // and (b) leak into the recording's audio. Defer to the queue;
+        // [drainPendingIfAutoPlay] resumes after stopAndSend / cancel.
+        if (respectUserGates && audioRecorder.isRecording()) {
+            Timber.i("playVoiceMessage ${message.id} → enqueue (user recording)")
+            enqueuePending(message, PendingReason.USER_RECORDING)
             return
         }
 
@@ -320,6 +331,10 @@ class PlayReplyUseCase @Inject constructor(
             Timber.i("playSummaryOrTranscription ${message.id} → enqueue (in-call)")
             enqueuePending(message, PendingReason.IN_CALL); return
         }
+        if (respectUserGates && audioRecorder.isRecording()) {
+            Timber.i("playSummaryOrTranscription ${message.id} → enqueue (user recording)")
+            enqueuePending(message, PendingReason.USER_RECORDING); return
+        }
         // v1.20.11: silentMode + autoPlayReplies collapsed — !autoPlay = queue.
         if (respectUserGates && !settings.autoPlayReplies) {
             Timber.i("playSummaryOrTranscription ${message.id} → enqueue (autoPlayReplies=false)")
@@ -390,6 +405,11 @@ class PlayReplyUseCase @Inject constructor(
         if (respectUserGates && isCallActive) {
             Timber.i("playTextMessage ${message.id} → enqueue (in-call)")
             enqueuePending(message, PendingReason.IN_CALL)
+            return
+        }
+        if (respectUserGates && audioRecorder.isRecording()) {
+            Timber.i("playTextMessage ${message.id} → enqueue (user recording)")
+            enqueuePending(message, PendingReason.USER_RECORDING)
             return
         }
         // v1.20.11: silentMode + autoPlayReplies collapsed — !autoPlay = queue
@@ -634,6 +654,21 @@ class PlayReplyUseCase @Inject constructor(
      * Devuelve el número de mensajes pendientes de reproducción.
      */
     fun pendingCount(): Int = synchronized(pendingQueue) { pendingQueue.size }
+
+    /**
+     * v1.22.0 — called when the user finishes (or cancels) a recording so the
+     * autoplay queue resumes if the user has it on. While the mic was hot
+     * incoming messages were rerouted to the queue with reason
+     * [PendingReason.USER_RECORDING] (see [playVoiceMessage] etc.); this
+     * is the resume point. No-op when autoplay is off (queue stays parked
+     * for manual drain via the home banner) or when nothing is in flight.
+     */
+    suspend fun drainPendingIfAutoPlay() {
+        if (pendingCount() == 0) return
+        if (!settingsRepository.get().autoPlayReplies) return
+        if (audioPlayer.isPlaying() || ttsPlayer.isSpeaking()) return
+        playAllPending()
+    }
 
     /**
      * Pending Queue Now-Playing transport: stop the current message and

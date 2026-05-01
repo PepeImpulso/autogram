@@ -262,6 +262,8 @@
     <string name="history_yesterday">Hier</string>
     <string name="history_tab_pending">En attente</string>
     <string name="history_tab_history">Historique</string>
+    <string name="contact_filter_all">Tous</string>
+    <string name="history_row_sent_prefix">Envoyé : %1$s</string>
     <string name="history_state_sent">Envoyé</string>
     <string name="history_state_sending">Envoi…</string>
     <string name="history_state_queued">En file</string>

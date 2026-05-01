@@ -138,6 +138,10 @@ class SendVoiceMtprotoUseCase @Inject constructor(
         _status.value = SendStatus.Idle
         recordingSounds.playEnd()
         hapticCues.playEnd()
+        // v1.22.0 — recording ended; resume any messages that were
+        // deferred to the queue while the mic was hot. No-op if the
+        // user has auto-play off (queue stays parked for manual drain).
+        playReplyUseCase.drainPendingIfAutoPlay()
     }
 
     /**
@@ -150,6 +154,21 @@ class SendVoiceMtprotoUseCase @Inject constructor(
      * sheet still appears when the user has it enabled.
      */
     suspend fun stopAndSend(skipPreview: Boolean = false): Result<Long> {
+        val result = stopAndSendInner(skipPreview)
+        // v1.22.0 — recorder is stopped (or never started) by the time we
+        // get here. If the parked file is in PreviewReady state the user
+        // will resolve it via confirmPreview / cancelPreview which each
+        // drain themselves; for every other terminal state (Sent /
+        // Error / Discarded / QueuedOffline / no-recording) the queue
+        // can resume now. drainPendingIfAutoPlay is a no-op when nothing
+        // is queued, autoplay is off, or the audio path is busy.
+        if (_status.value !is SendStatus.PreviewReady) {
+            playReplyUseCase.drainPendingIfAutoPlay()
+        }
+        return result
+    }
+
+    private suspend fun stopAndSendInner(skipPreview: Boolean): Result<Long> {
         val startedFile = currentAudioFile
             ?: return Result.failure(IllegalStateException("No hay grabación en curso"))
         val targetId = currentTargetId
@@ -415,6 +434,9 @@ class SendVoiceMtprotoUseCase @Inject constructor(
         previewDurationMs = 0L
         _activeTargetId.value = null
         _status.value = SendStatus.Idle
+        // v1.22.0 — preview discarded; resume any messages parked while
+        // the mic / preview was tying up the audio path.
+        playReplyUseCase.drainPendingIfAutoPlay()
     }
 
     /**
@@ -422,6 +444,12 @@ class SendVoiceMtprotoUseCase @Inject constructor(
      * same target + file.
      */
     suspend fun confirmPreview(): Result<Long> {
+        val result = confirmPreviewInner()
+        playReplyUseCase.drainPendingIfAutoPlay()
+        return result
+    }
+
+    private suspend fun confirmPreviewInner(): Result<Long> {
         val audioFile = previewFile ?: return Result.failure(IllegalStateException("No preview"))
         val targetId = previewTargetId
         val durationMs = previewDurationMs

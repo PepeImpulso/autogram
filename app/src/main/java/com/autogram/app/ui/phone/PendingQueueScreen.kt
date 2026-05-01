@@ -26,7 +26,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -46,12 +45,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import javax.inject.Inject
-
-enum class QueueFilter { ALL, VOICE, TEXT }
 
 @HiltViewModel
 class PendingQueueViewModel @Inject constructor(
@@ -60,23 +54,33 @@ class PendingQueueViewModel @Inject constructor(
     private val playReplyUseCase: PlayReplyUseCase
 ) : ViewModel() {
 
-    private val _filter = MutableStateFlow(QueueFilter.ALL)
-    val filter: StateFlow<QueueFilter> = _filter.asStateFlow()
+    /** Selected contact filter — `null` means "all contacts". */
+    private val _contactFilter = MutableStateFlow<String?>(null)
+    val contactFilter: StateFlow<String?> = _contactFilter.asStateFlow()
+
+    val pinned: StateFlow<List<Conversation>> =
+        conversationRepository.observePinned()
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private val conversationsById: StateFlow<Map<String, Conversation>> =
         conversationRepository.observePinned()
             .map { list -> list.associateBy { it.id } }
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
+    /** Unfiltered queue — drives the tab-bar badge so it always shows total pending. */
+    val totalQueue: StateFlow<List<Message>> =
+        messageRepository.observePendingPlaybackQueue()
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /**
+     * v1.22.0 — pending queue filtered by contact (instead of the old
+     * All/Voice/Text type filter, which the user found redundant).
+     */
     val queue: StateFlow<List<Message>> = combine(
-        messageRepository.observePendingPlaybackQueue(),
-        _filter
-    ) { msgs, filter ->
-        when (filter) {
-            QueueFilter.ALL -> msgs
-            QueueFilter.VOICE -> msgs.filter { !it.audioFilePath.isNullOrBlank() }
-            QueueFilter.TEXT -> msgs.filter { it.audioFilePath.isNullOrBlank() }
-        }
+        totalQueue,
+        _contactFilter
+    ) { msgs, filterId ->
+        if (filterId == null) msgs else msgs.filter { it.conversationId == filterId }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val nowPlaying: StateFlow<Message?> =
@@ -87,7 +91,7 @@ class PendingQueueViewModel @Inject constructor(
 
     fun conversationFor(message: Message): Conversation? = conversationsById.value[message.conversationId]
 
-    fun setFilter(f: QueueFilter) { _filter.value = f }
+    fun setContactFilter(id: String?) { _contactFilter.value = id }
 
     fun playAll() = viewModelScope.launch { playReplyUseCase.playAllPending() }
 
@@ -105,32 +109,37 @@ class PendingQueueViewModel @Inject constructor(
 }
 
 /**
- * Tab content for the Pending Queue. Hosted inside [HistoryWithPendingTabsScreen]
- * since v1.21.0 — owns no Scaffold or top bar; the parent renders those. The
- * "Play All" affordance previously sitting in the screen's TopAppBar moves into
- * the body as a filter-row trailing action so the parent tab host stays clean.
+ * Pending Queue tab body. Hosted inside [HistoryWithPendingTabsScreen] —
+ * owns no Scaffold or top bar. Contact filter chips at the top, the
+ * "Play All" affordance, then a list of [MessageRow]s, with a
+ * [NowPlayingPanel] pinned at the bottom whenever something is
+ * playing or paused.
  */
 @Composable
 internal fun PendingQueueTabContent(viewModel: PendingQueueViewModel) {
     val queue by viewModel.queue.collectAsState()
     val nowPlaying by viewModel.nowPlaying.collectAsState()
     val playback by viewModel.playbackStatus.collectAsState()
-    val filter by viewModel.filter.collectAsState()
+    val contactFilter by viewModel.contactFilter.collectAsState()
+    val pinned by viewModel.pinned.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
+        ContactFilterRow(
+            pinned = pinned,
+            selectedId = contactFilter,
+            onSelect = viewModel::setContactFilter,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            FilterRow(
-                selected = filter,
-                onSelect = viewModel::setFilter,
-                modifier = Modifier.weight(1f)
-            )
-            if (queue.isNotEmpty()) {
-                Spacer(Modifier.width(8.dp))
+                .padding(vertical = 8.dp)
+        )
+        if (queue.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 PlayAllButton(onClick = { viewModel.playAll() })
             }
         }
@@ -144,10 +153,19 @@ internal fun PendingQueueTabContent(viewModel: PendingQueueViewModel) {
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(queue, key = { it.id }) { msg ->
-                    QueueRow(
+                    val pb = playback
+                    val isPlayingThis = pb is PlayReplyUseCase.PlaybackStatus.Playing &&
+                        pb.messageId == msg.id
+                    val isPausedThis = pb is PlayReplyUseCase.PlaybackStatus.Paused &&
+                        pb.messageId == msg.id
+                    MessageRow(
                         message = msg,
                         conversation = viewModel.conversationFor(msg),
-                        onClick = { viewModel.playFromHere(msg) }
+                        isPlayingThis = isPlayingThis,
+                        isPausedThis = isPausedThis,
+                        onPlay = { viewModel.playFromHere(msg) },
+                        onPause = viewModel::pause,
+                        onResume = viewModel::resume
                     )
                 }
                 item { Spacer(Modifier.height(8.dp)) }
@@ -188,119 +206,6 @@ private fun PlayAllButton(onClick: () -> Unit) {
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold
             )
-        }
-    }
-}
-
-@Composable
-private fun FilterRow(
-    selected: QueueFilter,
-    onSelect: (QueueFilter) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        FilterChipPill(
-            label = stringResource(R.string.pending_queue_filter_all),
-            selected = selected == QueueFilter.ALL,
-            onClick = { onSelect(QueueFilter.ALL) }
-        )
-        FilterChipPill(
-            label = stringResource(R.string.pending_queue_filter_voice),
-            selected = selected == QueueFilter.VOICE,
-            onClick = { onSelect(QueueFilter.VOICE) }
-        )
-        FilterChipPill(
-            label = stringResource(R.string.pending_queue_filter_text),
-            selected = selected == QueueFilter.TEXT,
-            onClick = { onSelect(QueueFilter.TEXT) }
-        )
-    }
-}
-
-@Composable
-private fun FilterChipPill(label: String, selected: Boolean, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer
-                else MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
-                       else MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier.height(32.dp)
-    ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 14.dp)) {
-            Text(
-                label,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
-            )
-        }
-    }
-}
-
-@Composable
-private fun QueueRow(
-    message: Message,
-    conversation: Conversation?,
-    onClick: () -> Unit
-) {
-    val isVoice = !message.audioFilePath.isNullOrBlank()
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            ConversationAvatar(conversation = conversation, size = 44.dp)
-            Spacer(Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = conversation?.let { it.topicName?.takeIf { t -> t.isNotBlank() } ?: it.targetTitle }
-                        ?: stringResource(R.string.main_default_primary_name),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = if (isVoice) {
-                        stringResource(
-                            R.string.pending_queue_row_voice,
-                            formatDurationMs(message.audioDurationMs ?: 0L)
-                        )
-                    } else {
-                        message.textContent?.takeIf { it.isNotBlank() }
-                            ?: stringResource(R.string.pending_queue_row_text_generic)
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Spacer(Modifier.width(8.dp))
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = TIME_FORMAT.format(Date(message.createdAt)),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(6.dp))
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.tertiary)
-                )
-            }
         }
     }
 }
@@ -385,7 +290,7 @@ private fun NowPlayingPanel(
                 Column {
                     Spacer(Modifier.height(4.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        ConversationAvatar(conversation = conversation, size = 44.dp)
+                        ConversationAvatarLocal(conversation = conversation, size = 44.dp)
                         Spacer(Modifier.width(12.dp))
                         Column {
                             Text(
@@ -496,7 +401,7 @@ private fun TransportSecondaryButton(
 }
 
 @Composable
-private fun ConversationAvatar(conversation: Conversation?, size: androidx.compose.ui.unit.Dp) {
+private fun ConversationAvatarLocal(conversation: Conversation?, size: androidx.compose.ui.unit.Dp) {
     if (conversation != null) {
         CircleAvatar(conv = conversation, size = size)
     } else {
@@ -516,8 +421,6 @@ private fun ConversationAvatar(conversation: Conversation?, size: androidx.compo
         }
     }
 }
-
-private val TIME_FORMAT = SimpleDateFormat("h:mm a", Locale.getDefault())
 
 private fun formatDurationMs(ms: Long): String {
     if (ms <= 0) return "0:00"

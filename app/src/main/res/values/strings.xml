@@ -294,6 +294,8 @@
     <string name="history_yesterday">Yesterday</string>
     <string name="history_tab_pending">Pending</string>
     <string name="history_tab_history">History</string>
+    <string name="contact_filter_all">All</string>
+    <string name="history_row_sent_prefix">Sent: %1$s</string>
     <string name="history_state_sent">Sent</string>
     <string name="history_state_sending">Sending…</string>
     <string name="history_state_queued">Queued</string>

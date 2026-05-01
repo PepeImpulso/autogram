@@ -10,20 +10,27 @@ import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.domain.usecase.PlayReplyUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-@OptIn(ExperimentalCoroutinesApi::class)
+/**
+ * v1.22.0 — History is now a cross-conversation log of every message
+ * (voice + text, incoming + outgoing). Filtering is done via the
+ * [contactFilter] StateFlow, set by tapping a chip in the contact row;
+ * `null` means "all contacts".
+ *
+ * The old per-conversation scope (driven by the dropdown chooser at
+ * the top of the toolbar) is gone. The home-screen per-circle badge
+ * still passes [HistoryActivity.EXTRA_CONVERSATION_ID] — we honor it
+ * by setting [contactFilter] to that id on first load so the user
+ * lands pre-filtered to that circle.
+ */
 @HiltViewModel
 class HistoryViewModel @Inject constructor(
     application: Application,
@@ -33,86 +40,64 @@ class HistoryViewModel @Inject constructor(
     private val playReplyUseCase: PlayReplyUseCase
 ) : AndroidViewModel(application) {
 
-    /**
-     * v1.20.16 — the conversation we're currently viewing. Driven by:
-     *  - the EXTRA_CONVERSATION_ID intent extra (e.g. user tapped a
-     *    per-circle badge on Home),
-     *  - the active conversation as a fallback for the bottom-nav
-     *    entry point,
-     *  - [selectConversation] when the user picks a different chat
-     *    from the in-toolbar dropdown.
-     *
-     * Changes here drive both the messages list and the lastRepliedAt
-     * "ack" bump (so the per-circle pending badge clears the moment the
-     * user views the conversation, even via dropdown switch).
-     */
-    private val _currentConversationId = MutableStateFlow<String?>(null)
+    /** Selected contact filter — `null` means "all contacts". */
+    private val _contactFilter = MutableStateFlow<String?>(null)
+    val contactFilter: StateFlow<String?> = _contactFilter.asStateFlow()
 
-    /** All pinned conversations — populates the toolbar dropdown chooser. */
+    /** All pinned conversations — populates the contact filter chip row. */
     val pinned: StateFlow<List<Conversation>> =
         conversationRepository.observePinned()
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    private val _conversation = MutableStateFlow<Conversation?>(null)
-    /** Conversation whose messages we're showing — for the toolbar title. */
-    val conversation: StateFlow<Conversation?> = _conversation.asStateFlow()
-
-    private val _messages = MutableStateFlow<List<Message>>(emptyList())
-    val messages: StateFlow<List<Message>> = _messages.asStateFlow()
+    /**
+     * Cross-conversation message log, filtered by [contactFilter] and sorted
+     * newest-first. Combines [MessageRepository.observeAllAcrossConversations]
+     * with the live filter selection.
+     */
+    val messages: StateFlow<List<Message>> = combine(
+        messageRepository.observeAllAcrossConversations(),
+        _contactFilter
+    ) { all, filterId ->
+        val scoped = if (filterId == null) all else all.filter { it.conversationId == filterId }
+        scoped.sortedByDescending { it.createdAt }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val playbackStatus: StateFlow<PlayReplyUseCase.PlaybackStatus> = playReplyUseCase.playbackStatus
 
     init {
-        // Resolve the initial conversation: explicit intent extra wins,
-        // active conversation is the fallback. Runs once at construction.
-        viewModelScope.launch {
-            val explicitId: String? = savedStateHandle[HistoryActivity.EXTRA_CONVERSATION_ID]
-            val initialId = if (!explicitId.isNullOrBlank()) explicitId
-                            else conversationRepository.getActive()?.id
-            _currentConversationId.value = initialId
-        }
-        // Side-effects on conversation switch: bump lastRepliedAt as an
-        // "I've seen these" ack so the per-circle pending badge clears,
-        // and load the conversation entity for the toolbar title.
-        // Plain UPDATE (NOT upsert) — see the v1.20.15 release notes for
-        // the FK-CASCADE catastrophe that called for this lesson.
-        viewModelScope.launch {
-            _currentConversationId
-                .filterNotNull()
-                .distinctUntilChanged()
-                .collect { id ->
-                    conversationRepository.setLastRepliedAt(
-                        id, System.currentTimeMillis()
-                    )
-                    _conversation.value = conversationRepository.getById(id)
-                }
-        }
-        // Switch the messages stream when the user picks a different
-        // conversation. flatMapLatest cancels the previous observeAll
-        // subscription cleanly so we don't double-emit.
-        viewModelScope.launch {
-            _currentConversationId
-                .filterNotNull()
-                .distinctUntilChanged()
-                .flatMapLatest { id -> messageRepository.observeAll(id) }
-                .collect { _messages.value = it }
+        // Honor the EXTRA_CONVERSATION_ID intent extra — when the user taps
+        // a per-circle pending badge on Home, land pre-filtered to that
+        // circle. Empty extra → leave contactFilter null (= all).
+        val explicitId: String? = savedStateHandle[HistoryActivity.EXTRA_CONVERSATION_ID]
+        if (!explicitId.isNullOrBlank()) {
+            _contactFilter.value = explicitId
+            // Bump the conversation's lastRepliedAt as an "I've seen
+            // these" ack so the per-circle pending badge clears
+            // immediately. Same semantics as v1.20.16; only the trigger
+            // moved from a dropdown selection to the intent-extra path.
+            viewModelScope.launch {
+                conversationRepository.setLastRepliedAt(explicitId, System.currentTimeMillis())
+            }
         }
     }
 
-    /**
-     * v1.20.16 — change the conversation being viewed. Fired from the
-     * toolbar dropdown chooser. No-op if the user picks the same
-     * conversation already on screen.
-     */
-    fun selectConversation(id: String) {
-        _currentConversationId.value = id
+    /** Set or clear the contact filter — null means all contacts. */
+    fun setContactFilter(conversationId: String?) {
+        _contactFilter.value = conversationId
+        // When the user picks a specific contact, also bump its
+        // lastRepliedAt so per-circle badges clear on view.
+        if (conversationId != null) {
+            viewModelScope.launch {
+                conversationRepository.setLastRepliedAt(conversationId, System.currentTimeMillis())
+            }
+        }
     }
 
     /**
      * v1.20.11 — when the tapped row is a queued pending message, route
      * through [PlayReplyUseCase.playFromHere] so playback starts at this
      * message and chains through the rest of the queue. Non-pending rows
-     * (already played, sending, etc.) keep the old standalone-replay
+     * (already played, sending, etc.) keep the standalone-replay
      * semantic — `playManually` ignores the queue entirely.
      */
     fun onPlayClicked(message: Message) {
@@ -134,14 +119,13 @@ class HistoryViewModel @Inject constructor(
     }
 
     /**
-     * v1.20.17 — wipes every message in the currently-viewed conversation
-     * and the .ogg files on disk that backed them. Stops in-flight
-     * playback first and reconciles the pending-playback queue so a
-     * post-clear playNext doesn't try to play a row that's already gone.
-     * No-op if no conversation is loaded.
+     * Wipe every message in the currently-filtered conversation. Disabled
+     * when the filter is null (no all-conversations clear — too
+     * destructive). Stops in-flight playback for the same conversation
+     * before deleting.
      */
     fun clearHistory() {
-        val id = _currentConversationId.value ?: return
+        val id = _contactFilter.value ?: return
         viewModelScope.launch {
             playReplyUseCase.clearForConversation(id)
             messageRepository.clearForConversation(id)
