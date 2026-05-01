@@ -264,6 +264,9 @@
     <string name="history_tab_history">Verlauf</string>
     <string name="contact_filter_all">Alle</string>
     <string name="history_row_sent_prefix">Gesendet: %1$s</string>
+    <string name="assistant_placeholder_title">Autogram-Assistent — bald verfügbar</string>
+    <string name="assistant_placeholder_body">Du hast Autogram als digitalen Assistenten deines Telefons ausgewählt. Die Sprachschleife wird noch entwickelt; vorerst kannst du Autogram weiter über den Startbildschirm und Android Auto nutzen.</string>
+    <string name="assistant_placeholder_dismiss">Schließen</string>
     <string name="history_state_sent">Gesendet</string>
     <string name="history_state_sending">Sende…</string>
     <string name="history_state_queued">In Warteschlange</string>

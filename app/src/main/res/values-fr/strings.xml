@@ -264,6 +264,9 @@
     <string name="history_tab_history">Historique</string>
     <string name="contact_filter_all">Tous</string>
     <string name="history_row_sent_prefix">Envoyé : %1$s</string>
+    <string name="assistant_placeholder_title">Assistant Autogram — bientôt disponible</string>
+    <string name="assistant_placeholder_body">Vous avez choisi Autogram comme assistant numérique du téléphone. La boucle vocale est en cours de développement ; pour l\'instant, continuez à utiliser Autogram depuis l\'écran d\'accueil et Android Auto.</string>
+    <string name="assistant_placeholder_dismiss">Fermer</string>
     <string name="history_state_sent">Envoyé</string>
     <string name="history_state_sending">Envoi…</string>
     <string name="history_state_queued">En file</string>

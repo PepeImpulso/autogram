@@ -296,6 +296,9 @@
     <string name="history_tab_history">History</string>
     <string name="contact_filter_all">All</string>
     <string name="history_row_sent_prefix">Sent: %1$s</string>
+    <string name="assistant_placeholder_title">Autogram assistant — coming soon</string>
+    <string name="assistant_placeholder_body">You\'ve picked Autogram as your phone\'s digital assistant. The voice loop is being built — for now you can keep using Autogram from the home screen and Android Auto.</string>
+    <string name="assistant_placeholder_dismiss">Close</string>
     <string name="history_state_sent">Sent</string>
     <string name="history_state_sending">Sending…</string>
     <string name="history_state_queued">Queued</string>

@@ -116,6 +116,35 @@
             android:label="@string/app_name"
             android:screenOrientation="portrait" />
 
+        <!-- Issue #63 (Phase 1) — Android digital-assistant role.
+             ACTION_ASSIST is the supported entry point for apps that
+             want to appear in Settings > Apps > Default apps > Digital
+             assistant (Samsung One UI: "Default digital assistant
+             app"). VOICE_COMMAND is the older alias some pickers
+             additionally check. We export this Activity because the
+             OS launches it from the assistant gesture — it must be
+             reachable from outside the app. Phase 1 ships a
+             placeholder UI; the voice-loop wiring lives behind later
+             phases and won't be enabled until we've verified the
+             registration end-to-end on a real Samsung device. -->
+        <activity
+            android:name=".ui.assistant.AssistantActivity"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:launchMode="singleTop"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.Autogram">
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VOICE_COMMAND" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
         <!-- Android Auto -->
         <meta-data
             android:name="com.google.android.gms.car.application"

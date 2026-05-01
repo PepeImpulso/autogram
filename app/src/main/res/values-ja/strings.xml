@@ -263,6 +263,9 @@
     <string name="history_tab_history">履歴</string>
     <string name="contact_filter_all">すべて</string>
     <string name="history_row_sent_prefix">送信済み：%1$s</string>
+    <string name="assistant_placeholder_title">Autogram アシスタント — 近日公開</string>
+    <string name="assistant_placeholder_body">Autogram を端末のデジタルアシスタントに設定しました。音声ループは開発中です。現在はホーム画面と Android Auto から Autogram をご利用いただけます。</string>
+    <string name="assistant_placeholder_dismiss">閉じる</string>
     <string name="history_state_sent">送信済み</string>
     <string name="history_state_sending">送信中…</string>
     <string name="history_state_queued">キュー中</string>
