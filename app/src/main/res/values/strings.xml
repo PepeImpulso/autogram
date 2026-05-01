@@ -303,6 +303,7 @@
     <string name="assistant_perm_body">The assistant records your voice and sends it to Merlín via Telegram.</string>
     <string name="assistant_perm_grant">Grant access</string>
     <string name="assistant_idle_title">Talk to Merlín</string>
+    <string name="assistant_idle_title_for">Talk to %1$s</string>
     <string name="assistant_idle_button">Start recording</string>
     <string name="assistant_listening_title">Listening…</string>
     <string name="assistant_listening_subtitle">Tap to send to %1$s</string>

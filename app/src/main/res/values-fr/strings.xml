@@ -271,6 +271,7 @@
     <string name="assistant_perm_body">L\'assistant enregistre votre voix et l\'envoie à Merlín via Telegram.</string>
     <string name="assistant_perm_grant">Autoriser</string>
     <string name="assistant_idle_title">Parler à Merlín</string>
+    <string name="assistant_idle_title_for">Parler à %1$s</string>
     <string name="assistant_idle_button">Démarrer l\'enregistrement</string>
     <string name="assistant_listening_title">Écoute…</string>
     <string name="assistant_listening_subtitle">Touchez pour envoyer à %1$s</string>

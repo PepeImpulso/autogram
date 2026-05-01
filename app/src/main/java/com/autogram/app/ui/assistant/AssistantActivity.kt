@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -46,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.autogram.app.R
 import com.autogram.app.ui.phone.BaseLocaleActivity
+import com.autogram.app.ui.phone.ContactFilterRow
 import com.autogram.app.ui.phone.SettingsActivity
 import com.autogram.app.ui.theme.AutogramTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -90,6 +92,8 @@ private fun AssistantScreen(
     onOpenSettings: () -> Unit
 ) {
     val state by viewModel.state.collectAsState()
+    val availableContacts by viewModel.availableContacts.collectAsState()
+    val selectedTargetId by viewModel.selectedTargetId.collectAsState()
     val context = LocalContext.current
     var permissionGranted by remember {
         mutableStateOf(
@@ -112,17 +116,44 @@ private fun AssistantScreen(
         }
     }
 
+    val idleTitle: String = remember(selectedTargetId, availableContacts) {
+        availableContacts.firstOrNull { it.id == selectedTargetId }?.let {
+            it.topicName?.takeIf { t -> t.isNotBlank() }
+                ?: it.targetTitle?.takeIf { t -> t.isNotBlank() }
+        } ?: ""
+    }
+
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(32.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // v1.23.0-rc.2 — contact picker chip row, only visible when
+            // the user is in the Idle state, has the mic permission, and
+            // has more than one pinned contact (single-contact accounts
+            // get the same UX as before).
+            if (permissionGranted &&
+                state is AssistantViewModel.State.Idle &&
+                availableContacts.size > 1
+            ) {
+                ContactFilterRow(
+                    pinned = availableContacts,
+                    selectedId = selectedTargetId,
+                    onSelect = viewModel::setTargetContact,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
+                    includeAllChip = false
+                )
+            }
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(32.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
             when {
                 !permissionGranted -> PermissionContent(
                     onGrant = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
@@ -138,6 +169,7 @@ private fun AssistantScreen(
                     onClose = onClose
                 )
                 state is AssistantViewModel.State.Idle -> IdleContent(
+                    targetTitle = idleTitle,
                     onStart = viewModel::startListening,
                     onClose = onClose
                 )
@@ -162,7 +194,8 @@ private fun AssistantScreen(
                     )
                 }
             }
-        }
+            } // inner centered Column
+        } // outer Column wrapping picker + content
     }
 }
 
@@ -199,9 +232,11 @@ private fun PermissionContent(onGrant: () -> Unit, onClose: () -> Unit) {
 }
 
 @Composable
-private fun IdleContent(onStart: () -> Unit, onClose: () -> Unit) {
+private fun IdleContent(targetTitle: String, onStart: () -> Unit, onClose: () -> Unit) {
     Text(
-        stringResource(R.string.assistant_idle_title),
+        text = if (targetTitle.isNotBlank())
+            stringResource(R.string.assistant_idle_title_for, targetTitle)
+        else stringResource(R.string.assistant_idle_title),
         style = MaterialTheme.typography.headlineSmall,
         fontWeight = FontWeight.SemiBold,
         textAlign = TextAlign.Center

@@ -270,6 +270,7 @@
     <string name="assistant_perm_body">助手会录制你的声音，并通过 Telegram 发送给 Merlín。</string>
     <string name="assistant_perm_grant">授予权限</string>
     <string name="assistant_idle_title">与 Merlín 对话</string>
+    <string name="assistant_idle_title_for">与 %1$s 对话</string>
     <string name="assistant_idle_button">开始录音</string>
     <string name="assistant_listening_title">正在聆听…</string>
     <string name="assistant_listening_subtitle">点按发送给 %1$s</string>

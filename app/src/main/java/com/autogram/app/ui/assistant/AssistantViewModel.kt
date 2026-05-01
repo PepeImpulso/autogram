@@ -2,6 +2,7 @@ package com.autogram.app.ui.assistant
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.autogram.app.domain.model.Conversation
 import com.autogram.app.domain.model.MessageDirection
 import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.MessageRepository
@@ -10,17 +11,25 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
  * v1.22.0 / issue #63 Phase 2 — drives the assistant turn:
  *   Idle → Listening → Sending → WaitingForReply → Replied / Failed.
+ *
+ * v1.23.0-rc.2 / Phase 5 starter — the assistant can now route the
+ * voice note to any pinned contact, not just the configured primary
+ * target. [selectedTargetId] is pre-resolved to the primary target's
+ * id on init (so the default behavior is unchanged) and updated when
+ * the user taps a contact chip in [AssistantActivity].
  *
  * Reuses the existing [SendVoiceMtprotoUseCase] for record+send so the
  * assistant rides the same MTProto pipeline as Autogram's primary
@@ -55,16 +64,36 @@ class AssistantViewModel @Inject constructor(
     private val _state = MutableStateFlow<State>(State.Idle)
     val state: StateFlow<State> = _state.asStateFlow()
 
+    /** All pinned conversations — drives the contact picker chip row. */
+    val availableContacts: StateFlow<List<Conversation>> =
+        conversationRepository.observePinned()
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Currently selected target for the assistant turn. Defaults to the primary target on init. */
+    private val _selectedTargetId = MutableStateFlow<String?>(null)
+    val selectedTargetId: StateFlow<String?> = _selectedTargetId.asStateFlow()
+
     private var replyWatcher: Job? = null
     private var timeoutJob: Job? = null
 
+    init {
+        viewModelScope.launch {
+            _selectedTargetId.value = conversationRepository.getActive()?.id
+        }
+    }
+
+    /** User tapped a contact chip — switch the target for the next turn. */
+    fun setTargetContact(id: String?) {
+        _selectedTargetId.value = id
+    }
+
     /**
-     * Resolve the user's active target, start recording, transition to
+     * Resolve the selected target, start recording, transition to
      * Listening. NoTarget if Settings hasn't been configured yet.
      */
     fun startListening() {
         viewModelScope.launch {
-            val target = conversationRepository.getActive()
+            val target = resolveTarget()
             if (target == null) {
                 _state.value = State.NoTarget
                 return@launch
@@ -82,17 +111,17 @@ class AssistantViewModel @Inject constructor(
     }
 
     /**
-     * Stop recording, send to the active target, wait up to 60s for a
+     * Stop recording, send to the selected target, wait up to 60s for a
      * reply. The "stop tap moment" is the watermark for the reply
      * watcher — any incoming message in the same conversation after
-     * that timestamp is treated as Merlin's reply.
+     * that timestamp is treated as the contact's reply.
      */
     fun stopAndSend() {
         val current = _state.value as? State.Listening ?: return
         val stoppedAt = System.currentTimeMillis()
         _state.value = State.Sending(current.targetTitle)
         viewModelScope.launch {
-            val target = conversationRepository.getActive()
+            val target = resolveTarget()
             if (target == null) {
                 _state.value = State.Failed("Target disappeared during send")
                 return@launch
@@ -107,6 +136,13 @@ class AssistantViewModel @Inject constructor(
             _state.value = State.WaitingForReply(current.targetTitle)
             startReplyWatcher(target.id, stoppedAt)
         }
+    }
+
+    /** Title of the currently-selected target, for the Idle screen. */
+    fun selectedTargetTitle(): String? {
+        val id = _selectedTargetId.value ?: return null
+        val conv = availableContacts.value.firstOrNull { it.id == id } ?: return null
+        return resolveTitle(conv.topicName, conv.targetTitle)
     }
 
     /**
@@ -130,6 +166,20 @@ class AssistantViewModel @Inject constructor(
         replyWatcher?.cancel()
         timeoutJob?.cancel()
         _state.value = State.Idle
+    }
+
+    /**
+     * Resolve the active conversation honoring [_selectedTargetId]. When
+     * the user hasn't picked anything yet (or the picked id is stale),
+     * fall back to whatever Settings declares as the primary target.
+     */
+    private suspend fun resolveTarget(): Conversation? {
+        val id = _selectedTargetId.value
+        if (id != null) {
+            val byId = conversationRepository.getById(id)
+            if (byId != null) return byId
+        }
+        return conversationRepository.getActive()
     }
 
     private fun startReplyWatcher(conversationId: String, since: Long) {

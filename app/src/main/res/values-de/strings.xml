@@ -271,6 +271,7 @@
     <string name="assistant_perm_body">Der Assistent nimmt deine Stimme auf und sendet sie via Telegram an Merlín.</string>
     <string name="assistant_perm_grant">Erlauben</string>
     <string name="assistant_idle_title">Mit Merlín sprechen</string>
+    <string name="assistant_idle_title_for">Mit %1$s sprechen</string>
     <string name="assistant_idle_button">Aufnahme starten</string>
     <string name="assistant_listening_title">Ich höre…</string>
     <string name="assistant_listening_subtitle">Tippen, um an %1$s zu senden</string>

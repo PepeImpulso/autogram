@@ -270,6 +270,7 @@
     <string name="assistant_perm_body">アシスタントはあなたの声を録音し、Telegram 経由で Merlín に送信します。</string>
     <string name="assistant_perm_grant">許可する</string>
     <string name="assistant_idle_title">Merlín と話す</string>
+    <string name="assistant_idle_title_for">%1$s と話す</string>
     <string name="assistant_idle_button">録音を開始</string>
     <string name="assistant_listening_title">聞き取り中…</string>
     <string name="assistant_listening_subtitle">タップして %1$s に送信</string>

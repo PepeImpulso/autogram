@@ -194,17 +194,21 @@ private fun formatRowDuration(ms: Long): String {
 private val ROW_TIME_FORMAT = SimpleDateFormat("HH:mm", Locale.getDefault())
 
 /**
- * Horizontal scrollable chip row for picking which contact's messages to
- * show. The first chip is "All" (clears the filter); the rest are one
- * chip per pinned conversation. Used identically by both the Pending
- * and History tabs.
+ * Horizontal scrollable chip row for picking which contact to filter by
+ * (History/Pending) or send to (assistant target picker, v1.23.0).
+ *
+ * @param includeAllChip when true, prepends an "All" chip mapped to
+ *   `null`. History/Pending pass true so the user can clear the filter;
+ *   the assistant passes false because every assistant turn must
+ *   resolve to a specific contact.
  */
 @Composable
 internal fun ContactFilterRow(
     pinned: List<Conversation>,
     selectedId: String?,
     onSelect: (String?) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    includeAllChip: Boolean = true
 ) {
     LazyRow(
         modifier = modifier,
@@ -212,12 +216,14 @@ internal fun ContactFilterRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        item {
-            FilterChipPill(
-                label = stringResource(R.string.contact_filter_all),
-                selected = selectedId == null,
-                onClick = { onSelect(null) }
-            )
+        if (includeAllChip) {
+            item {
+                FilterChipPill(
+                    label = stringResource(R.string.contact_filter_all),
+                    selected = selectedId == null,
+                    onClick = { onSelect(null) }
+                )
+            }
         }
         items(pinned, key = { it.id }) { conv ->
             FilterChipPill(
