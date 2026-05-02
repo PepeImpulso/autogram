@@ -178,13 +178,6 @@ class AssistantViewModel @Inject constructor(
         }
     }
 
-    /** Title of the currently-selected target, for the Idle screen. */
-    fun selectedTargetTitle(): String? {
-        val id = _selectedTargetId.value ?: return null
-        val conv = availableContacts.value.firstOrNull { it.id == id } ?: return null
-        return resolveTitle(conv.topicName, conv.targetTitle)
-    }
-
     /**
      * Discard the current recording. Resets to Idle so the user can
      * either retry or close the screen.
@@ -266,8 +259,16 @@ class AssistantViewModel @Inject constructor(
                 }
                 .filterNotNull()
                 .first()
-            _state.value = State.Replied
-            timeoutJob?.cancel()
+            // Guard against the timeoutJob having flipped state to Failed
+            // while we were between .first() returning and the setter
+            // below — both jobs run on the same Main dispatcher, but the
+            // continuation after .first() has no suspension point before
+            // the setter, so a cancel() from the timeout side wouldn't
+            // fire in time.
+            if (_state.value is State.WaitingForReply) {
+                _state.value = State.Replied
+                timeoutJob?.cancel()
+            }
         }
         timeoutJob = viewModelScope.launch {
             delay(REPLY_TIMEOUT_MS)
