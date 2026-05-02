@@ -1,6 +1,8 @@
 package com.autogram.app.ui.phone
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +15,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -81,23 +86,47 @@ internal fun MessageRow(
     onResume: () -> Unit,
     /**
      * v1.23.0-rc.6 — when the row is the active playing one, polled at
-     * ~250 ms to surface a `0:15 / 1:30` readout under the subtitle. Both
-     * providers may return null (TTS playback, MediaPlayer not yet
-     * loaded) — in that case the readout is suppressed for this frame.
+     * ~250 ms to surface a `0:15 / 1:30` readout next to the arrival
+     * time and to drive the inline waveform's progress. Both providers
+     * may return null (TTS playback, MediaPlayer not yet loaded) — in
+     * that case the readout / waveform are suppressed for this frame.
      */
     positionMsProvider: () -> Int? = { null },
-    durationMsProvider: () -> Int? = { null }
+    durationMsProvider: () -> Int? = { null },
+    /**
+     * v1.23.0-rc.7 — tap or horizontal-drag on the row's inline waveform
+     * (only present when this row is the active playing one) jumps
+     * playback to the chosen position. Defaults to a no-op so older
+     * call sites still compile.
+     */
+    onSeek: (Int) -> Unit = {}
 ) {
     val isOutgoing = message.direction == MessageDirection.OUTGOING
     val hasAudio = !message.audioFilePath.isNullOrBlank()
     val showPlayButton = !isOutgoing && (hasAudio || hasReadableText(message))
+
+    // v1.23.0-rc.7 — playback position state hoisted above the inner Row
+    // so both the trailing time column and the inline waveform see the
+    // same numbers each frame. Polled at ~250 ms only while this row is
+    // the active playback target.
+    var positionMs by remember(message.id) { mutableIntStateOf(positionMsProvider() ?: 0) }
+    var durationMs by remember(message.id) { mutableIntStateOf(durationMsProvider() ?: 0) }
+    LaunchedEffect(message.id, isPlayingThis) {
+        while (isPlayingThis) {
+            positionMs = positionMsProvider() ?: positionMs
+            durationMs = durationMsProvider() ?: durationMs
+            delay(250)
+        }
+    }
+    val totalMs = (message.audioDurationMs ?: durationMs.toLong()).coerceAtLeast(0L)
+
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = Modifier.fillMaxWidth()
     ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             ConversationAvatar(conversation = conversation, size = 44.dp)
@@ -118,31 +147,6 @@ internal fun MessageRow(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                // v1.23.0-rc.6 — live `0:15 / 1:30` readout while THIS row
-                // is the active playback target. Stops polling on pause /
-                // stop / row change. Total duration falls back to the
-                // message's stored audioDurationMs if MediaPlayer hasn't
-                // reported one yet (first ~250 ms of playback).
-                if (isPlayingThis && hasAudio) {
-                    var positionMs by remember(message.id) { mutableIntStateOf(positionMsProvider() ?: 0) }
-                    var durationMs by remember(message.id) { mutableIntStateOf(durationMsProvider() ?: 0) }
-                    LaunchedEffect(message.id, isPlayingThis) {
-                        while (isPlayingThis) {
-                            positionMs = positionMsProvider() ?: positionMs
-                            durationMs = durationMsProvider() ?: durationMs
-                            delay(250)
-                        }
-                    }
-                    val totalMs = (message.audioDurationMs ?: durationMs.toLong())
-                        .coerceAtLeast(0L)
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        text = "${formatDurationMs(positionMs.toLong())} / ${formatDurationMs(totalMs)}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
             }
             Spacer(Modifier.width(8.dp))
             Column(horizontalAlignment = Alignment.End) {
@@ -151,6 +155,22 @@ internal fun MessageRow(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                // v1.23.0-rc.7 — live `0:15 / 1:30` readout right under
+                // the arrival time. Pre-rc.7 this lived under the
+                // subtitle, but a 2-line subtitle pushed it out of view
+                // because the row's right column (with the play button)
+                // dictated the row height. Co-locating with the arrival
+                // time keeps both clock-style readouts visually grouped
+                // and out of the subtitle's wrap area.
+                if (isPlayingThis && hasAudio) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = "${formatDurationMs(positionMs.toLong())} / ${formatDurationMs(totalMs)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
                 if (showPlayButton) {
                     Spacer(Modifier.height(6.dp))
                     FilledIconButton(
@@ -180,6 +200,51 @@ internal fun MessageRow(
                     }
                 }
             }
+        }
+        // v1.23.0-rc.7 — inline waveform under the active row. Tappable
+        // for tap-to-seek and draggable for scrubbing — same gestures as
+        // the Pending Queue's Now Playing panel waveform but at row level
+        // so the user can scrub directly from History without opening a
+        // separate Now Playing surface. Only renders when this row is
+        // the active playing target AND has audio (text-only rows have
+        // nothing useful to draw).
+        if (isPlayingThis && hasAudio) {
+            var waveformWidthPx by remember(message.id) { mutableIntStateOf(0) }
+            val seekFromX: (Float) -> Unit = { x ->
+                val width = waveformWidthPx
+                val total = if (durationMs > 0) durationMs else totalMs.toInt()
+                if (width > 0 && total > 0) {
+                    val fraction = (x / width.toFloat()).coerceIn(0f, 1f)
+                    val target = (fraction * total).toInt()
+                    // Update local position immediately so the waveform
+                    // doesn't briefly show the old value before the
+                    // 250 ms poller catches up to the seek.
+                    positionMs = target
+                    onSeek(target)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Waveform(
+                messageId = message.id,
+                progress = if (durationMs > 0) {
+                    (positionMs.toFloat() / durationMs).coerceIn(0f, 1f)
+                } else if (totalMs > 0) {
+                    (positionMs.toFloat() / totalMs).coerceIn(0f, 1f)
+                } else 0f,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(28.dp)
+                    .onSizeChanged { size: IntSize -> waveformWidthPx = size.width }
+                    .pointerInput(message.id, durationMs) {
+                        detectTapGestures(onTap = { offset -> seekFromX(offset.x) })
+                    }
+                    .pointerInput(message.id, durationMs) {
+                        detectHorizontalDragGestures { change, _ ->
+                            seekFromX(change.position.x)
+                        }
+                    }
+            )
+        }
         }
     }
 }

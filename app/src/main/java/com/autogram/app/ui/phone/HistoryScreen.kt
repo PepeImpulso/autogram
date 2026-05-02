@@ -205,7 +205,8 @@ private fun HistoryTabContent(viewModel: HistoryViewModel) {
                         onPause = viewModel::onPauseClicked,
                         onResume = viewModel::onResumeClicked,
                         positionMsProvider = { viewModel.currentPositionMs() },
-                        durationMsProvider = { viewModel.durationMs() }
+                        durationMsProvider = { viewModel.durationMs() },
+                        onSeek = viewModel::seekTo
                     )
                 }
                 item { Spacer(Modifier.height(8.dp)) }

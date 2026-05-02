@@ -174,7 +174,8 @@ internal fun PendingQueueTabContent(viewModel: PendingQueueViewModel) {
                         onPause = viewModel::pause,
                         onResume = viewModel::resume,
                         positionMsProvider = { viewModel.currentPositionMs() },
-                        durationMsProvider = { viewModel.durationMs() }
+                        durationMsProvider = { viewModel.durationMs() },
+                        onSeek = viewModel::seekTo
                     )
                 }
                 item { Spacer(Modifier.height(8.dp)) }

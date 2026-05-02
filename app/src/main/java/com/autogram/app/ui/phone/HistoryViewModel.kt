@@ -126,6 +126,7 @@ class HistoryViewModel @Inject constructor(
      */
     fun currentPositionMs(): Int? = playReplyUseCase.currentPositionMs()
     fun durationMs(): Int? = playReplyUseCase.durationMs()
+    fun seekTo(positionMs: Int) = playReplyUseCase.seekTo(positionMs)
 
     /**
      * Wipe every message in the currently-filtered conversation. Disabled
