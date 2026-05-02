@@ -892,16 +892,21 @@ class PlayReplyUseCase @Inject constructor(
      */
     fun seekTo(positionMs: Int) {
         audioPlayer.seekTo(positionMs)
-        val playing = _playbackStatus.value is PlaybackStatus.Playing
-        val currentId = currentPlayingId
-        if (currentId == null) return
+        val currentId = currentPlayingId ?: return
         playbackScope.launch {
             val msg = runCatching { messageRepository.getById(currentId) }.getOrNull()
                 ?: return@launch
             val convo = runCatching {
                 conversationRepository.getById(msg.conversationId)
             }.getOrNull()
-            if (playing) {
+            // v1.23.0-rc.8 — read playback status inside the launch so a
+            // pause that lands between AudioPlayer.seekTo() and the
+            // MediaSession push doesn't get clobbered by a stale
+            // "playing" snapshot taken on the calling thread. Without
+            // this, AA / lock-screen briefly showed "playing at new
+            // position" before the pause's own state push corrected it
+            // — exactly the one-frame jump rc.6 was trying to prevent.
+            if (_playbackStatus.value is PlaybackStatus.Playing) {
                 mediaPlayback.markPlaying(msg, convo, positionMs = positionMs.toLong())
             } else {
                 mediaPlayback.markPaused(positionMs.toLong())
