@@ -573,8 +573,46 @@ class PlayReplyUseCase @Inject constructor(
 
     /**
      * Pausa la reproducción actual.
+     *
+     * v1.23.0-rc.9 — handles TTS playback too. Pre-rc.9 pause() only
+     * touched audioPlayer, so when the active playback was TTS (text
+     * messages played via playTextMessage / playTextManually, or audio
+     * messages played as summaries via playSummaryOrTranscription with
+     * summarizeLongMessages=on) tapping pause was a no-op on the TTS
+     * engine but still flipped _playbackStatus to Paused — the row's
+     * Pause button toggled to Play visually, but the voice kept
+     * speaking and the user couldn't silence it. Now we route TTS
+     * through ttsPlayer.cancel() (which stops the engine WITHOUT
+     * firing the pending onDone, so the autoplay-drain speak()
+     * callbacks don't advance the queue under us — a "pause" tap
+     * shouldn't auto-skip to the next message), null out the playing
+     * id, mark the row PLAYED so it leaves the NowPlaying panel, and
+     * flip the session to STOPPED. A re-tap on Play will restart a
+     * fresh utterance from the beginning, which is the only sensible
+     * "resume" semantic for TTS — Android's TextToSpeech engine has
+     * no genuine pause/resume.
      */
     fun pause() {
+        if (ttsPlayer.isSpeaking()) {
+            val pausedId = currentPlayingId
+            ttsPlayer.cancel()
+            currentPlayingId = null
+            _playbackStatus.value = PlaybackStatus.Idle
+            mediaPlayback.markStopped()
+            if (pausedId != null) {
+                playbackScope.launch {
+                    runCatching {
+                        val msg = messageRepository.getById(pausedId)
+                            ?: return@launch
+                        messageRepository.update(msg.copy(
+                            state = MessageState.PLAYED,
+                            playedAt = System.currentTimeMillis()
+                        ))
+                    }
+                }
+            }
+            return
+        }
         audioPlayer.pause()
         // v1.22.3 — markPaused gated on currentPlayingId so a pause tap
         // when nothing is playing (e.g. AA's pause button after audio

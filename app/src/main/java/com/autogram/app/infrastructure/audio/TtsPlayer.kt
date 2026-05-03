@@ -172,6 +172,19 @@ class TtsPlayer @Inject constructor(
         previousOnDone?.invoke()
     }
 
+    /**
+     * Stop the engine WITHOUT firing the pending onDone callback. Used by
+     * PlayReplyUseCase.pause() when the user wants silence — not "complete
+     * this utterance and advance the queue", which is what stop()'s callback
+     * triggers via the autoplay-drain speak() callbacks. Symmetric with
+     * stop() but drops the pending onDone instead of invoking it.
+     */
+    fun cancel() {
+        pendingOnDone = null
+        pendingUtteranceId = null
+        runCatching { engine?.stop() }
+    }
+
     /** True when the engine currently has an utterance in flight. */
     fun isSpeaking(): Boolean = runCatching { engine?.isSpeaking == true }.getOrDefault(false)
 
