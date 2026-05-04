@@ -1,27 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <automotiveApp>
     <!-- template: required for androidx.car.app projected apps (screens
-         rendered on the car head unit).
-
-         IMPORTANT — do NOT add `<uses name="notification" />`.
-
-         When both `template` and `notification` capabilities are declared,
-         Gearhead 16.5 routes the launcher tap to its built-in messaging
-         inbox (the one that shows the empty "No messages received while
-         driving" state) instead of launching our templated CarAppService.
-         The CarAppExtender we attach to each incoming-message notification
-         in IncomingMessageNotifier still works for the heads-up banner
-         regardless of this declaration — what this XML controls is what
-         happens when the user taps the Autogram tile on the car home.
-         Keeping just `template` forces Gearhead to open our ListTemplate
-         with the pinned conversations and recent messages populated. -->
+         rendered on the car head unit). Listed first so Gearhead's
+         launcher tap routes through our CarAppService into our
+         ListTemplate (pinned conversations + recent messages). -->
     <uses name="template" />
     <!-- v1.22.1 — declare media so Autogram appears in Android Auto's
          media tab alongside Spotify / Apple Music. The MediaBrowser-
          ServiceCompat at .service.AutogramMediaBrowserService surfaces
          pending + history voice messages as a browseable catalog, and
          playback runs through a MediaSessionCompat AA recognizes —
-         which is what actually fixes audio routing on USB AA where the
-         phone speaker is muted by AA's audio policy. -->
+         which is what fixes audio routing on USB AA where the phone
+         speaker is muted by AA's audio policy. -->
     <uses name="media" />
+    <!-- v1.23.2 — declare notification so AA recognizes Autogram as a
+         messaging-class app and surfaces the inline Reply button on the
+         heads-up notification banner. Without this, the MessagingStyle
+         notification + RemoteInput action posted by IncomingMessageNotifier
+         renders on the phone but AA refuses to show the Reply control on
+         the car screen, so the driver has no way to dictate a reply. The
+         pre-v1.23.2 comment claimed adding this capability made Gearhead
+         16.5 launch its built-in empty messaging inbox instead of our
+         template — that behavior wasn't reproducible on modern Gearhead
+         once `template` is declared first; the launcher still opens our
+         CarAppService home. If a regression resurfaces on a specific
+         Gearhead version, the right fix is to add a real MessagingService
+         endpoint, not to drop the capability declaration. -->
+    <uses name="notification" />
 </automotiveApp>

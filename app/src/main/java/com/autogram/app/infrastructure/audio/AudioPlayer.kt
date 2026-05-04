@@ -250,23 +250,31 @@ class AudioPlayer @Inject constructor(
             val carPresent = (routedDevices + outputSnapshot)
                 .any { isProjectedCarOutputType(it.type) }
             if (carPresent) {
-                val phoneDevice = pickPhonePersonalOutput(outputSnapshot, routedDevices)
-                if (phoneDevice != null) {
-                    val accepted = player.setPreferredDevice(phoneDevice)
-                    Timber.i(
-                        "AudioPlayer: AA connected, routing through personal output " +
-                            "type=${phoneDevice.type} accepted=$accepted " +
-                            "(routed=${routedDevices.typeSummary()}, outputs=${outputSnapshot.typeSummary()})"
-                    )
-                } else {
-                    Timber.i(
-                        "AudioPlayer: AA connected and no BT/wired output found; " +
-                            "leaving routing to OS so audio has a chance to reach " +
-                            "the car's media stream rather than the phone's " +
-                            "built-in speaker " +
-                            "(routed=${routedDevices.typeSummary()}, outputs=${outputSnapshot.typeSummary()})"
-                    )
-                }
+                // v1.23.2 — leave routing to the OS when a projected AA
+                // sink is present. The previous logic forced BT A2DP /
+                // wired headset preferences here on the assumption that
+                // those personal outputs would reach the car's audio
+                // system. Real-world finding (Pepe, Galaxy + USB AA + BT
+                // pair to the same car): the car treats BT A2DP and USB
+                // AA media as separate sources and only renders one at a
+                // time. With USB AA active, BT A2DP is muted at the car
+                // — so forcing setPreferredDevice(BT A2DP) here sent the
+                // audio to a silenced sink. The user reproduced this by
+                // having to disable phone Bluetooth to get audio through
+                // the car speakers; toggling BT removed BT A2DP from
+                // outputSnapshot, which made phoneDevice null, which
+                // skipped setPreferredDevice, which let the OS route
+                // through AA's media stream and the audio came through.
+                //
+                // The MediaSession + AudioAttributes(USAGE_MEDIA,
+                // CONTENT_TYPE_SPEECH) we already set are what AA needs
+                // to surface our playback in its media stream; no
+                // setPreferredDevice call is required for that path.
+                Timber.i(
+                    "AudioPlayer: AA connected — leaving routing to OS so AA's " +
+                        "media stream picks up the playback " +
+                        "(routed=${routedDevices.typeSummary()}, outputs=${outputSnapshot.typeSummary()})"
+                )
                 return
             }
             val preferredType = choosePreferredOutputType(
