@@ -136,6 +136,28 @@ class AutogramMediaPlaybackController @Inject constructor(
 
     fun setListener(l: Listener) { listener = l }
 
+    /**
+     * v1.23.1 — force the lazy [session] to materialize on the calling
+     * thread. Called from [com.autogram.app.AutogramApplication.onCreate]
+     * (which runs on Main, so `Looper.myLooper() != null`) to head off a
+     * Sentry-reported crash on Android 16 / Galaxy S24+:
+     *
+     *   `Can't create handler inside thread Thread[DefaultDispatcher-worker-8,5,main]
+     *    that has not called Looper.prepare()`
+     *
+     * Root cause: `MediaSessionCompat`'s constructor creates an internal
+     * `Handler()` (no looper arg, so it picks `Looper.myLooper()` of the
+     * current thread). If the lazy first-access happens from a
+     * `playbackScope.launch` block (Dispatchers.IO worker → no Looper)
+     * before either `sessionToken()` runs (browser service onCreate, on
+     * Main) or any AA / lock-screen control fires, the constructor throws.
+     * Pre-warming on Main during app startup eliminates the race; all
+     * subsequent accesses just return the already-initialized field.
+     */
+    fun warmUp() {
+        session
+    }
+
     /** Hand the session token to [AutogramMediaBrowserService] on its onCreate. */
     fun sessionToken(): MediaSessionCompat.Token = session.sessionToken
 

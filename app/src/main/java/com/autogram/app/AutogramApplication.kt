@@ -31,6 +31,7 @@ class AutogramApplication : Application(), Configuration.Provider {
     @Inject lateinit var settingsRepository: SettingsRepository
     @Inject lateinit var ttsPlayer: TtsPlayer
     @Inject lateinit var playReplyUseCase: PlayReplyUseCase
+    @Inject lateinit var mediaPlayback: com.autogram.app.service.AutogramMediaPlaybackController
 
     private val appScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
@@ -97,6 +98,13 @@ class AutogramApplication : Application(), Configuration.Provider {
         }
 
         PendingReplyNotifier.ensureChannel(this)
+        // v1.23.1 — pre-warm MediaSessionCompat on Main so its internal
+        // Handler() constructor finds a Looper. Otherwise the first
+        // access from playbackScope (Dispatchers.IO) crashed with
+        // "Can't create handler inside thread … that has not called
+        // Looper.prepare()" — see Sentry f871b17746fd408b87570cd7a4bf09c9
+        // on Android 16 / Galaxy S24+.
+        mediaPlayback.warmUp()
         appScope.launch { playReplyUseCase.restorePendingQueue() }
         RetentionCleanupWorker.schedule(this)
         // Drain any messages left in the outbox from a previous process. Worker
