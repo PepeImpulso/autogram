@@ -385,7 +385,7 @@ private fun MainScreen(
     val updateState by updateViewModel.state.collectAsState()
     val suggestions by viewModel.suggestedChips.collectAsState()
     val showPendingBadges by viewModel.showPendingBadges.collectAsState()
-    val lastIncomingAudio by viewModel.lastIncomingWithAudio.collectAsState()
+    val lastIncoming by viewModel.lastIncoming.collectAsState()
     val pendingPlaybackCount by viewModel.pendingPlaybackCount.collectAsState()
     val folders by viewModel.folders.collectAsState()
     val selectedFolderId by viewModel.selectedFolderId.collectAsState()
@@ -485,7 +485,7 @@ private fun MainScreen(
                 sendStatus = sendStatus,
                 outboxCount = outboxCount,
                 online = isOnline,
-                hasLastOriginal = lastIncomingAudio != null,
+                hasLastOriginal = lastIncoming != null,
                 isPlayingLast = isAnyPlaying,
                 pendingCount = pendingPlaybackCount,
                 onToggleLastOriginal = viewModel::toggleLastOriginal,

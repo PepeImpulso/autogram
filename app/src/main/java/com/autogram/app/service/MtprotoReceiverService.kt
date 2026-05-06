@@ -92,20 +92,32 @@ class MtprotoReceiverService : Service() {
             scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
         }
         createNotificationChannel()
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(
-                NOTIFICATION_ID,
-                buildNotification("Conectando…"),
-                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            )
-        } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                buildNotification("Conectando…"),
-                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, buildNotification("Conectando…"))
+        val notification = buildNotification("Conectando…")
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                )
+            } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: IllegalStateException) {
+            // Android 12+ rejects FGS starts from background contexts (e.g.
+            // Android Auto binding AutogramCarAppService while the app is
+            // fully backgrounded — ForegroundServiceStartNotAllowedException
+            // extends IllegalStateException). Bail gracefully — the next
+            // foreground entry (MainActivity, AA session) retries.
+            Timber.w(e, "FGS start denied; bailing")
+            stopSelf()
+            return
         }
         callStateMonitor.start()
         isRunning = true

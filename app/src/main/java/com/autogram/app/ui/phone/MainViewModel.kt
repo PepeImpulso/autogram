@@ -111,22 +111,23 @@ class MainViewModel @Inject constructor(
             .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     /**
-     * Most-recent incoming voice with a playable audio file, across
-     * ALL conversations. Feeds the always-visible top-right "play
-     * last original" toggle in the HeroHeader.
+     * Most-recent incoming message — voice with audio OR text — across ALL
+     * conversations. Feeds the always-visible top-right "Replay last" toggle
+     * in the HeroHeader so it picks up text replies from any circle, not
+     * only voice notes from the primary one.
      *
      * Backed by a dedicated `LIMIT 1` DAO query rather than filtering
      * `observeAllAcrossConversations` — the latter is capped at the
      * most recent 500 rows to keep UI latency flat, which for power
      * users sending many text shortcuts can push the last incoming
-     * voice off the window and silently disable the replay button.
+     * row off the window and silently disable the replay button.
      */
-    val lastIncomingWithAudio: StateFlow<Message?> =
-        messageRepository.observeLatestIncomingVoice()
+    val lastIncoming: StateFlow<Message?> =
+        messageRepository.observeLatestIncoming()
             .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     fun playLastOriginal() {
-        val msg = lastIncomingWithAudio.value ?: return
+        val msg = lastIncoming.value ?: return
         viewModelScope.launch { playReplyUseCase.playManually(msg) }
     }
 
@@ -153,7 +154,7 @@ class MainViewModel @Inject constructor(
             playReplyUseCase.stopAll()
             return
         }
-        val msg = lastIncomingWithAudio.value ?: return
+        val msg = lastIncoming.value ?: return
         viewModelScope.launch {
             playReplyUseCase.playManually(msg)
         }
