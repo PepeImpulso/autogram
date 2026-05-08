@@ -216,8 +216,15 @@ class PlayReplyUseCase @Inject constructor(
         // pending row was already deleted by playNext) and break the chain.
         // Trusting the call-site over the flag keeps the queue draining.
         playbackStartLock.withLock {
-            if (respectUserGates && audioPlayer.isPlaying()) {
-                Timber.i("playVoiceMessage ${message.id} → enqueue (audio already playing)")
+            // Symmetric with playTextMessage / playSummaryOrTranscription:
+            // when TTS is reading a text aloud, an incoming voice would start
+            // on top of it (two engines, one user) — enqueue instead so the
+            // voice plays after the TTS finishes via playNext().
+            if (respectUserGates && (audioPlayer.isPlaying() || ttsPlayer.isSpeaking())) {
+                Timber.i(
+                    "playVoiceMessage ${message.id} → enqueue " +
+                    "(audio=${audioPlayer.isPlaying()} tts=${ttsPlayer.isSpeaking()})"
+                )
                 pendingQueue.add(message)
                 _playbackStatus.value = PlaybackStatus.PendingCount(pendingQueue.size)
                 return
@@ -225,7 +232,21 @@ class PlayReplyUseCase @Inject constructor(
 
             val audioFile = message.audioFilePath?.let { File(it) }
             if (audioFile == null || !audioFile.exists()) {
-                Timber.e("Archivo de audio no encontrado para mensaje ${message.id}")
+                // File vanished from TDLib's cache (eviction, host cleanup,
+                // user cleared chat history). Mark the row failed + null the
+                // path so it stops being picked up by replay/lastIncoming,
+                // and progress the queue if we were dispatched from playNext.
+                Timber.w("Audio file missing for ${message.id}; marking failed")
+                runCatching {
+                    messageRepository.update(message.copy(
+                        state = MessageState.FAILED,
+                        audioFilePath = null,
+                        errorMessage = "Audio file missing"
+                    ))
+                }
+                if (!respectUserGates) {
+                    playbackScope.launch { playNext() }
+                }
                 return
             }
 
