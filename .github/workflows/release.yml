@@ -92,6 +92,9 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK artifact
+        # Best-effort only: tag releases are published in the next step.
+        # Do not block public release creation if Actions artifact quota is full.
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: autogram-apk-${{ steps.apk.outputs.version }}
