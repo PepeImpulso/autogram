@@ -71,6 +71,7 @@
     <string name="record_request_mic_permission">Conceder permiso de micrófono</string>
     <string name="record_cancel">Cancelar</string>
     <string name="record_mic">Grabar</string>
+    <string name="record_stop">Detener grabación</string>
     <string name="main_no_primary_title">No hay destino principal configurado.</string>
     <string name="main_configure_shortcuts">Configurar accesos rápidos</string>
     <string name="main_add_shortcut">Añadir</string>
@@ -209,8 +210,8 @@
 
     <string name="onboarding_welcome_title">Bienvenido a Autogram</string>
     <string name="onboarding_welcome_body">La forma manos libres de enviar mensajes de voz por Telegram. Vamos a configurarlo en cuatro pasos rápidos.</string>
-    <string name="onboarding_record_title">Pulsa y mantén para grabar</string>
-    <string name="onboarding_record_body">Mantén pulsado el círculo grande para grabar un mensaje. Suelta para enviarlo. Sin escribir, sin menús.</string>
+    <string name="onboarding_record_title">Toca para grabar</string>
+    <string name="onboarding_record_body">Toca el círculo grande una vez para empezar a grabar. Vuelve a tocarlo para detener y enviar. Sin escribir, sin menús.</string>
     <string name="onboarding_target_title">Elige tu destinatario principal</string>
     <string name="onboarding_target_body">Es el chat con el que más hablas — el que va al círculo grande. Puedes cambiarlo cuando quieras desde Ajustes.</string>
     <string name="onboarding_target_cta">Elegir chat ahora</string>

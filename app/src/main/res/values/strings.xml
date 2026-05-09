@@ -67,6 +67,7 @@
     <string name="record_request_mic_permission">Grant microphone permission</string>
     <string name="record_cancel">Cancel</string>
     <string name="record_mic">Record</string>
+    <string name="record_stop">Stop recording</string>
     <string name="main_no_primary_title">No primary target configured.</string>
     <string name="main_configure_shortcuts">Configure shortcuts</string>
     <string name="main_add_shortcut">Add</string>
@@ -206,8 +207,8 @@
 
     <string name="onboarding_welcome_title">Welcome to Autogram</string>
     <string name="onboarding_welcome_body">The hands-free way to send voice messages on Telegram. Let\'s get you set up in four quick steps.</string>
-    <string name="onboarding_record_title">Press and hold to record</string>
-    <string name="onboarding_record_body">Hold down the big circle to record a voice message. Release to send. That\'s it — no typing, no menus.</string>
+    <string name="onboarding_record_title">Tap to record</string>
+    <string name="onboarding_record_body">Tap the big circle once to start recording. Tap it again to stop and send. That\'s it — no typing, no menus.</string>
     <string name="onboarding_target_title">Pick your main target</string>
     <string name="onboarding_target_body">This is the chat you talk to most — the one you get in the big circle. You can change it anytime from Settings.</string>
     <string name="onboarding_target_cta">Choose chat now</string>

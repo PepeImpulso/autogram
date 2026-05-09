@@ -23,8 +23,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.*
@@ -81,11 +80,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-// Minimum press duration that counts as a hold-to-record. Shorter
-// presses silently cancel the just-started recording instead of
-// firing stopAndSend on an empty MediaRecorder frame (which throws
-// "stop failed" and briefly flashes an Error pill). See RecordCircle.
-private const val MIN_RECORD_HOLD_MS: Long = 350L
 private const val REQUEST_COMPANION_PERMISSIONS: Int = 4201
 
 @AndroidEntryPoint
@@ -994,9 +988,9 @@ private fun NoPrimaryState(onConfigure: () -> Unit) {
 }
 
 /**
- * Circular record button — long-press to record, release to send, drag out to
- * cancel. When [conversation]'s photo is set it shows as the circle background,
- * with the mic icon overlayed on a translucent dark scrim while recording.
+ * Circular record button — tap once to start recording, tap again to stop and
+ * send. When [conversation]'s photo is set it shows as the circle background,
+ * with the stop icon overlayed on a translucent red scrim while recording.
  */
 @Composable
 private fun RecordCircle(
@@ -1073,55 +1067,30 @@ private fun RecordCircle(
                 .size(size)
                 .scale(scale)
                 .clip(CircleShape)
-                .pointerInput(hasPermission, conversation.id) {
-                    if (!hasPermission) {
-                        awaitEachGesture {
-                            awaitFirstDown()
-                            onRequestPermission()
-                        }
-                        return@pointerInput
-                    }
-                    awaitEachGesture {
-                        awaitFirstDown()
-                        val downTimeMs = System.currentTimeMillis()
-                        onStart()
-                        var cancelled = false
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull()
-                            if (change == null || !change.pressed) break
-                            val pos = change.position
-                            val outside = pos.x < 0 || pos.y < 0 ||
-                                pos.x > this.size.width || pos.y > this.size.height
-                            if (outside && !cancelled) {
-                                cancelled = true
+                .pointerInput(hasPermission, isRecordingThis, conversation.id) {
+                    detectTapGestures(
+                        onTap = {
+                            if (!hasPermission) {
+                                onRequestPermission()
+                            } else if (isRecordingThis) {
+                                onSend()
+                            } else {
+                                onStart()
+                            }
+                        },
+                        onLongPress = {
+                            if (hasPermission && isRecordingThis) {
                                 onCancel()
-                                break
                             }
                         }
-                        // Brief-tap guard. Small (72 dp) secondary circles
-                        // are easy to tap-and-release in under ~250 ms
-                        // instead of holding; MediaRecorder.stop() on such
-                        // a fresh start throws "stop failed" and surfaces
-                        // as a flash of the Error pill ("No se pudo
-                        // guardar el audio"). Treat presses shorter than
-                        // MIN_HOLD_MS as accidental taps and cancel the
-                        // recording we just started — same UX as dragging
-                        // out of the circle. 350 ms is comfortable for a
-                        // deliberate hold on a phone and rules out
-                        // incidental taps.
-                        if (!cancelled) {
-                            val heldMs = System.currentTimeMillis() - downTimeMs
-                            if (heldMs < MIN_RECORD_HOLD_MS) onCancel() else onSend()
-                        }
-                    }
+                    )
                 },
             contentAlignment = Alignment.Center
         ) {
             CircleAvatar(conv = conversation, size = size)
             if (isRecordingThis) {
-                // Recording: full red scrim + centred close icon take over so the
-                // user clearly sees which circle is live.
+                // Recording: full red scrim + centred stop icon take over so the
+                // user clearly sees which circle is live and can tap again to send.
                 Box(
                     modifier = Modifier
                         .matchParentSize()
@@ -1129,8 +1098,8 @@ private fun RecordCircle(
                         .background(MaterialTheme.colorScheme.error.copy(alpha = 0.55f))
                 )
                 Icon(
-                    imageVector = Icons.Filled.Close,
-                    contentDescription = stringResource(R.string.record_cancel),
+                    imageVector = Icons.Filled.Stop,
+                    contentDescription = stringResource(R.string.record_stop),
                     tint = Color.White,
                     modifier = Modifier.size(size * 0.4f)
                 )
