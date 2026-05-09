@@ -222,5 +222,15 @@ enum class PendingReason {
      * user mid-record (or contaminate the new recording's audio).
      * Drained after recording ends if [AppSettings.autoPlayReplies] is on.
      */
-    USER_RECORDING
+    USER_RECORDING,
+    /**
+     * v1.23.7 — another voice / TTS / summary was already playing when
+     * this message arrived; the busy-check enqueued it so the queue
+     * stays serial. Drained automatically by playNext() when the
+     * current playback completes (or the user taps skip-next). Without
+     * this reason, the busy-deferred messages were only kept in memory
+     * and the Pending Queue tab list (which queries Room) would show
+     * empty even though the badge counted them.
+     */
+    PLAYBACK_BUSY
 }

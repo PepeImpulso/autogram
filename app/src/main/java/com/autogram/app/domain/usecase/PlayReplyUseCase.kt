@@ -82,7 +82,15 @@ class PlayReplyUseCase @Inject constructor(
             override fun onPause() { playbackScope.launch { pause() } }
             override fun onStop() { playbackScope.launch { stopAll() } }
             override fun onSkipToNext() { playbackScope.launch { skipNext() } }
-            override fun onSkipToPrevious() { playbackScope.launch { restartCurrent() } }
+            override fun onSkipToPrevious() {
+                playbackScope.launch {
+                    // Prefer real previous-message navigation; fall back to
+                    // "restart current" when there's no history yet so AA
+                    // / lock-screen / BT controls always do *something*
+                    // useful instead of being silently no-op'd.
+                    if (canSkipPrevious.value) skipPrevious() else restartCurrent()
+                }
+            }
             override fun onPlayFromMediaId(mediaId: String, extras: android.os.Bundle?) {
                 playbackScope.launch {
                     val msg = messageRepository.getById(mediaId)
@@ -228,14 +236,16 @@ class PlayReplyUseCase @Inject constructor(
             // Symmetric with playTextMessage / playSummaryOrTranscription:
             // when TTS is reading a text aloud, an incoming voice would start
             // on top of it (two engines, one user) — enqueue instead so the
-            // voice plays after the TTS finishes via playNext().
+            // voice plays after the TTS finishes via playNext(). Persist via
+            // enqueuePending so the Pending Queue tab list (Room-backed)
+            // reflects the deferred messages instead of showing empty while
+            // the count badge says >0.
             if (respectUserGates && (audioPlayer.isPlaying() || ttsPlayer.isSpeaking())) {
                 Timber.i(
                     "playVoiceMessage ${message.id} → enqueue " +
                     "(audio=${audioPlayer.isPlaying()} tts=${ttsPlayer.isSpeaking()})"
                 )
-                pendingQueue.add(message)
-                _playbackStatus.value = PlaybackStatus.PendingCount(pendingQueue.size)
+                enqueuePending(message, PendingReason.PLAYBACK_BUSY)
                 return
             }
 
@@ -494,8 +504,7 @@ class PlayReplyUseCase @Inject constructor(
                     "playSummaryOrTranscription ${message.id} → enqueue " +
                     "(audio=${audioPlayer.isPlaying()} tts=${ttsPlayer.isSpeaking()})"
                 )
-                pendingQueue.add(message)
-                _playbackStatus.value = PlaybackStatus.PendingCount(pendingQueue.size)
+                enqueuePending(message, PendingReason.PLAYBACK_BUSY)
                 return@withLock
             }
             currentPlayingId = message.id
@@ -575,8 +584,7 @@ class PlayReplyUseCase @Inject constructor(
                     "playTextMessage ${message.id} → enqueue " +
                     "(audio=${audioPlayer.isPlaying()} tts=${ttsPlayer.isSpeaking()})"
                 )
-                pendingQueue.add(message)
-                _playbackStatus.value = PlaybackStatus.PendingCount(pendingQueue.size)
+                enqueuePending(message, PendingReason.PLAYBACK_BUSY)
                 return@withLock
             }
             currentPlayingId = message.id
