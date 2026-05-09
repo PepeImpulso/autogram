@@ -24,7 +24,7 @@ Build the minimal viable product.
 - [ ] Auto-play incoming messages
 - [ ] Send/error visual feedback on AA
 - [ ] Room database setup + Message entity
-- [ ] Settings Activity: bot token, chat ID
+- [x] Settings Activity (TDLib auth replaced bot token + chat ID; the modern setup is pinned-circle picker + phone-number login)
 
 **Gate:** Full round-trip works on Android Auto DHU.
 
@@ -48,7 +48,7 @@ History and UX.
 - [x] Pending reply alerts (notification) — PendingReplyNotifier
 - [x] Android Auto UI polish (colors, icons, feedback) — vector drawables, ActionStrip, state-colored status icons
 - [x] Battery optimization testing — Settings → opt-out button
-- [x] Onboarding flow (first-run: enter bot token, test connection) — OnboardingActivity + 3 steps
+- [x] Onboarding flow (first-run: TDLib phone-number login, pin a circle, test playback) — TelegramLoginActivity + OnboardingActivity
 
 **Gate:** Daily use is smooth and reliable. **Status:** ✅
 
@@ -81,7 +81,7 @@ History and UX.
 | TTS | **android.speech.tts.TextToSpeech** | Built-in Android TTS |
 | Persistence | **Room** | Official ORM; compile-time query verification |
 | Background Work | **ForegroundService + WorkManager** | Required for Android 12+ |
-| Security | **EncryptedSharedPreferences** | Secure bot token storage |
+| Security | **Android Keystore + EncryptedSharedPreferences** | Wraps the TDLib database key + the LLM summarisation API key. Bot tokens are no longer stored — auth uses TDLib's MTProto session. |
 | Logging | **Timber** | Lightweight logging |
 | Build | **Gradle Kotlin DSL** | Type-safe build scripts |
 

@@ -51,6 +51,7 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
     @Inject lateinit var mediaPlayback: AutogramMediaPlaybackController
     @Inject lateinit var messageRepository: MessageRepository
     @Inject lateinit var conversationRepository: ConversationRepository
+    @Inject lateinit var callerValidator: MediaBrowserCallerValidator
     // v1.22.1 — injecting PlayReplyUseCase here is intentional, even
     // though the field isn't read directly. PlayReplyUseCase's @Inject
     // constructor registers itself as the MediaSessionCompat listener
@@ -81,16 +82,30 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
     }
 
     /**
-     * Allow any package to browse — Auto / Bluetooth car stereos /
-     * Google Assistant connect with various signatures and there's
-     * no sensitive data exposed (just public conversation titles +
-     * voice metadata — same surface History already shows).
+     * Gate the catalog behind a signed-package allowlist. Audit issue
+     * #70: returning a non-null root for any caller let an arbitrary
+     * installed app enumerate private message metadata and trigger
+     * playback by guessing a media id. Untrusted callers now receive
+     * `null`, which AndroidX MediaBrowserServiceCompat translates to
+     * "this client cannot browse" — onLoadChildren is never reached.
+     * onPlayFromMediaId from an untrusted controller is also rejected
+     * because untrusted clients cannot acquire the MediaBrowser binder
+     * to obtain the session token.
+     *
+     * Trust policy lives in [MediaBrowserCallerValidator]; debug builds
+     * are permissive so DHU + local test apps keep working.
      */
     override fun onGetRoot(
         clientPackageName: String,
         clientUid: Int,
         rootHints: Bundle?
-    ): BrowserRoot = BrowserRoot(ROOT_ID, null)
+    ): BrowserRoot? {
+        return if (callerValidator.isTrustedCaller(clientPackageName, clientUid)) {
+            BrowserRoot(ROOT_ID, null)
+        } else {
+            null
+        }
+    }
 
     override fun onLoadChildren(parentId: String, result: Result<MutableList<MediaItem>>) {
         when (parentId) {

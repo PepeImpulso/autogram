@@ -4,12 +4,12 @@
 |---|------|--------|-------------|------------|
 | R1 | Android Auto rejects app category or template usage | High | Low | Use standard messaging templates; test on DHU early; follow Car App Library docs strictly |
 | R2 | Android kills ForegroundService on aggressive OEMs (Xiaomi, Huawei) | High | Medium | Use `START_REDELIVER_INTENT`; `WorkManager` as fallback to restart polling; test on multiple devices |
-| R3 | Telegram Bot API outage or breaking change | High | Low | Pin to specific API version; implement health checks; show clear offline status |
+| R3 | Telegram MTProto / TDLib API outage or breaking change | High | Low | Vendored TDLib build pinned per release; health checks via `AuthState`; show clear offline status |
 | R4 | Audio recording fails on specific devices (permissions, hardware) | Medium | Medium | Graceful degradation; clear error messages; test on 3+ devices early |
 | R5 | OPUS/OGG encoding not supported on some devices | Medium | Low | `MediaRecorder.OutputFormat.OGG` available since API 29; fallback to MPEG4/AAC if needed; convert server-side if adding backend later |
 | R6 | Audio focus conflicts with music/nav/calls | Medium | High | Properly request `AUDIOFOCUS_GAIN_TRANSIENT`; duck other audio; test with Spotify and Google Maps |
-| R7 | Large voice notes (60s) fail to upload on poor connection | Medium | Medium | Chunk upload not supported by Bot API; compress aggressively; limit to 60s max; queue + retry |
-| R8 | Bot token leaked from device | High | Low | Store in EncryptedSharedPreferences; never log; ProGuard/R8 obfuscation |
+| R7 | Large voice notes (60s) fail to upload on poor connection | Medium | Medium | Compress aggressively; limit to 60s max; queue + retry via outbox |
+| R8 | Telegram session token leaked from device | High | Low | TDLib's local message database is encrypted with a per-install key wrapped by Android Keystore; the legacy `Conversation.botToken` plaintext column was dropped in migration v17 → v18 (issue #69). The LLM summarisation API key is stored in `EncryptedSharedPreferences` (issue #70). Logs never include credentials; release builds add no HTTP body logging. |
 | R9 | Google Play Protect flags app (sideloaded, not Play Store) | Medium | Low | Not a concern for personal use; document installation bypass |
 | R10 | Android Auto head unit has significant audio latency | Medium | Medium | Test on real hardware; accept 1-2s latency as acceptable; avoid premature optimization |
 | R11 | Long polling drains battery | Medium | Medium | Use 30s long-poll timeout (not short polling); `WakeLock` only when needed; measure battery impact |

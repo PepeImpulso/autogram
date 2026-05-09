@@ -95,7 +95,11 @@ class UpdateInstaller @Inject constructor(
         currentReceiver = receiver
         val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
+            // RECEIVER_NOT_EXPORTED: ACTION_DOWNLOAD_COMPLETE is a protected
+            // system broadcast — the platform still delivers it to us — but
+            // a third-party app cannot spoof it to confuse the updater.
+            // Issue #70 (audit follow-up).
+            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
             @Suppress("UnspecifiedRegisterReceiverFlag")
             context.registerReceiver(receiver, filter)

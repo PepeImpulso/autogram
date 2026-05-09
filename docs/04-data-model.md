@@ -27,11 +27,15 @@
 |-------|------|-------------|
 | id | UUID (String) | Primary key |
 | targetChatId | String | Telegram chat ID |
-| targetTitle | String? | Display name of chat/bot |
-| botToken | String | Telegram bot token (encrypted) |
+| targetTitle | String? | Display name of chat/topic |
 | isActive | Boolean | Currently active conversation |
 | createdAt | Instant | Created timestamp |
 | lastMessageAt | Instant? | Timestamp of last message |
+
+> **Note** — the legacy `botToken` column was dropped in Room migration
+> v17 → v18 (issue #69). Auth now goes through TDLib's MTProto session
+> (phone + code), not a Bot API token, and the column is no longer
+> persisted in any form.
 
 ### 1.3 QuickReply
 
@@ -141,7 +145,11 @@ Message (N) ── (0..1) QuickReply [if from quick reply]
 
 - All timestamps stored as `Long` (epoch millis) with TypeConverters
 - Enums stored as `String` via TypeConverters
-- `Conversation.botToken` encrypted via Android Keystore / EncryptedSharedPreferences
+- TDLib's local message database is encrypted with a per-install key wrapped by
+  Android Keystore (see `TdLibClient.tdlibDatabaseEncryptionKey`); the LLM
+  summarisation API key lives in `EncryptedSharedPreferences` (see
+  `LlmApiKeyStore`, audit issue #70). The legacy `Conversation.botToken`
+  plaintext column was removed by migration v17 → v18 (issue #69).
 - Indexes on: `Message.conversationId`, `Message.state`, `Message.createdAt`
 - Cascade delete: deleting a Conversation deletes all its Messages
 - `Settings` is a single-row table (enforced by inserting only row with id=1)
