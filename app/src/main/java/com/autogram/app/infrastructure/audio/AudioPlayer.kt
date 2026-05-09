@@ -90,10 +90,10 @@ class AudioPlayer @Inject constructor(
                 logRoutedDevice(this)
             }
             isPlaying = true
-            Timber.d("Reproduciendo: ${file.name} (speed=${speed}x)")
+            Timber.d("Playing: ${file.name} (speed=${speed}x)")
             Result.success(Unit)
         } catch (e: Exception) {
-            Timber.e(e, "Error al reproducir audio")
+            Timber.e(e, "Failed to play audio")
             // BUG-17: Release MediaPlayer on error to prevent resource leak
             try { mediaPlayer?.release() } catch (_: Exception) {}
             mediaPlayer = null
@@ -119,7 +119,7 @@ class AudioPlayer @Inject constructor(
                 isPlaying = true
             }
         } catch (e: Exception) {
-            Timber.e(e, "Error al reanudar reproducción")
+            Timber.e(e, "Failed to resume playback")
         }
     }
 

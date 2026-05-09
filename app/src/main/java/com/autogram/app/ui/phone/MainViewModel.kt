@@ -332,10 +332,16 @@ class MainViewModel @Inject constructor(
     }
 
     fun sendQuickReplyShortcut(shortcut: QuickReply, targetId: String? = null) {
+        // A shortcut bound to a specific contact (targetConversationId) always
+        // wins over the on-screen primary — that's the contract the user opted
+        // into when they pinned the shortcut to that contact in Settings.
+        // Fall back to the call-site target (typically the visible primary)
+        // when the shortcut has no binding.
+        val effectiveTargetId = shortcut.targetConversationId ?: targetId
         viewModelScope.launch {
             when (shortcut.kind) {
                 QuickReplyKind.TEXT -> {
-                    sendMessageUseCase.sendQuickReply(shortcut.textContent, targetId)
+                    sendMessageUseCase.sendQuickReply(shortcut.textContent, effectiveTargetId)
                 }
                 QuickReplyKind.VOICE -> {
                     val path = shortcut.audioFilePath
@@ -343,7 +349,7 @@ class MainViewModel @Inject constructor(
                         sendMessageUseCase.sendVoiceShortcut(
                             audioFilePath = path,
                             audioDurationMs = shortcut.audioDurationMs,
-                            targetConversationId = targetId
+                            targetConversationId = effectiveTargetId
                         )
                     }
                 }

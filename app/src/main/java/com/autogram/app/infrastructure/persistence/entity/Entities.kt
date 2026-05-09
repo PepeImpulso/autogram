@@ -56,7 +56,6 @@ data class ConversationEntity(
     @PrimaryKey val id: String,
     val targetChatId: String,
     val targetTitle: String? = null,
-    val botToken: String,
     // `isActive` marks the primary conversation (Merlin — big circle on main screen).
     // Exactly one row should have isActive=true at a time; the receiver listens on this one.
     val isActive: Boolean = true,
@@ -140,7 +139,11 @@ data class QuickReplyEntity(
     val audioFilePath: String? = null,
     val audioDurationMs: Long = 0L,
     val position: Int,
-    val isEnabled: Boolean = true
+    val isEnabled: Boolean = true,
+    // null = follow the primary circle (legacy behaviour). Non-null pins
+    // this shortcut to a specific Conversation.id so tapping it always
+    // sends to that contact regardless of which one is primary on Home.
+    val targetConversationId: String? = null
 )
 
 @Entity(tableName = "settings")

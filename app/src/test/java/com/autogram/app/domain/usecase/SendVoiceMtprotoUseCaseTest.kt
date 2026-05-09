@@ -61,7 +61,6 @@ class SendVoiceMtprotoUseCaseTest {
     private val sampleTarget = Conversation(
         id = "c1",
         targetChatId = "12345",
-        botToken = "tok",
         targetTitle = "Merlin",
         isActive = true
     )

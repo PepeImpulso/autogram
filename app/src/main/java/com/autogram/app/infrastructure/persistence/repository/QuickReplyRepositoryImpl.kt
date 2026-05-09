@@ -60,7 +60,8 @@ class QuickReplyRepositoryImpl @Inject constructor(
         audioFilePath = audioFilePath,
         audioDurationMs = audioDurationMs,
         position = position,
-        isEnabled = isEnabled
+        isEnabled = isEnabled,
+        targetConversationId = targetConversationId
     )
 
     private fun QuickReply.toEntity() = QuickReplyEntity(
@@ -71,6 +72,7 @@ class QuickReplyRepositoryImpl @Inject constructor(
         audioFilePath = audioFilePath,
         audioDurationMs = audioDurationMs,
         position = position,
-        isEnabled = isEnabled
+        isEnabled = isEnabled,
+        targetConversationId = targetConversationId
     )
 }

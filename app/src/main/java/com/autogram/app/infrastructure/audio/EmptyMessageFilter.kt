@@ -70,7 +70,7 @@ class EmptyMessageFilter @Inject constructor() {
             val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
             durationStr?.toLongOrNull()
         } catch (e: Exception) {
-            Timber.w(e, "No se pudo obtener la duración del audio")
+            Timber.w(e, "Could not read audio duration")
             null
         } finally {
             try {

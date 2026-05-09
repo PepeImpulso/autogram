@@ -95,6 +95,7 @@ sealed class VoiceRecordState {
 class QuickRepliesSettingsViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val repo: QuickReplyRepository,
+    private val conversationRepository: com.autogram.app.domain.repository.ConversationRepository,
     private val recorder: AudioRecorder
 ) : ViewModel() {
 
@@ -103,6 +104,13 @@ class QuickRepliesSettingsViewModel @Inject constructor(
     // screen's own observeAll() still filters to enabled-only.
     val replies: StateFlow<List<QuickReply>> =
         repo.observeAllIncludingDisabled().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    // Pinned circles fed into the "Send to" picker in the shortcut editor.
+    // Empty (= no pinned circles yet) collapses the picker to "follow primary"
+    // since there's nothing else to bind to.
+    val pinned: StateFlow<List<com.autogram.app.domain.model.Conversation>> =
+        conversationRepository.observePinned()
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     // Standalone MediaPlayer for the in-editor preview. Bypasses the
     // app's AudioPlayer abstraction on purpose: AudioPlayer prefers BT
@@ -116,7 +124,7 @@ class QuickRepliesSettingsViewModel @Inject constructor(
     private val _voiceState = MutableStateFlow<VoiceRecordState>(VoiceRecordState.Idle)
     val voiceState: StateFlow<VoiceRecordState> = _voiceState.asStateFlow()
 
-    fun saveText(existing: QuickReply?, label: String, text: String) {
+    fun saveText(existing: QuickReply?, label: String, text: String, targetConversationId: String?) {
         if (label.isBlank() || text.isBlank()) return
         viewModelScope.launch {
             val all = repo.getAll()
@@ -130,13 +138,14 @@ class QuickRepliesSettingsViewModel @Inject constructor(
                     audioFilePath = null,
                     audioDurationMs = 0L,
                     position = position,
-                    isEnabled = existing?.isEnabled ?: true
+                    isEnabled = existing?.isEnabled ?: true,
+                    targetConversationId = targetConversationId
                 )
             )
         }
     }
 
-    fun saveVoice(existing: QuickReply?, label: String) {
+    fun saveVoice(existing: QuickReply?, label: String, targetConversationId: String?) {
         if (label.isBlank()) return
         val state = _voiceState.value
         // Three cases: (1) a brand-new recording is pending (Recorded or
@@ -218,7 +227,8 @@ class QuickRepliesSettingsViewModel @Inject constructor(
                     audioFilePath = audioPath,
                     audioDurationMs = durationMs,
                     position = position,
-                    isEnabled = existing?.isEnabled ?: true
+                    isEnabled = existing?.isEnabled ?: true,
+                    targetConversationId = targetConversationId
                 )
             )
             _voiceState.value = VoiceRecordState.Idle
@@ -340,7 +350,7 @@ class QuickRepliesSettingsViewModel @Inject constructor(
                     previewMediaPlayer = null
                 }
                 setOnErrorListener { _, what, extra ->
-                    Timber.w("Preview MediaPlayer error what=$what extra=$extra file=${file.absolutePath}")
+                    Timber.w("Preview MediaPlayer error what=$what extra=$extra file=${file.name}")
                     _voiceState.value = VoiceRecordState.Recorded(file, duration, ephemeral)
                     runCatching { release() }
                     previewMediaPlayer = null
@@ -351,7 +361,7 @@ class QuickRepliesSettingsViewModel @Inject constructor(
             }
             previewMediaPlayer = mp
         } catch (e: Exception) {
-            Timber.w(e, "Preview play failed for ${file.absolutePath}")
+            Timber.w(e, "Preview play failed for ${file.name}")
             _voiceState.value = VoiceRecordState.Recorded(file, duration, ephemeral)
             previewMediaPlayer = null
         }
@@ -412,6 +422,7 @@ private fun QuickRepliesScreen(
     onBack: () -> Unit
 ) {
     val replies by viewModel.replies.collectAsState()
+    val pinned by viewModel.pinned.collectAsState()
     var target by remember { mutableStateOf<EditorTarget>(EditorTarget.None) }
 
     Scaffold(
@@ -504,8 +515,9 @@ private fun QuickRepliesScreen(
         )
         is EditorTarget.Text -> QuickReplyTextEditor(
             initial = t.existing,
-            onSave = { label, text ->
-                viewModel.saveText(t.existing, label, text)
+            pinned = pinned,
+            onSave = { label, text, targetId ->
+                viewModel.saveText(t.existing, label, text, targetId)
                 target = EditorTarget.None
             },
             onDismiss = { target = EditorTarget.None }
@@ -513,8 +525,9 @@ private fun QuickRepliesScreen(
         is EditorTarget.Voice -> QuickReplyVoiceEditor(
             viewModel = viewModel,
             initial = t.existing,
-            onSave = { label ->
-                viewModel.saveVoice(t.existing, label)
+            pinned = pinned,
+            onSave = { label, targetId ->
+                viewModel.saveVoice(t.existing, label, targetId)
                 target = EditorTarget.None
             },
             onDismiss = {
@@ -746,14 +759,85 @@ private fun KindOption(
     }
 }
 
+/**
+ * Inline picker that decides which contact a shortcut sends to. The default
+ * (selectedId = null) follows the on-screen primary circle — that's the
+ * legacy behaviour, kept so existing shortcuts don't change semantics.
+ * Selecting a specific pinned circle pins the shortcut there: tapping it on
+ * Home or Android Auto always sends to that contact regardless of which
+ * circle happens to be primary.
+ *
+ * Collapses to a single read-only line when there are no pinned circles to
+ * pick from — picker is irrelevant in that state and showing an empty
+ * dropdown would confuse the user.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SendToPicker(
+    pinned: List<com.autogram.app.domain.model.Conversation>,
+    selectedId: String?,
+    onSelect: (String?) -> Unit
+) {
+    if (pinned.isEmpty()) {
+        Text(
+            stringResource(R.string.quick_replies_send_to_no_circles),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+        return
+    }
+    var expanded by remember { mutableStateOf(false) }
+    val selected = pinned.firstOrNull { it.id == selectedId }
+    val display = selected?.let {
+        it.topicName?.takeIf { t -> t.isNotBlank() } ?: it.targetTitle
+            ?: stringResource(R.string.main_default_primary_name)
+    } ?: stringResource(R.string.quick_replies_send_to_primary)
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it }
+    ) {
+        OutlinedTextField(
+            value = display,
+            onValueChange = { },
+            readOnly = true,
+            label = { Text(stringResource(R.string.quick_replies_send_to_label)) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                .fillMaxWidth()
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.quick_replies_send_to_primary)) },
+                onClick = { onSelect(null); expanded = false }
+            )
+            pinned.forEach { conv ->
+                val name = conv.topicName?.takeIf { it.isNotBlank() } ?: conv.targetTitle
+                    ?: stringResource(R.string.main_default_primary_name)
+                DropdownMenuItem(
+                    text = { Text(name) },
+                    onClick = { onSelect(conv.id); expanded = false }
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun QuickReplyTextEditor(
     initial: QuickReply?,
-    onSave: (label: String, text: String) -> Unit,
+    pinned: List<com.autogram.app.domain.model.Conversation>,
+    onSave: (label: String, text: String, targetConversationId: String?) -> Unit,
     onDismiss: () -> Unit
 ) {
     var label by remember { mutableStateOf(initial?.label ?: "") }
     var text by remember { mutableStateOf(initial?.textContent ?: "") }
+    var targetId by remember { mutableStateOf(initial?.targetConversationId) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -774,11 +858,16 @@ private fun QuickReplyTextEditor(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                     modifier = Modifier.fillMaxWidth().heightIn(min = 96.dp)
                 )
+                SendToPicker(
+                    pinned = pinned,
+                    selectedId = targetId,
+                    onSelect = { targetId = it }
+                )
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { onSave(label, text) },
+                onClick = { onSave(label, text, targetId) },
                 enabled = label.isNotBlank() && text.isNotBlank()
             ) { Text(stringResource(R.string.common_save)) }
         },
@@ -792,11 +881,13 @@ private fun QuickReplyTextEditor(
 private fun QuickReplyVoiceEditor(
     viewModel: QuickRepliesSettingsViewModel,
     initial: QuickReply?,
-    onSave: (label: String) -> Unit,
+    pinned: List<com.autogram.app.domain.model.Conversation>,
+    onSave: (label: String, targetConversationId: String?) -> Unit,
     onDismiss: () -> Unit
 ) {
     val voiceState by viewModel.voiceState.collectAsState()
     var label by remember { mutableStateOf(initial?.label ?: "") }
+    var targetId by remember { mutableStateOf(initial?.targetConversationId) }
     val ctx = LocalContext.current
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -856,6 +947,11 @@ private fun QuickReplyVoiceEditor(
                     onStopPlay = { viewModel.previewStop() },
                     onDiscard = { viewModel.resetVoiceState() }
                 )
+                SendToPicker(
+                    pinned = pinned,
+                    selectedId = targetId,
+                    onSelect = { targetId = it }
+                )
             }
         },
         confirmButton = {
@@ -863,7 +959,7 @@ private fun QuickReplyVoiceEditor(
                                   voiceState is VoiceRecordState.Playing
             val hasExistingAudio = initial?.audioFilePath?.isNotBlank() == true
             TextButton(
-                onClick = { onSave(label) },
+                onClick = { onSave(label, targetId) },
                 enabled = label.isNotBlank() && (hasNewRecording || hasExistingAudio)
             ) { Text(stringResource(R.string.common_save)) }
         },

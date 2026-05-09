@@ -171,18 +171,31 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun updateSummaryLlmEndpoint(endpoint: String) {
-        _uiState.value = _uiState.value.copy(summaryLlmEndpoint = endpoint)
+        // Trim, reject control chars, normalise scheme. Empty is valid (= disabled).
+        val trimmed = endpoint.trim().filter { it.code >= 0x20 }
+        val normalised = when {
+            trimmed.isEmpty() -> ""
+            trimmed.length > 2048 -> trimmed.take(2048)
+            trimmed.startsWith("http://", ignoreCase = true) ||
+                trimmed.startsWith("https://", ignoreCase = true) -> trimmed
+            else -> "https://$trimmed"
+        }
+        _uiState.value = _uiState.value.copy(summaryLlmEndpoint = normalised)
         viewModelScope.launch {
             val s = settingsRepository.get()
-            settingsRepository.update(s.copy(summaryLlmEndpoint = endpoint))
+            settingsRepository.update(s.copy(summaryLlmEndpoint = normalised))
         }
     }
 
     fun updateSummaryLlmApiKey(apiKey: String) {
-        _uiState.value = _uiState.value.copy(summaryLlmApiKey = apiKey)
+        // Trim and cap length. Most provider keys are under 256 chars; 4096 is
+        // a generous DoS cap. Strip control chars (newlines, tabs) that would
+        // corrupt the Authorization header at request time.
+        val sanitised = apiKey.trim().filter { it.code >= 0x20 }.take(4096)
+        _uiState.value = _uiState.value.copy(summaryLlmApiKey = sanitised)
         viewModelScope.launch {
             val s = settingsRepository.get()
-            settingsRepository.update(s.copy(summaryLlmApiKey = apiKey))
+            settingsRepository.update(s.copy(summaryLlmApiKey = sanitised))
         }
     }
 
@@ -203,28 +216,43 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun updateSummaryLlmModel(model: String) {
-        _uiState.value = _uiState.value.copy(summaryLlmModel = model)
+        // Provider model names are short identifiers (e.g. gpt-4o-mini).
+        val sanitised = model.trim().filter { it.code >= 0x20 }.take(128)
+        _uiState.value = _uiState.value.copy(summaryLlmModel = sanitised)
         viewModelScope.launch {
             val s = settingsRepository.get()
-            settingsRepository.update(s.copy(summaryLlmModel = model))
+            settingsRepository.update(s.copy(summaryLlmModel = sanitised))
         }
     }
 
     fun updateLanguage(tag: String) {
-        _uiState.value = _uiState.value.copy(languageTag = tag)
+        // BCP-47 sanity: empty (= follow system) or alpha-only language with
+        // optional `-REGION-…` subtags. Reject anything else so malformed
+        // tags can't break LocaleListCompat.forLanguageTags downstream.
+        val candidate = tag.trim()
+        val safe = if (candidate.isEmpty() || BCP47_RE.matches(candidate)) candidate else ""
+        _uiState.value = _uiState.value.copy(languageTag = safe)
         // Persist: LocaleHelper's SharedPreferences is the source of truth for
         // `attachBaseContext` (our non-AppCompat activities); the DB mirror is
         // just so the row is consistent if someone inspects it.
-        LocaleHelper.saveTag(getApplication(), tag)
+        LocaleHelper.saveTag(getApplication(), safe)
         viewModelScope.launch {
             val settings = settingsRepository.get()
-            settingsRepository.update(settings.copy(languageTag = tag))
+            settingsRepository.update(settings.copy(languageTag = safe))
         }
         // Tell AppCompat too — this integrates with the system per-app language
         // picker on API 33+ and keeps the backport SharedPreferences in sync.
-        val locales = if (tag.isBlank()) LocaleListCompat.getEmptyLocaleList()
-                      else LocaleListCompat.forLanguageTags(tag)
+        val locales = if (safe.isBlank()) LocaleListCompat.getEmptyLocaleList()
+                      else LocaleListCompat.forLanguageTags(safe)
         AppCompatDelegate.setApplicationLocales(locales)
+    }
+
+    private companion object {
+        // Conservative BCP-47 subset: 2-3 letter language, optional 2-letter or
+        // 3-digit region, optional alpha subtags. Covers `es`, `es-ES`, `zh-Hant-TW`.
+        private val BCP47_RE = Regex(
+            "^[a-zA-Z]{2,3}(-[A-Za-z0-9]{2,8})*$"
+        )
     }
 
     fun requestExport(password: CharArray) {
@@ -277,7 +305,7 @@ class SettingsViewModel @Inject constructor(
                 maxRetryAttempts = state.maxRetries,
                 minRecordingDurationMs = state.minDuration
             ))
-            _uiState.value = state.copy(lastSaveMessage = "Configuración guardada ✓")
+            _uiState.value = state.copy(lastSaveMessage = "Settings saved")
         }
     }
 }

@@ -45,11 +45,11 @@ class ExportImportUseCaseTest {
     private val sampleConversations = listOf(
         Conversation(
             id = "c1", targetChatId = "1001", targetTitle = "Merlin",
-            botToken = "tok", isActive = true, createdAt = 1000L
+            isActive = true, createdAt = 1000L
         ),
         Conversation(
             id = "c2", targetChatId = "2002", targetTitle = "Ana",
-            botToken = "tok", isActive = false, createdAt = 2000L,
+            isActive = false, createdAt = 2000L,
             sortOrder = 10
         )
     )

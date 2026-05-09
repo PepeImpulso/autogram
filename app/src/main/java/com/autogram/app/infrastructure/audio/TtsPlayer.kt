@@ -101,7 +101,6 @@ class TtsPlayer @Inject constructor(
             )
         }
 
-        tts.setSpeechRate(settings.playbackSpeed.coerceIn(0.5f, 2.0f))
         tts.setAudioAttributes(
             AudioAttributes.Builder()
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
@@ -123,6 +122,11 @@ class TtsPlayer @Inject constructor(
         pendingUtteranceId = null
         runCatching { tts.stop() }
         previousOnDone?.invoke()
+
+        // setSpeechRate AFTER stop() so the rate isn't dropped by engines
+        // that reset state on stop. The rate set here applies to the next
+        // utterance queued via speak(QUEUE_FLUSH) immediately below.
+        tts.setSpeechRate(settings.playbackSpeed.coerceIn(0.5f, 2.0f))
 
         val utteranceId = UUID.randomUUID().toString()
         pendingOnDone = onDone

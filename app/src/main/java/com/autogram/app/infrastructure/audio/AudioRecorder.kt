@@ -49,7 +49,7 @@ class AudioRecorder @Inject constructor(
 
                 setOnInfoListener { _, what, extra ->
                     if (what == MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED) {
-                        Timber.w("Duración máxima alcanzada, deteniendo grabación")
+                        Timber.w("Max recording duration reached; stopping")
                     }
                 }
 
@@ -61,18 +61,18 @@ class AudioRecorder @Inject constructor(
                 start()
             }
             isRecording = true
-            Timber.d("Grabación iniciada: ${outputFile.absolutePath}")
+            Timber.d("Recording started: ${outputFile.name}")
             Result.success(Unit)
         } catch (e: IOException) {
-            Timber.e(e, "Error al iniciar grabación")
+            Timber.e(e, "Failed to start recording")
             cleanup()
             Result.failure(e)
         } catch (e: IllegalStateException) {
-            Timber.e(e, "Estado ilegal del MediaRecorder")
+            Timber.e(e, "MediaRecorder illegal state")
             cleanup()
             Result.failure(e)
         } catch (e: Exception) {
-            Timber.e(e, "Error inesperado al grabar")
+            Timber.e(e, "Unexpected recording failure")
             cleanup()
             Result.failure(e)
         }
@@ -98,7 +98,7 @@ class AudioRecorder @Inject constructor(
             current.stop()
             current.release()
             outputFile?.let {
-                Timber.d("Grabación detenida: ${it.absolutePath} (${duration}ms, ${it.length()} bytes)")
+                Timber.d("Recording stopped: ${it.name} (${duration}ms, ${it.length()} bytes)")
             }
             return outputFile
         } catch (e: RuntimeException) {
@@ -107,16 +107,16 @@ class AudioRecorder @Inject constructor(
             val isEmptyFrameStop = duration < 1500 ||
                 (e.message?.contains("stop failed", ignoreCase = true) == true)
             if (isEmptyFrameStop) {
-                Timber.w("Grabación demasiado corta (${duration}ms); descarto fichero")
+                Timber.w("Recording too short (${duration}ms); dropping file")
             } else {
-                Timber.e(e, "Error al detener grabación (${duration}ms)")
+                Timber.e(e, "Failed to stop recording (${duration}ms)")
             }
             runCatching { current.release() }
             outputFile?.let { runCatching { if (it.exists()) it.delete() } }
             outputFile = null
             return null
         } catch (e: Exception) {
-            Timber.e(e, "Error al detener grabación (${duration}ms)")
+            Timber.e(e, "Failed to stop recording (${duration}ms)")
             runCatching { current.release() }
             outputFile?.let { runCatching { if (it.exists()) it.delete() } }
             outputFile = null

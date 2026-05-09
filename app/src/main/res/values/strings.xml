@@ -56,6 +56,14 @@
     <string name="pending_queue_row_text_generic">Text message</string>
     <string name="pending_queue_now_playing">Now Playing</string>
     <string name="pending_queue_empty">Queue is empty.</string>
+    <string name="pending_queue_mark_all_listened">Mark all as listened</string>
+    <string name="pending_queue_mark_all_confirm_title">Mark all as listened?</string>
+    <string name="pending_queue_mark_all_confirm_body">All pending messages will be cleared without playback.</string>
+    <string name="pending_queue_mark_all_confirm_ok">Mark all</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="quick_replies_send_to_label">Send to</string>
+    <string name="quick_replies_send_to_primary">Active circle (default)</string>
+    <string name="quick_replies_send_to_no_circles">Pin a circle in Settings to bind this shortcut to a specific contact.</string>
     <string name="status_queued_offline">Queued offline</string>
     <string name="status_queued_offline_count">Queued offline · %d</string>
     <string name="status_outbox_count">%d queued · sent when online</string>

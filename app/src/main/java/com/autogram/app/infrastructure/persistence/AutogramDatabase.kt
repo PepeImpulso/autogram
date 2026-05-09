@@ -28,7 +28,7 @@ import javax.inject.Singleton
         SettingsEntity::class,
         CircleFolderEntity::class
     ],
-    version = 17,
+    version = 19,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -185,6 +185,61 @@ object DatabaseModule {
         }
     }
 
+    // v17 → v18: drop legacy ConversationEntity.botToken column. Bot tokens
+    // were the auth model before the MTProto/TDLib migration; new rows have
+    // been writing "" since that switch, but pre-MTProto rows could still
+    // hold a real token in plaintext. SQLite < 3.35 doesn't support DROP
+    // COLUMN directly, so we use the standard recreate-dance: copy data into
+    // a new table without botToken, drop the old, rename. See issue #69.
+    private val MIGRATION_17_18 = object : Migration(17, 18) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("""
+                CREATE TABLE conversations_new (
+                    id TEXT NOT NULL,
+                    targetChatId TEXT NOT NULL,
+                    targetTitle TEXT,
+                    isActive INTEGER NOT NULL,
+                    createdAt INTEGER NOT NULL,
+                    lastMessageAt INTEGER,
+                    topicId INTEGER,
+                    topicName TEXT,
+                    isPinned INTEGER NOT NULL,
+                    photoLocalPath TEXT,
+                    sortOrder INTEGER NOT NULL,
+                    lastRepliedAt INTEGER,
+                    folderId TEXT,
+                    PRIMARY KEY(id)
+                )
+            """.trimIndent())
+            db.execSQL("""
+                INSERT INTO conversations_new (
+                    id, targetChatId, targetTitle, isActive, createdAt,
+                    lastMessageAt, topicId, topicName, isPinned, photoLocalPath,
+                    sortOrder, lastRepliedAt, folderId
+                )
+                SELECT
+                    id, targetChatId, targetTitle, isActive, createdAt,
+                    lastMessageAt, topicId, topicName, isPinned, photoLocalPath,
+                    sortOrder, lastRepliedAt, folderId
+                FROM conversations
+            """.trimIndent())
+            db.execSQL("DROP TABLE conversations")
+            db.execSQL("ALTER TABLE conversations_new RENAME TO conversations")
+        }
+    }
+
+    // v18 → v19: per-shortcut targeting. quick_replies gains an optional
+    // targetConversationId so a shortcut can be pinned to a specific contact
+    // — tapping it then sends there regardless of which circle is primary.
+    // Null (the default) keeps the legacy "send to primary" behaviour.
+    private val MIGRATION_18_19 = object : Migration(18, 19) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "ALTER TABLE quick_replies ADD COLUMN targetConversationId TEXT DEFAULT NULL"
+            )
+        }
+    }
+
     // v11 → v12: summary fields on messages + summary engine config in settings.
     // Feature is off by default (summaryEngine=NONE); turning it on requires
     // the user to pick an engine in Settings → Summary.
@@ -208,7 +263,7 @@ object DatabaseModule {
             AutogramDatabase::class.java,
             "autogram.db"
         )
-            .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
+            .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
             // Fallback for any earlier schema (v1 / v2) that has no proper path
             // forward — those versions predate the stable 1.2 line and already
             // wiped once, so destroying from them is acceptable.

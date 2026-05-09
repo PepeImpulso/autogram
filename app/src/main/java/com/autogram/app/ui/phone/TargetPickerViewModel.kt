@@ -110,7 +110,6 @@ class TargetPickerViewModel @Inject constructor(
                             id = newId,
                             targetChatId = chat.chatId.toString(),
                             targetTitle = chat.title,
-                            botToken = "",
                             isActive = true,
                             createdAt = System.currentTimeMillis(),
                             topicId = topicId,

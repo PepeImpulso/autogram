@@ -12,7 +12,6 @@ import dagger.Module
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
 import timber.log.Timber
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
@@ -51,21 +50,41 @@ abstract class AppModule {
                 .readTimeout(45, TimeUnit.SECONDS)  // BUG-26: Increased for long-polling (30s + margin)
                 .writeTimeout(30, TimeUnit.SECONDS)
                 .apply {
-                    // BUG-45 FIX: Properly redact bot tokens from logs
+                    // Debug-only HTTP tracing with aggressive redaction so
+                    // tokens, API keys and bearer credentials never make it to
+                    // logcat / Sentry breadcrumbs / support sessions. Replaces
+                    // OkHttp's HttpLoggingInterceptor which would have logged
+                    // the unredacted URL before any custom redactor could see
+                    // it (issue #69). Release builds add no logging at all.
                     if (BuildConfig.DEBUG) {
-                        addInterceptor(HttpLoggingInterceptor().apply {
-                            level = HttpLoggingInterceptor.Level.BASIC
-                        })
                         addInterceptor { chain ->
-                            val request = chain.request()
-                            val redactedUrl = request.url.toString()
-                                .replace(Regex("/bot\\d+:[A-Za-z0-9_-]+/"), "/botREDACTED/")
-                            Timber.d("HTTP: ${request.method} $redactedUrl")
-                            chain.proceed(request)
+                            val req = chain.request()
+                            val redactedUrl = redactSensitive(req.url.toString())
+                            Timber.d("HTTP -> ${req.method} $redactedUrl")
+                            val started = System.nanoTime()
+                            val resp = try {
+                                chain.proceed(req)
+                            } catch (t: Throwable) {
+                                Timber.w(t, "HTTP !! ${req.method} $redactedUrl")
+                                throw t
+                            }
+                            val tookMs = (System.nanoTime() - started) / 1_000_000
+                            Timber.d("HTTP <- ${resp.code} $redactedUrl (${tookMs}ms)")
+                            resp
                         }
                     }
                 }
                 .build()
         }
+
+        private val BOT_TOKEN_RE = Regex("/bot\\d+:[A-Za-z0-9_-]+/")
+        private val SENSITIVE_QUERY_RE = Regex(
+            "([?&])(api[_-]?key|access[_-]?token|auth(?:orization)?|key|token|secret|sig|signature|password)=[^&]*",
+            RegexOption.IGNORE_CASE
+        )
+
+        private fun redactSensitive(url: String): String =
+            url.replace(BOT_TOKEN_RE, "/botREDACTED/")
+                .replace(SENSITIVE_QUERY_RE, "$1$2=REDACTED")
     }
 }

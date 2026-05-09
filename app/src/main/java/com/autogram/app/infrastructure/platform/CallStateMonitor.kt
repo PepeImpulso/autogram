@@ -18,8 +18,9 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Monitor del estado de llamadas telefónicas.
- * Detecta cuando hay una llamada en curso para pausar la reproducción de audio.
+ * Monitors phone call state. Used to auto-pause playback while a call is
+ * active. Degrades gracefully when READ_PHONE_STATE is denied — playback
+ * continues but won't pause for incoming calls.
  */
 @Singleton
 class CallStateMonitor @Inject constructor(
@@ -33,14 +34,14 @@ class CallStateMonitor @Inject constructor(
     private var telephonyCallback: TelephonyCallback? = null
 
     /**
-     * Inicia la monitorización del estado de llamadas.
-     * Requiere permiso READ_PHONE_STATE.
+     * Start monitoring call state. Requires READ_PHONE_STATE; if not granted
+     * the monitor stays idle and isInCall stays false (graceful degradation).
      */
     fun start() {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE)
             != PackageManager.PERMISSION_GRANTED
         ) {
-            Timber.w("Permiso READ_PHONE_STATE no concedido")
+            Timber.w("READ_PHONE_STATE not granted; CallStateMonitor disabled")
             return
         }
 
@@ -52,7 +53,7 @@ class CallStateMonitor @Inject constructor(
                 override fun onCallStateChanged(state: Int) {
                     _isInCall.value = state == TelephonyManager.CALL_STATE_OFFHOOK ||
                             state == TelephonyManager.CALL_STATE_RINGING
-                    Timber.d("Estado de llamada: $state, isInCall=${_isInCall.value}")
+                    Timber.d("Call state: $state, isInCall=${_isInCall.value}")
                 }
             }
             telephonyCallback = callback
@@ -67,19 +68,17 @@ class CallStateMonitor @Inject constructor(
                         TelephonyManager.CALL_STATE_RINGING -> true
                         else -> false
                     }
-                    Timber.d("Estado de llamada: $state, isInCall=${_isInCall.value}")
+                    Timber.d("Call state: $state, isInCall=${_isInCall.value}")
                 }
             }
             legacyListener = listener
             @Suppress("DEPRECATION")
             telephonyManager?.listen(listener, PhoneStateListener.LISTEN_CALL_STATE)
         }
-        Timber.d("CallStateMonitor iniciado")
+        Timber.d("CallStateMonitor started")
     }
 
-    /**
-     * Detiene la monitorización.
-     */
+    /** Stop monitoring call state. */
     fun stop() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             telephonyCallback?.let { telephonyManager?.unregisterTelephonyCallback(it) }
@@ -89,6 +88,6 @@ class CallStateMonitor @Inject constructor(
         }
         legacyListener = null
         telephonyCallback = null
-        Timber.d("CallStateMonitor detenido")
+        Timber.d("CallStateMonitor stopped")
     }
 }

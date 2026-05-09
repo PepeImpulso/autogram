@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.GraphicEq
@@ -107,7 +108,11 @@ class PendingQueueViewModel @Inject constructor(
     fun pause() = playReplyUseCase.pause()
     fun resume() = playReplyUseCase.resume()
     fun skipNext() = viewModelScope.launch { playReplyUseCase.skipNext() }
+    fun skipPrevious() = viewModelScope.launch { playReplyUseCase.skipPrevious() }
     fun restartCurrent() = viewModelScope.launch { playReplyUseCase.restartCurrent() }
+    fun markAllAsListened() = viewModelScope.launch { playReplyUseCase.markAllPendingAsListened() }
+
+    val canSkipPrevious: StateFlow<Boolean> = playReplyUseCase.canSkipPrevious
 
     fun currentPositionMs(): Int? = playReplyUseCase.currentPositionMs()
     fun durationMs(): Int? = playReplyUseCase.durationMs()
@@ -129,6 +134,8 @@ internal fun PendingQueueTabContent(viewModel: PendingQueueViewModel) {
     val playback by viewModel.playbackStatus.collectAsState()
     val contactFilter by viewModel.contactFilter.collectAsState()
     val pinned by viewModel.pinned.collectAsState()
+    val canSkipPrevious by viewModel.canSkipPrevious.collectAsState()
+    var confirmMarkAll by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         ContactFilterRow(
@@ -144,9 +151,10 @@ internal fun PendingQueueTabContent(viewModel: PendingQueueViewModel) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.End,
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                MarkAllListenedButton(onClick = { confirmMarkAll = true })
                 PlayAllButton(onClick = { viewModel.playAll() })
             }
         }
@@ -191,9 +199,59 @@ internal fun PendingQueueTabContent(viewModel: PendingQueueViewModel) {
             onPause = viewModel::pause,
             onResume = viewModel::resume,
             onSkipNext = { viewModel.skipNext() },
-            onRestart = { viewModel.restartCurrent() },
+            onSkipPrevious = { viewModel.skipPrevious() },
+            canSkipPrevious = canSkipPrevious,
             onSeek = viewModel::seekTo
         )
+    }
+
+    if (confirmMarkAll) {
+        AlertDialog(
+            onDismissRequest = { confirmMarkAll = false },
+            title = { Text(stringResource(R.string.pending_queue_mark_all_confirm_title)) },
+            text = { Text(stringResource(R.string.pending_queue_mark_all_confirm_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmMarkAll = false
+                    viewModel.markAllAsListened()
+                }) {
+                    Text(stringResource(R.string.pending_queue_mark_all_confirm_ok))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmMarkAll = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun MarkAllListenedButton(onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.height(36.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Icon(
+                Icons.Filled.DoneAll,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Text(
+                stringResource(R.string.pending_queue_mark_all_listened),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
     }
 }
 
@@ -253,7 +311,8 @@ private fun NowPlayingPanel(
     onPause: () -> Unit,
     onResume: () -> Unit,
     onSkipNext: () -> Unit,
-    onRestart: () -> Unit,
+    onSkipPrevious: () -> Unit,
+    canSkipPrevious: Boolean,
     onSeek: (Int) -> Unit
 ) {
     if (message == null) return
@@ -386,7 +445,11 @@ private fun NowPlayingPanel(
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        TransportSecondaryButton(icon = Icons.Filled.SkipPrevious, onClick = onRestart)
+                        TransportSecondaryButton(
+                            icon = Icons.Filled.SkipPrevious,
+                            onClick = onSkipPrevious,
+                            enabled = canSkipPrevious
+                        )
                         Spacer(Modifier.width(20.dp))
                         TransportPrimaryButton(isPlaying = isPlaying, onPause = onPause, onResume = onResume)
                         Spacer(Modifier.width(20.dp))
@@ -425,13 +488,17 @@ private fun TransportPrimaryButton(
 @Composable
 private fun TransportSecondaryButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    enabled: Boolean = true
 ) {
     Surface(
         onClick = onClick,
+        enabled = enabled,
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentColor = MaterialTheme.colorScheme.onSurface,
+        color = if (enabled) MaterialTheme.colorScheme.surfaceContainerHigh
+                else MaterialTheme.colorScheme.surfaceVariant,
+        contentColor = if (enabled) MaterialTheme.colorScheme.onSurface
+                       else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
         modifier = Modifier.size(44.dp)
     ) {
         Box(contentAlignment = Alignment.Center) {

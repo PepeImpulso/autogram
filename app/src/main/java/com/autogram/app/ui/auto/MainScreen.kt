@@ -479,7 +479,7 @@ class MainScreen(
         screenScope.launch {
             val result = sendMessageUseCase.startRecording(targetId)
             if (result.isFailure) {
-                Timber.e(result.exceptionOrNull(), "Error al iniciar grabación")
+                Timber.e(result.exceptionOrNull(), "Failed to start recording")
             }
             invalidate()
         }

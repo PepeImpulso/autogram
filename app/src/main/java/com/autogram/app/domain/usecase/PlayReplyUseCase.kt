@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
@@ -145,6 +146,14 @@ class PlayReplyUseCase @Inject constructor(
 
     // BUG-43 FIX: Thread-safe list for concurrent access from multiple coroutines
     private val pendingQueue = Collections.synchronizedList(mutableListOf<Message>())
+    // Bounded history of messages that have just finished playing — feeds the
+    // skip-previous control so the user can step back through the queue.
+    // Capped to keep memory tiny; only the most recent few are useful in a
+    // skip-back UI flow.
+    private val playedHistory = ArrayDeque<Message>(PLAYED_HISTORY_CAP)
+    private val playedHistoryLock = Any()
+    private val _canSkipPrevious = MutableStateFlow(false)
+    val canSkipPrevious: StateFlow<Boolean> = _canSkipPrevious.asStateFlow()
     // Audit-HIGH-4: serializes the "start playing" critical section so two
     // concurrent playVoiceMessage() calls can't both see isPlaying==false
     // and race to start MediaPlayer twice, dropping the first message.
@@ -275,8 +284,9 @@ class PlayReplyUseCase @Inject constructor(
                         state = MessageState.PLAYED,
                         playedAt = System.currentTimeMillis()
                     ))
+                    pushPlayedHistory(message)
                 } else {
-                    Timber.e(playResult.exceptionOrNull(), "Error reproduciendo mensaje ${message.id}")
+                    Timber.e(playResult.exceptionOrNull(), "Playback failed for ${message.id}")
                     messageRepository.update(message.copy(
                         state = MessageState.FAILED,
                         errorMessage = playResult.exceptionOrNull()?.message
@@ -288,7 +298,7 @@ class PlayReplyUseCase @Inject constructor(
         }
 
             if (result.isFailure) {
-                Timber.e(result.exceptionOrNull(), "Error reproduciendo mensaje ${message.id}")
+                Timber.e(result.exceptionOrNull(), "Playback failed for ${message.id}")
                 messageRepository.update(message.copy(
                     state = MessageState.FAILED,
                     errorMessage = result.exceptionOrNull()?.message
@@ -345,6 +355,7 @@ class PlayReplyUseCase @Inject constructor(
                         state = MessageState.PLAYED,
                         playedAt = System.currentTimeMillis()
                     ))
+                    pushPlayedHistory(message)
                 } else {
                     messageRepository.update(message.copy(
                         state = MessageState.FAILED,
@@ -394,6 +405,7 @@ class PlayReplyUseCase @Inject constructor(
                     state = MessageState.PLAYED,
                     playedAt = System.currentTimeMillis()
                 ))
+                pushPlayedHistory(message)
                 currentPlayingId = null
                 _playbackStatus.value = PlaybackStatus.Idle
                 mediaPlayback.markStopped()
@@ -502,6 +514,7 @@ class PlayReplyUseCase @Inject constructor(
                         state = MessageState.PLAYED,
                         playedAt = System.currentTimeMillis()
                     ))
+                    pushPlayedHistory(message)
                     currentPlayingId = null
                     _playbackStatus.value = PlaybackStatus.Idle
                     playNext()
@@ -585,6 +598,7 @@ class PlayReplyUseCase @Inject constructor(
                         state = MessageState.PLAYED,
                         playedAt = System.currentTimeMillis()
                     ))
+                    pushPlayedHistory(message)
                     currentPlayingId = null
                     playNext()
                 }
@@ -727,7 +741,7 @@ class PlayReplyUseCase @Inject constructor(
         ))
         _playbackStatus.value = PlaybackStatus.PendingCount(pendingCount())
         pendingReplyNotifier.notifyPending(pendingCount())
-        Timber.d("Mensaje ${message.id} encolado. Razón: $reason. Pendientes: ${pendingCount()}")
+        Timber.d("Message ${message.id} enqueued (reason=$reason, pending=${pendingCount()})")
     }
 
     /**
@@ -752,7 +766,7 @@ class PlayReplyUseCase @Inject constructor(
         }
         if (pendingQueue.isNotEmpty()) {
             _playbackStatus.value = PlaybackStatus.PendingCount(pendingCount())
-            Timber.d("Restaurados ${pendingQueue.size} mensajes pendientes de reproducción")
+            Timber.d("Restored ${pendingQueue.size} pending playbacks")
         }
     }
 
@@ -921,11 +935,82 @@ class PlayReplyUseCase @Inject constructor(
     }
 
     /**
-     * Restart the currently-playing message from the beginning. Used by
-     * the skip-previous button in the Pending Queue's Now Playing panel.
-     * If nothing is playing, no-op. We don't track played history, so
-     * "previous" can't go back to a finished message — restart is the
-     * sensible interpretation.
+     * Step back to the previous-played message. Pops the most recent entry
+     * from [playedHistory], stops the current playback, pushes the current
+     * message to the front of the pending queue (so resuming the drain picks
+     * up where we left off), and re-plays the popped one. No-op when history
+     * is empty. Drives the skip-previous transport button.
+     */
+    suspend fun skipPrevious() {
+        val previous = synchronized(playedHistoryLock) {
+            if (playedHistory.isEmpty()) return
+            playedHistory.removeLast().also {
+                _canSkipPrevious.value = playedHistory.isNotEmpty()
+            }
+        }
+        val currentId = currentPlayingId
+        val currentMsg = currentId?.let {
+            runCatching { messageRepository.getById(it) }.getOrNull()
+        }
+        audioPlayer.stop()
+        ttsPlayer.cancel()
+        currentPlayingId = null
+        synchronized(pendingQueue) {
+            // Re-insert so the drain order becomes [previous, current, ...rest].
+            if (currentMsg != null) pendingQueue.add(0, currentMsg)
+            pendingQueue.add(0, previous)
+        }
+        _playbackStatus.value = PlaybackStatus.PendingCount(pendingQueue.size)
+        playNext()
+    }
+
+    /**
+     * Bulk acknowledge: drop every pending playback row, mark the underlying
+     * messages as PLAYED, clear the in-memory queue, and stop any current
+     * playback. Used by the "Mark all as listened" button in the Pending
+     * Queue tab so the user can clear a backlog without hearing it through.
+     */
+    suspend fun markAllPendingAsListened() {
+        audioPlayer.stop()
+        ttsPlayer.cancel()
+        currentPlayingId = null
+        val drained: List<Message> = synchronized(pendingQueue) {
+            val copy = pendingQueue.toList()
+            pendingQueue.clear()
+            copy
+        }
+        val now = System.currentTimeMillis()
+        for (m in drained) {
+            runCatching {
+                pendingPlaybackDao.deleteByMessageId(m.id)
+                messageRepository.update(m.copy(state = MessageState.PLAYED, playedAt = now))
+            }.onFailure { Timber.w(it, "markAllPendingAsListened failed for ${m.id}") }
+        }
+        synchronized(playedHistoryLock) {
+            playedHistory.clear()
+            _canSkipPrevious.value = false
+        }
+        _playbackStatus.value = PlaybackStatus.Idle
+        pendingReplyNotifier.cancel()
+        mediaPlayback.markStopped()
+    }
+
+    /** Capacity-bounded push to [playedHistory]; refreshes the canSkipPrevious flow. */
+    private fun pushPlayedHistory(msg: Message) {
+        synchronized(playedHistoryLock) {
+            // De-duplicate consecutive entries — a manual replay of the same
+            // message shouldn't grow history.
+            if (playedHistory.lastOrNull()?.id == msg.id) return
+            playedHistory.addLast(msg)
+            while (playedHistory.size > PLAYED_HISTORY_CAP) playedHistory.removeFirst()
+            _canSkipPrevious.value = playedHistory.isNotEmpty()
+        }
+    }
+
+    /**
+     * Restart the currently-playing message from the beginning. Kept as a
+     * separate API from [skipPrevious]: skip goes to the prior message in
+     * history, restart re-plays *this* one.
      */
     suspend fun restartCurrent() {
         val playingId = currentPlayingId ?: return
@@ -1074,6 +1159,14 @@ class PlayReplyUseCase @Inject constructor(
          * queue is stuck.
          */
         private const val POST_RECORDING_DRAIN_DELAY_MS: Long = 2_000L
+
+        /**
+         * Bounded depth of [playedHistory]. Five steps back covers the
+         * "I just listened past the message I cared about" case; deeper
+         * history is wasted memory because nobody scrolls back further
+         * than that on a transport control.
+         */
+        private const val PLAYED_HISTORY_CAP: Int = 5
     }
 
     private suspend fun playQueued(message: Message) {

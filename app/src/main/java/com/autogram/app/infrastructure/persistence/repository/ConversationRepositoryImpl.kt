@@ -67,7 +67,7 @@ class ConversationRepositoryImpl @Inject constructor(
 
     private fun ConversationEntity.toDomain() = Conversation(
         id = id, targetChatId = targetChatId, targetTitle = targetTitle,
-        botToken = botToken, isActive = isActive, createdAt = createdAt,
+        isActive = isActive, createdAt = createdAt,
         lastMessageAt = lastMessageAt, topicId = topicId, topicName = topicName,
         isPinned = isPinned, photoLocalPath = photoLocalPath, sortOrder = sortOrder,
         lastRepliedAt = lastRepliedAt, folderId = folderId
@@ -75,7 +75,7 @@ class ConversationRepositoryImpl @Inject constructor(
 
     private fun Conversation.toEntity() = ConversationEntity(
         id = id, targetChatId = targetChatId, targetTitle = targetTitle,
-        botToken = botToken, isActive = isActive, createdAt = createdAt,
+        isActive = isActive, createdAt = createdAt,
         lastMessageAt = lastMessageAt, topicId = topicId, topicName = topicName,
         isPinned = isPinned, photoLocalPath = photoLocalPath, sortOrder = sortOrder,
         lastRepliedAt = lastRepliedAt, folderId = folderId

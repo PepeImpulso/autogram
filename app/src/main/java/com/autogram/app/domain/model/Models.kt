@@ -81,7 +81,6 @@ data class Conversation(
     val id: String,
     val targetChatId: String,
     val targetTitle: String? = null,
-    val botToken: String,
     val isActive: Boolean = true,
     val createdAt: Long = System.currentTimeMillis(),
     val lastMessageAt: Long? = null,
@@ -125,7 +124,11 @@ data class QuickReply(
     val audioFilePath: String? = null,
     val audioDurationMs: Long = 0L,
     val position: Int,
-    val isEnabled: Boolean = true
+    val isEnabled: Boolean = true,
+    // null = follow the primary circle. Non-null = always send to this
+    // specific Conversation.id when the shortcut is tapped, ignoring
+    // whichever circle happens to be primary at the moment.
+    val targetConversationId: String? = null
 )
 
 data class AppSettings(

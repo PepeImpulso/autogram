@@ -53,7 +53,6 @@ class OutboxRetryUseCaseTest {
     private val sampleConversation = Conversation(
         id = "c1",
         targetChatId = "12345",
-        botToken = "tok",
         targetTitle = "Merlin"
     )
 
