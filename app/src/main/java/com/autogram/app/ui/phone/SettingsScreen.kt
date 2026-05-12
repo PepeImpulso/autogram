@@ -361,7 +361,7 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 )
                 SettingsDivider()
                 AaRoutingDiagnosticsRow(
-                    lastRoutedType = state.lastRoutedDeviceType
+                    attempt = state.lastPlaybackAttempt
                 )
                 SettingsDivider()
                 Row(
@@ -940,20 +940,38 @@ private fun AudioFocusModeSelector(
 }
 
 /**
- * Read-only diagnostics row showing the last [android.media.AudioDeviceInfo]
- * type the MediaPlayer routed playback to. Maps the numeric type to a
- * human label so the user can tell "this went to the car (BUS / A2DP)"
- * vs "this went to the phone speaker" without checking Logcat.
+ * v1.24.1 — full PlaybackAttempt diagnostics row. Shows source
+ * (AudioPlayer / TTS), focus result (granted/denied), routed device
+ * label, focus mode used, and timestamp. Tells the user — in-car — not
+ * just where the audio went, but why it went there (or why nothing
+ * played at all): "TTS · denied · phone speaker · Transient+Duck" is a
+ * very different diagnosis from "AudioPlayer · granted · BUS".
  */
 @Composable
-private fun AaRoutingDiagnosticsRow(lastRoutedType: Int?) {
-    val label = when (lastRoutedType) {
-        null -> stringResource(R.string.settings_aa_last_routed_unknown)
-        android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> "Bluetooth A2DP (likely car)"
-        android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "Bluetooth SCO (phone-call channel)"
+private fun AaRoutingDiagnosticsRow(
+    attempt: com.autogram.app.infrastructure.audio.PlaybackDiagnostics.PlaybackAttempt?
+) {
+    if (attempt == null) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Text(
+                text = stringResource(R.string.settings_aa_last_routed),
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Text(
+                text = stringResource(R.string.settings_aa_last_routed_unknown),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        return
+    }
+    val routeLabel = when (attempt.routedDeviceType) {
+        null -> "unknown"
+        android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> "Bluetooth A2DP (car)"
+        android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "Bluetooth SCO"
         android.media.AudioDeviceInfo.TYPE_BLE_HEADSET -> "BLE headset"
         android.media.AudioDeviceInfo.TYPE_BLE_SPEAKER -> "BLE speaker"
-        android.media.AudioDeviceInfo.TYPE_BUS -> "Bus (Android Auto media stream)"
+        android.media.AudioDeviceInfo.TYPE_BUS -> "Bus (AA media stream)"
         android.media.AudioDeviceInfo.TYPE_USB_DEVICE -> "USB device"
         android.media.AudioDeviceInfo.TYPE_USB_ACCESSORY -> "USB accessory"
         android.media.AudioDeviceInfo.TYPE_USB_HEADSET -> "USB headset"
@@ -962,22 +980,34 @@ private fun AaRoutingDiagnosticsRow(lastRoutedType: Int?) {
         android.media.AudioDeviceInfo.TYPE_HDMI_EARC -> "HDMI eARC"
         android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET -> "Wired headset"
         android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> "Wired headphones"
-        android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "Phone speaker (audio did NOT reach the car)"
+        android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "Phone speaker (NOT the car)"
         android.media.AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> "Phone earpiece"
         android.media.AudioDeviceInfo.TYPE_LINE_ANALOG -> "Analog line"
         android.media.AudioDeviceInfo.TYPE_LINE_DIGITAL -> "Digital line"
         android.media.AudioDeviceInfo.TYPE_AUX_LINE -> "AUX line"
         android.media.AudioDeviceInfo.TYPE_TELEPHONY -> "Telephony"
-        else -> "Type $lastRoutedType"
+        else -> "Type ${attempt.routedDeviceType}"
     }
+    val sourceLabel = when (attempt.source) {
+        com.autogram.app.infrastructure.audio.PlaybackDiagnostics.Source.AUDIO_PLAYER -> "AudioPlayer"
+        com.autogram.app.infrastructure.audio.PlaybackDiagnostics.Source.TTS_PLAYER -> "TTS"
+    }
+    val focusLabel = if (attempt.focusGranted) "granted" else "denied (played anyway)"
+    val time = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+        .format(java.util.Date(attempt.timestamp))
     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(
             text = stringResource(R.string.settings_aa_last_routed),
             style = MaterialTheme.typography.bodyLarge
         )
         Text(
-            text = label,
+            text = "$sourceLabel · $routeLabel",
             style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = "focus=$focusLabel · mode=${attempt.focusMode.name} · $time",
+            style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }

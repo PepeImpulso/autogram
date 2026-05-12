@@ -2,4 +2,14 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) -->
     <external-files-path name="downloads" path="Download/" />
+    <!-- v1.24.1 — expose TDLib's voice-note storage so the MessagingStyle
+         notification can hand AA a content:// Uri for the audio file.
+         TDLib writes incoming voices under filesDir/tdlib/files/voice/.
+         Scope is intentionally tight: only that subtree is shared. -->
+    <files-path name="tdlib_voice" path="tdlib/files/voice/" />
+    <!-- Some TDLib builds drop voices into adjacent buckets (documents,
+         music) when MIME detection on the server differs from .ogg.
+         Cover the whole files/ subtree under tdlib/ so a misclassified
+         voice still resolves to a content:// Uri. -->
+    <files-path name="tdlib_files" path="tdlib/files/" />
 </paths>

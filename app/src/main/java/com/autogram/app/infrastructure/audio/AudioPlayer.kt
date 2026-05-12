@@ -10,9 +10,6 @@ import android.media.MediaPlayer
 import android.os.Build
 import com.autogram.app.domain.model.AudioFocusMode
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import timber.log.Timber
 import java.io.File
 import javax.inject.Inject
@@ -29,23 +26,18 @@ import javax.inject.Singleton
  */
 @Singleton
 class AudioPlayer @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val diagnostics: PlaybackDiagnostics
 ) {
     private var mediaPlayer: MediaPlayer? = null
     private var isPlaying = false
     private var audioFocusRequest: AudioFocusRequest? = null
     private var completionHandler: ((Result<Unit>) -> Unit)? = null
-
-    /**
-     * v1.24.0 — last audio output device type the MediaPlayer was routed
-     * to, as reported by `MediaPlayer.routedDevice.type` immediately after
-     * `start()`. Surfaced on the phone Settings "AA audio routing"
-     * diagnostics card so the user can see — in the parked car —
-     * whether a played message went to BLUETOOTH_A2DP / BUS (= AA media
-     * stream) / BUILTIN_SPEAKER / etc. Null = no playback yet this session.
-     */
-    private val _lastRoutedDeviceType = MutableStateFlow<Int?>(null)
-    val lastRoutedDeviceType: StateFlow<Int?> = _lastRoutedDeviceType.asStateFlow()
+    // v1.24.1 — track focus result + focus mode at play() time so the
+    // post-start diagnostics record carries both. Kept private; the
+    // public StateFlow surface lives on [PlaybackDiagnostics].
+    private var lastFocusGranted: Boolean = false
+    private var lastFocusMode: AudioFocusMode = AudioFocusMode.TRANSIENT_MAY_DUCK
 
     /**
      * Play an audio file. Requests audio focus per [focusMode] before
@@ -80,6 +72,8 @@ class AudioPlayer @Inject constructor(
             // even on denial — the platform's mixer is responsible for the
             // final output. See [AudioFocusMode].
             val focusGranted = requestAudioFocus(audioManager, playbackAttributes, focusMode)
+            lastFocusGranted = focusGranted
+            lastFocusMode = focusMode
             if (!focusGranted) {
                 Timber.w("Audio focus denied (likely AA/Maps active) — playing anyway with ducking")
             } else {
@@ -371,8 +365,16 @@ class AudioPlayer @Inject constructor(
     private fun logRoutedDevice(player: MediaPlayer) {
         runCatching {
             val type = player.routedDevice?.type
-            _lastRoutedDeviceType.value = type
-            Timber.i("AudioPlayer started on routed output type=$type")
+            diagnostics.record(
+                source = PlaybackDiagnostics.Source.AUDIO_PLAYER,
+                focusGranted = lastFocusGranted,
+                routedDeviceType = type,
+                focusMode = lastFocusMode
+            )
+            Timber.i(
+                "AudioPlayer started on routed output type=$type " +
+                    "(focusGranted=$lastFocusGranted mode=$lastFocusMode)"
+            )
         }
     }
 

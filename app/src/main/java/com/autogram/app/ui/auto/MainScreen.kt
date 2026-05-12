@@ -492,6 +492,18 @@ class MainScreen(
                     .setIcon(avatarTileIcon(conv, isPrimary = conv == pinned.firstOrNull()))
                     .setMessages(carMessages)
                     .setConversationCallback(callback)
+                    // v1.24.1 — explicit "Reply" Action so the reply UX is
+                    // visible even on AA hosts that don't render the inline
+                    // input from ConversationCallback.onTextReply. Pushes a
+                    // child ConversationReplyScreen with the user's quick
+                    // replies + "Record voice reply" row.
+                    .addAction(
+                        Action.Builder()
+                            .setTitle(carContext.getString(R.string.aa_detail_quick_reply))
+                            .setIcon(carIcon(R.drawable.ic_reply, CarColor.PRIMARY))
+                            .setOnClickListener { openReplyScreen(conv) }
+                            .build()
+                    )
                     .addAction(
                         Action.Builder()
                             .setTitle(carContext.getString(R.string.aa_record))
@@ -783,6 +795,54 @@ class MainScreen(
             val result = sendMessageUseCase.stopAndSend(skipPreview = true)
             if (result.isFailure) {
                 Timber.e(result.exceptionOrNull(), "Error al enviar")
+            }
+            invalidate()
+        }
+    }
+
+    /**
+     * v1.24.1 — push the ConversationReplyScreen child for [conv], wiring
+     * its onSend → [sendShortcut] (which already respects per-shortcut
+     * target pinning via SendVoiceMtprotoUseCase.sendQuickReply) and
+     * onRecord → [startRecording] on the same conversation. The pop
+     * happens inside the child screen on tap, so MainScreen's invalidate
+     * cycle picks up any state change naturally.
+     */
+    private fun openReplyScreen(conv: Conversation) {
+        screenManager.push(
+            ConversationReplyScreen(
+                carContext = carContext,
+                conversation = conv,
+                quickReplies = cachedQuickReplies.value,
+                onSend = { qr -> sendShortcutTo(qr, conv.id) },
+                onRecord = { startRecording(conv.id) }
+            )
+        )
+    }
+
+    /**
+     * v1.24.1 — send a quick reply pinned to a specific conversation
+     * (the one the user opened the reply screen from), regardless of
+     * the shortcut's own `targetConversationId` default. Mirrors
+     * [sendShortcut] for the in-Inbox-reply path.
+     */
+    private fun sendShortcutTo(qr: QuickReply, conversationId: String) {
+        screenScope.launch {
+            when (qr.kind) {
+                QuickReplyKind.TEXT -> sendMessageUseCase.sendQuickReply(
+                    qr.textContent,
+                    targetConversationId = conversationId
+                )
+                QuickReplyKind.VOICE -> {
+                    val path = qr.audioFilePath
+                    if (!path.isNullOrBlank()) {
+                        sendMessageUseCase.sendVoiceShortcut(
+                            audioFilePath = path,
+                            audioDurationMs = qr.audioDurationMs,
+                            targetConversationId = conversationId
+                        )
+                    }
+                }
             }
             invalidate()
         }

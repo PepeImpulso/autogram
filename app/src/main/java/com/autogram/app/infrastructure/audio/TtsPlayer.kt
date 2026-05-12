@@ -2,10 +2,14 @@ package com.autogram.app.infrastructure.audio
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
+import android.os.Build
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import androidx.appcompat.app.AppCompatDelegate
+import com.autogram.app.domain.model.AudioFocusMode
 import com.autogram.app.domain.repository.SettingsRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import timber.log.Timber
@@ -29,10 +33,19 @@ import kotlin.coroutines.suspendCoroutine
 @Singleton
 class TtsPlayer @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val diagnostics: PlaybackDiagnostics
 ) {
     @Volatile private var engine: TextToSpeech? = null
     @Volatile private var initialized = false
+
+    // v1.24.1 — TTS audio focus. Mirrors AudioPlayer.requestAudioFocus
+    // shape. Per-utterance acquire/release so a long idle gap between
+    // queued messages doesn't strand focus held by us. Without this,
+    // AA's audio policy treats USAGE_MEDIA TTS from a background app as
+    // unauthenticated and silently drops it — root cause of Pepe's
+    // "real incoming messages never play" symptom on Seat Ateca.
+    @Volatile private var audioFocusRequest: AudioFocusRequest? = null
 
     // Tracks the callback for the utterance currently in flight. Android
     // TTS does NOT invoke onDone when the engine is `stop()`ed — it
@@ -121,6 +134,29 @@ class TtsPlayer @Inject constructor(
         }
         tts.setAudioAttributes(ttsAttrs)
 
+        // v1.24.1 — request audio focus BEFORE handing the utterance to
+        // the engine. AudioPlayer has always done this for file playback;
+        // TTS had no symmetric call, so on AA the host's audio policy
+        // silently dropped USAGE_MEDIA TTS from background contexts. We
+        // play even on denial (consistent with AudioPlayer) so the queue
+        // doesn't freeze, but log the result + surface it via
+        // [PlaybackDiagnostics] so the user can see denial in Settings.
+        val focusGranted = requestAudioFocus(ttsAttrs, settings.audioFocusMode)
+        if (!focusGranted) {
+            Timber.w(
+                "TTS audio focus denied (likely AA / Maps active) — " +
+                    "speaking anyway with ducking"
+            )
+        } else {
+            Timber.d("TTS audio focus granted")
+        }
+        diagnostics.record(
+            source = PlaybackDiagnostics.Source.TTS_PLAYER,
+            focusGranted = focusGranted,
+            routedDeviceType = currentTtsRouteType(ttsAttrs),
+            focusMode = settings.audioFocusMode
+        )
+
         // Hard-stop anything currently queued/playing before we hand the
         // new utterance to the engine. Combined with QUEUE_FLUSH below
         // this means only one utterance is ever in flight — prevents
@@ -162,6 +198,10 @@ class TtsPlayer @Inject constructor(
                 val cb = pendingOnDone
                 pendingOnDone = null
                 pendingUtteranceId = null
+                // v1.24.1 — release focus before invoking onDone so the
+                // next queued utterance starts cleanly without us holding
+                // stale focus from the previous one.
+                abandonAudioFocus()
                 cb?.invoke()
             }
         })
@@ -172,6 +212,7 @@ class TtsPlayer @Inject constructor(
             val cb = pendingOnDone
             pendingOnDone = null
             pendingUtteranceId = null
+            abandonAudioFocus()
             cb?.invoke()
         }
     }
@@ -186,6 +227,7 @@ class TtsPlayer @Inject constructor(
         pendingOnDone = null
         pendingUtteranceId = null
         runCatching { engine?.stop() }
+        abandonAudioFocus()
         previousOnDone?.invoke()
     }
 
@@ -200,6 +242,7 @@ class TtsPlayer @Inject constructor(
         pendingOnDone = null
         pendingUtteranceId = null
         runCatching { engine?.stop() }
+        abandonAudioFocus()
     }
 
     /** True when the engine currently has an utterance in flight. */
@@ -207,8 +250,74 @@ class TtsPlayer @Inject constructor(
 
     fun shutdown() {
         runCatching { engine?.stop(); engine?.shutdown() }
+        abandonAudioFocus()
         engine = null
         initialized = false
+    }
+
+    /**
+     * v1.24.1 — symmetric with AudioPlayer.requestAudioFocus(). Mode is
+     * read from [AppSettings.audioFocusMode] (cycled by the user from
+     * Settings → AA audio routing). Listener pauses TTS on AUDIOFOCUS_LOSS
+     * so an incoming phone call cuts us off cleanly; transient losses
+     * are ignored so navigation prompts don't chop a sentence in half.
+     */
+    private fun requestAudioFocus(
+        attributes: AudioAttributes,
+        focusMode: AudioFocusMode
+    ): Boolean {
+        // Release any focus we still hold from a prior utterance before
+        // re-requesting. AudioFocusRequest leaks across calls otherwise.
+        abandonAudioFocus()
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val focusGainType = when (focusMode) {
+            AudioFocusMode.TRANSIENT_MAY_DUCK -> AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+            AudioFocusMode.TRANSIENT_EXCLUSIVE -> AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
+            AudioFocusMode.GAIN -> AudioManager.AUDIOFOCUS_GAIN
+        }
+        val request = try {
+            AudioFocusRequest.Builder(focusGainType)
+                .setAudioAttributes(attributes)
+                .setWillPauseWhenDucked(false)
+                .setOnAudioFocusChangeListener { focusChange ->
+                    if (focusChange == AudioManager.AUDIOFOCUS_LOSS) {
+                        cancel()
+                    }
+                }
+                .build()
+        } catch (e: Exception) {
+            Timber.w(e, "TTS AudioFocusRequest build failed; treating as denied")
+            return false
+        }
+        audioFocusRequest = request
+        return audioManager.requestAudioFocus(request) ==
+            AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+    }
+
+    private fun abandonAudioFocus() {
+        try {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+        } catch (_: Exception) {
+        }
+        audioFocusRequest = null
+    }
+
+    /**
+     * v1.24.1 — best-effort lookup of which output device the OS would
+     * route TTS to right now, given [attributes]. Used to feed
+     * [PlaybackDiagnostics] so the AA Settings tab can show "TTS · BUS"
+     * (= car speaker) vs "TTS · BUILTIN_SPEAKER" (= phone speaker, audio
+     * never reached the car) right after every TTS utterance starts.
+     * Returns null on API < 33 where [AudioManager.getAudioDevicesForAttributes]
+     * isn't available.
+     */
+    private fun currentTtsRouteType(attributes: AudioAttributes): Int? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return null
+        return runCatching {
+            val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            am.getAudioDevicesForAttributes(attributes).firstOrNull()?.type
+        }.getOrNull()
     }
 
     private suspend fun ensureEngine(): TextToSpeech? {

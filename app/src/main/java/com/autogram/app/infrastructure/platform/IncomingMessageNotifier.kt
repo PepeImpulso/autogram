@@ -7,9 +7,11 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import androidx.car.app.notification.CarAppExtender
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
@@ -20,6 +22,7 @@ import com.autogram.app.domain.model.Conversation
 import com.autogram.app.ui.phone.MainActivity
 import dagger.hilt.android.qualifiers.ApplicationContext
 import timber.log.Timber
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -113,15 +116,26 @@ class IncomingMessageNotifier @Inject constructor(
 
     /**
      * Fire a new-message notification for an incoming voice note the user
-     * has already received. The actual audio is not attached — we point back
-     * to Autogram where the playback queue handles it.
+     * has already received. v1.24.1 — when [audioFilePath] is a path our
+     * FileProvider can expose, attach the audio Uri to the MessagingStyle
+     * Message so AA's notification reader can play the original voice
+     * through the car speakers itself. Defence in depth: even if our
+     * in-app `AudioPlayer` / `TtsPlayer` playback gets muted by AA's
+     * audio policy on a particular host, AA's media-pipeline path still
+     * works through the notification.
      */
-    fun postVoiceReceived(conversation: Conversation, timestampMs: Long, messageId: String? = null) {
+    fun postVoiceReceived(
+        conversation: Conversation,
+        timestampMs: Long,
+        messageId: String? = null,
+        audioFilePath: String? = null
+    ) {
         postIncoming(
             conversation = conversation,
             timestampMs = timestampMs,
             bodyText = context.getString(R.string.notification_incoming_voice_body),
-            messageId = messageId
+            messageId = messageId,
+            audioFilePath = audioFilePath
         )
     }
 
@@ -136,11 +150,18 @@ class IncomingMessageNotifier @Inject constructor(
             conversation = conversation,
             timestampMs = timestampMs,
             bodyText = trimmed,
-            messageId = messageId
+            messageId = messageId,
+            audioFilePath = null
         )
     }
 
-    private fun postIncoming(conversation: Conversation, timestampMs: Long, bodyText: String, messageId: String?) {
+    private fun postIncoming(
+        conversation: Conversation,
+        timestampMs: Long,
+        bodyText: String,
+        messageId: String?,
+        audioFilePath: String?
+    ) {
         ensureChannel()
 
         val senderName = conversation.targetTitle ?: context.getString(R.string.main_default_primary_name)
@@ -159,6 +180,28 @@ class IncomingMessageNotifier @Inject constructor(
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
+        // v1.24.1 — when there's a voice file, expose it via our existing
+        // FileProvider so AA can read the audio Uri and play the original
+        // voice through the car speakers. Falls back to text-only if
+        // FileProvider can't expose the path (file outside its scope).
+        val audioUri: Uri? = audioFilePath
+            ?.takeIf { it.isNotBlank() }
+            ?.let { path ->
+                runCatching {
+                    FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        File(path)
+                    )
+                }.onFailure {
+                    Timber.w(it, "FileProvider couldn't expose voice note $path")
+                }.getOrNull()
+            }
+
+        val message = NotificationCompat.MessagingStyle.Message(bodyText, timestampMs, sender)
+        if (audioUri != null) {
+            message.setData("audio/ogg", audioUri)
+        }
         val messagingStyle = NotificationCompat.MessagingStyle(
             Person.Builder().setName(context.getString(R.string.app_name)).build()
         )
@@ -166,9 +209,7 @@ class IncomingMessageNotifier @Inject constructor(
                 append(senderName)
                 conversation.topicName?.let { append(" › ").append(it) }
             })
-            .addMessage(
-                NotificationCompat.MessagingStyle.Message(bodyText, timestampMs, sender)
-            )
+            .addMessage(message)
 
         val listenAction = messageId?.let { buildListenAction(it, notificationId) }
         val replyAction = buildReplyAction(conversation.id, notificationId)

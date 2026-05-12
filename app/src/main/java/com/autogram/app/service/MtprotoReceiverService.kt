@@ -267,7 +267,12 @@ class MtprotoReceiverService : Service() {
         incomingMessageNotifier.postVoiceReceived(
             conversation = target,
             timestampMs = message.createdAt,
-            messageId = message.id
+            messageId = message.id,
+            // v1.24.1 — pass the downloaded voice path so the MessagingStyle
+            // message carries an audio Uri AA can play through the car
+            // speakers itself. Fallback to text-only is handled in the
+            // notifier when FileProvider can't expose the path.
+            audioFilePath = localPath
         )
         val inCall = callStateMonitor.isInCall.value
         Timber.i(

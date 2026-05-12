@@ -3,16 +3,22 @@
     <!-- template: required for androidx.car.app projected apps (screens
          rendered on the car head unit). Listed first so Gearhead's
          launcher tap routes through our CarAppService into our
-         ListTemplate (pinned conversations + recent messages). -->
+         TabTemplate (Inbox / Shortcuts / Pending / Settings). -->
     <uses name="template" />
-    <!-- v1.22.1 — declare media so Autogram appears in Android Auto's
-         media tab alongside Spotify / Apple Music. The MediaBrowser-
-         ServiceCompat at .service.AutogramMediaBrowserService surfaces
-         pending + history voice messages as a browseable catalog, and
-         playback runs through a MediaSessionCompat AA recognizes —
-         which is what fixes audio routing on USB AA where the phone
-         speaker is muted by AA's audio policy. -->
-    <uses name="media" />
+    <!-- v1.24.1 — `<uses name="media"/>` removed. The Media tab was
+         dual-billing as a second entry point (alongside Apps/Comm),
+         and users (Pepe) kept landing there expecting the full app
+         and finding only the browseable catalog. Removing the media
+         capability hides Autogram from AA's Media tab so the only
+         car-side entry is the messaging template — where reply +
+         record actually live. MediaSessionCompat is still active
+         under the hood (Bluetooth transport, lock-screen Now Playing,
+         AA's audio routing all key off the session token, not the
+         descriptor), so we don't lose audio plumbing. The
+         AutogramMediaBrowserService stays in code as a no-op
+         session-token publisher for notification-driven playback.
+         If a regression around audio routing surfaces, restore this
+         line and audit AA's audio policy on the specific Gearhead. -->
     <!-- v1.23.2 — declare notification so AA recognizes Autogram as a
          messaging-class app and surfaces the inline Reply button on the
          heads-up notification banner. Without this, the MessagingStyle

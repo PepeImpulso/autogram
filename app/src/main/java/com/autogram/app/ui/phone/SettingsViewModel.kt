@@ -11,6 +11,7 @@ import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.domain.usecase.ExportImportUseCase
 import com.autogram.app.infrastructure.audio.AudioPlayer
+import com.autogram.app.infrastructure.audio.PlaybackDiagnostics
 import com.autogram.app.infrastructure.audio.TtsPlayer
 import com.autogram.app.infrastructure.platform.LocaleHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -27,10 +28,11 @@ class SettingsViewModel @Inject constructor(
     private val conversationRepository: ConversationRepository,
     private val exportImportUseCase: ExportImportUseCase,
     // v1.24.0 — wired for the "Test playback" button in the AA audio routing
-    // section. AudioPlayer.lastRoutedDeviceType is also observed for the
-    // diagnostics row that shows where the last playback actually went.
+    // section. v1.24.1 — diagnostics row now reads from [PlaybackDiagnostics]
+    // (covers both AudioPlayer + TtsPlayer) instead of AudioPlayer-only.
     private val audioPlayer: AudioPlayer,
-    private val ttsPlayer: TtsPlayer
+    private val ttsPlayer: TtsPlayer,
+    private val playbackDiagnostics: PlaybackDiagnostics
 ) : AndroidViewModel(application) {
 
     sealed class BackupEvent {
@@ -78,8 +80,8 @@ class SettingsViewModel @Inject constructor(
             )
         }
         viewModelScope.launch {
-            audioPlayer.lastRoutedDeviceType.collect { type ->
-                _uiState.value = _uiState.value.copy(lastRoutedDeviceType = type)
+            playbackDiagnostics.lastAttempt.collect { attempt ->
+                _uiState.value = _uiState.value.copy(lastPlaybackAttempt = attempt)
             }
         }
         viewModelScope.launch {
@@ -466,7 +468,8 @@ data class SettingsUiState(
     val targetTopicName: String? = null,
     val audioFocusMode: AudioFocusMode = AudioFocusMode.TRANSIENT_MAY_DUCK,
     val ttsAsNavigationPrompt: Boolean = false,
-    // Last AudioDeviceInfo.TYPE_* the MediaPlayer was routed to, surfaced
-    // for the AA audio routing diagnostics row. Null = no playback yet.
-    val lastRoutedDeviceType: Int? = null
+    // v1.24.1 — the last playback attempt (file or TTS), with source +
+    // focus result + routed device + focus mode + timestamp. Null = no
+    // playback yet this session.
+    val lastPlaybackAttempt: PlaybackDiagnostics.PlaybackAttempt? = null
 )
