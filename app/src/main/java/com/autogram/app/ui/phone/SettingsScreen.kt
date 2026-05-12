@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.TextFields
@@ -337,6 +338,54 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                     checked = state.keepScreenOn,
                     onCheckedChange = viewModel::updateKeepScreenOn
                 )
+            }
+
+            // v1.24.0 — Android Auto audio-routing diagnostics. Lives just
+            // below Playback so users hitting "voice didn't reach the car
+            // speaker" find it next to the related controls.
+            SectionCard(
+                icon = Icons.Filled.DirectionsCar,
+                title = stringResource(R.string.settings_section_aa_routing),
+                subtitle = stringResource(R.string.settings_section_aa_routing_sub)
+            ) {
+                AudioFocusModeSelector(
+                    current = state.audioFocusMode,
+                    onSelect = viewModel::updateAudioFocusMode
+                )
+                SettingsDivider()
+                SwitchRow(
+                    label = stringResource(R.string.settings_aa_tts_nav_prompt),
+                    supporting = stringResource(R.string.settings_aa_tts_nav_prompt_sub),
+                    checked = state.ttsAsNavigationPrompt,
+                    onCheckedChange = viewModel::updateTtsAsNavigationPrompt
+                )
+                SettingsDivider()
+                AaRoutingDiagnosticsRow(
+                    lastRoutedType = state.lastRoutedDeviceType
+                )
+                SettingsDivider()
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.settings_aa_test_playback),
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Text(
+                            stringResource(R.string.settings_aa_test_playback_sub),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Button(onClick = viewModel::runTestPlayback) {
+                        Text(stringResource(R.string.settings_aa_test_playback))
+                    }
+                }
             }
 
             SectionCard(
@@ -836,6 +885,101 @@ private fun LanguageSelector(currentTag: String, onSelect: (String) -> Unit) {
             }
             if (i < options.lastIndex) SettingsDivider()
         }
+    }
+}
+
+/**
+ * v1.24.0 — three-way picker for [AudioFocusMode]. Same look as
+ * [LanguageSelector] (radio rows) so it fits inside the AA routing
+ * section card without introducing a new control style. Tapping a row
+ * persists the value via [SettingsViewModel.updateAudioFocusMode].
+ */
+@Composable
+private fun AudioFocusModeSelector(
+    current: com.autogram.app.domain.model.AudioFocusMode,
+    onSelect: (com.autogram.app.domain.model.AudioFocusMode) -> Unit
+) {
+    val options = listOf(
+        com.autogram.app.domain.model.AudioFocusMode.TRANSIENT_MAY_DUCK to
+            stringResource(R.string.settings_aa_focus_transient_may_duck),
+        com.autogram.app.domain.model.AudioFocusMode.TRANSIENT_EXCLUSIVE to
+            stringResource(R.string.settings_aa_focus_transient),
+        com.autogram.app.domain.model.AudioFocusMode.GAIN to
+            stringResource(R.string.settings_aa_focus_gain)
+    )
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = stringResource(R.string.settings_aa_focus_mode),
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+        )
+        Text(
+            text = stringResource(R.string.settings_aa_focus_mode_sub),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
+        options.forEachIndexed { i, (mode, label) ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onSelect(mode) }
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = mode == current,
+                    onClick = { onSelect(mode) }
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(label, style = MaterialTheme.typography.bodyMedium)
+            }
+            if (i < options.lastIndex) SettingsDivider()
+        }
+    }
+}
+
+/**
+ * Read-only diagnostics row showing the last [android.media.AudioDeviceInfo]
+ * type the MediaPlayer routed playback to. Maps the numeric type to a
+ * human label so the user can tell "this went to the car (BUS / A2DP)"
+ * vs "this went to the phone speaker" without checking Logcat.
+ */
+@Composable
+private fun AaRoutingDiagnosticsRow(lastRoutedType: Int?) {
+    val label = when (lastRoutedType) {
+        null -> stringResource(R.string.settings_aa_last_routed_unknown)
+        android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> "Bluetooth A2DP (likely car)"
+        android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "Bluetooth SCO (phone-call channel)"
+        android.media.AudioDeviceInfo.TYPE_BLE_HEADSET -> "BLE headset"
+        android.media.AudioDeviceInfo.TYPE_BLE_SPEAKER -> "BLE speaker"
+        android.media.AudioDeviceInfo.TYPE_BUS -> "Bus (Android Auto media stream)"
+        android.media.AudioDeviceInfo.TYPE_USB_DEVICE -> "USB device"
+        android.media.AudioDeviceInfo.TYPE_USB_ACCESSORY -> "USB accessory"
+        android.media.AudioDeviceInfo.TYPE_USB_HEADSET -> "USB headset"
+        android.media.AudioDeviceInfo.TYPE_HDMI -> "HDMI"
+        android.media.AudioDeviceInfo.TYPE_HDMI_ARC -> "HDMI ARC"
+        android.media.AudioDeviceInfo.TYPE_HDMI_EARC -> "HDMI eARC"
+        android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET -> "Wired headset"
+        android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> "Wired headphones"
+        android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "Phone speaker (audio did NOT reach the car)"
+        android.media.AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> "Phone earpiece"
+        android.media.AudioDeviceInfo.TYPE_LINE_ANALOG -> "Analog line"
+        android.media.AudioDeviceInfo.TYPE_LINE_DIGITAL -> "Digital line"
+        android.media.AudioDeviceInfo.TYPE_AUX_LINE -> "AUX line"
+        android.media.AudioDeviceInfo.TYPE_TELEPHONY -> "Telephony"
+        else -> "Type $lastRoutedType"
+    }
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text(
+            text = stringResource(R.string.settings_aa_last_routed),
+            style = MaterialTheme.typography.bodyLarge
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 

@@ -5,14 +5,19 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.autogram.app.domain.model.AudioFocusMode
 import com.autogram.app.domain.model.SummaryEngineType
 import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.domain.usecase.ExportImportUseCase
+import com.autogram.app.infrastructure.audio.AudioPlayer
+import com.autogram.app.infrastructure.audio.TtsPlayer
 import com.autogram.app.infrastructure.platform.LocaleHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import timber.log.Timber
+import java.io.File
 import javax.inject.Inject
 
 @HiltViewModel
@@ -20,7 +25,12 @@ class SettingsViewModel @Inject constructor(
     application: Application,
     private val settingsRepository: SettingsRepository,
     private val conversationRepository: ConversationRepository,
-    private val exportImportUseCase: ExportImportUseCase
+    private val exportImportUseCase: ExportImportUseCase,
+    // v1.24.0 — wired for the "Test playback" button in the AA audio routing
+    // section. AudioPlayer.lastRoutedDeviceType is also observed for the
+    // diagnostics row that shows where the last playback actually went.
+    private val audioPlayer: AudioPlayer,
+    private val ttsPlayer: TtsPlayer
 ) : AndroidViewModel(application) {
 
     sealed class BackupEvent {
@@ -62,8 +72,15 @@ class SettingsViewModel @Inject constructor(
                 summaryLlmApiKey = settings.summaryLlmApiKey,
                 summaryLlmModel = settings.summaryLlmModel,
                 keepScreenOn = settings.keepScreenOn,
-                developerMode = settings.developerMode
+                developerMode = settings.developerMode,
+                audioFocusMode = settings.audioFocusMode,
+                ttsAsNavigationPrompt = settings.ttsAsNavigationPrompt
             )
+        }
+        viewModelScope.launch {
+            audioPlayer.lastRoutedDeviceType.collect { type ->
+                _uiState.value = _uiState.value.copy(lastRoutedDeviceType = type)
+            }
         }
         viewModelScope.launch {
             conversationRepository.observeActive().collect { target ->
@@ -215,6 +232,118 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun updateAudioFocusMode(mode: AudioFocusMode) {
+        _uiState.value = _uiState.value.copy(audioFocusMode = mode)
+        viewModelScope.launch {
+            val s = settingsRepository.get()
+            settingsRepository.update(s.copy(audioFocusMode = mode))
+        }
+    }
+
+    fun updateTtsAsNavigationPrompt(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(ttsAsNavigationPrompt = enabled)
+        viewModelScope.launch {
+            val s = settingsRepository.get()
+            settingsRepository.update(s.copy(ttsAsNavigationPrompt = enabled))
+        }
+    }
+
+    /**
+     * v1.24.0 — fires a short test tone through AudioPlayer (exercises the
+     * voice-message path) followed by a TTS sample (exercises the text-message
+     * path), both using the currently-selected audio focus mode + TTS routing
+     * toggle. Intended to be tapped in the parked car: cycle through modes,
+     * tap the button, listen for the result through the car speakers.
+     *
+     * The tone is a 600 ms 440 Hz sine synthesised inline and dropped into
+     * cacheDir, so no bundled asset is shipped.
+     */
+    fun runTestPlayback() {
+        viewModelScope.launch {
+            val settings = settingsRepository.get()
+            try {
+                val toneFile = synthesiseTestTone()
+                audioPlayer.play(
+                    toneFile,
+                    speed = 1f,
+                    focusMode = settings.audioFocusMode
+                ) {
+                    // Once the tone finishes, speak a short test phrase so the
+                    // user also hears the TTS path. TTS reads the current
+                    // [AppSettings.ttsAsNavigationPrompt] from the same
+                    // settingsRepository instance.
+                    viewModelScope.launch {
+                        ttsPlayer.speak(
+                            getApplication<Application>().getString(
+                                com.autogram.app.R.string.settings_aa_routing_test_phrase
+                            )
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Timber.w(e, "Test playback failed")
+            }
+        }
+    }
+
+    /**
+     * Generates a 600 ms, 440 Hz, 50 % amplitude 16-bit mono PCM WAV in
+     * cacheDir and returns the resulting File. Idempotent — the file is
+     * rewritten on every call so we always have a fresh, valid tone even
+     * if cacheDir was wiped by the OS.
+     */
+    private fun synthesiseTestTone(): File {
+        val sampleRate = 44_100
+        val durationMs = 600
+        val numSamples = sampleRate * durationMs / 1000
+        val pcm = ByteArray(numSamples * 2)
+        val amplitude = (Short.MAX_VALUE * 0.5).toInt()
+        for (i in 0 until numSamples) {
+            val sample = (kotlin.math.sin(2.0 * Math.PI * i * 440.0 / sampleRate) * amplitude).toInt()
+            pcm[i * 2] = (sample and 0xff).toByte()
+            pcm[i * 2 + 1] = ((sample shr 8) and 0xff).toByte()
+        }
+        val dataLen = pcm.size
+        val totalLen = 36 + dataLen
+        val header = ByteArray(44).apply {
+            // RIFF header
+            this[0] = 'R'.code.toByte(); this[1] = 'I'.code.toByte()
+            this[2] = 'F'.code.toByte(); this[3] = 'F'.code.toByte()
+            writeIntLE(this, 4, totalLen)
+            this[8] = 'W'.code.toByte(); this[9] = 'A'.code.toByte()
+            this[10] = 'V'.code.toByte(); this[11] = 'E'.code.toByte()
+            // fmt subchunk
+            this[12] = 'f'.code.toByte(); this[13] = 'm'.code.toByte()
+            this[14] = 't'.code.toByte(); this[15] = ' '.code.toByte()
+            writeIntLE(this, 16, 16)        // subchunk1 size (PCM)
+            writeShortLE(this, 20, 1)       // PCM format
+            writeShortLE(this, 22, 1)       // mono
+            writeIntLE(this, 24, sampleRate)
+            writeIntLE(this, 28, sampleRate * 2) // byte rate
+            writeShortLE(this, 32, 2)       // block align
+            writeShortLE(this, 34, 16)      // bits per sample
+            // data subchunk
+            this[36] = 'd'.code.toByte(); this[37] = 'a'.code.toByte()
+            this[38] = 't'.code.toByte(); this[39] = 'a'.code.toByte()
+            writeIntLE(this, 40, dataLen)
+        }
+        val file = File(getApplication<Application>().cacheDir, "audio_routing_test_tone.wav")
+        file.writeBytes(header + pcm)
+        return file
+    }
+
+    private fun writeIntLE(buf: ByteArray, offset: Int, value: Int) {
+        buf[offset] = (value and 0xff).toByte()
+        buf[offset + 1] = ((value shr 8) and 0xff).toByte()
+        buf[offset + 2] = ((value shr 16) and 0xff).toByte()
+        buf[offset + 3] = ((value shr 24) and 0xff).toByte()
+    }
+
+    private fun writeShortLE(buf: ByteArray, offset: Int, value: Int) {
+        buf[offset] = (value and 0xff).toByte()
+        buf[offset + 1] = ((value shr 8) and 0xff).toByte()
+    }
+
     fun updateSummaryLlmModel(model: String) {
         // Provider model names are short identifiers (e.g. gpt-4o-mini).
         val sanitised = model.trim().filter { it.code >= 0x20 }.take(128)
@@ -334,5 +463,10 @@ data class SettingsUiState(
     val lastSaveMessage: String? = null,
     val hasTarget: Boolean = false,
     val targetTitle: String? = null,
-    val targetTopicName: String? = null
+    val targetTopicName: String? = null,
+    val audioFocusMode: AudioFocusMode = AudioFocusMode.TRANSIENT_MAY_DUCK,
+    val ttsAsNavigationPrompt: Boolean = false,
+    // Last AudioDeviceInfo.TYPE_* the MediaPlayer was routed to, surfaced
+    // for the AA audio routing diagnostics row. Null = no playback yet.
+    val lastRoutedDeviceType: Int? = null
 )

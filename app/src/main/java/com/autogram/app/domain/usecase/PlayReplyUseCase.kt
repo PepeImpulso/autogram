@@ -274,7 +274,11 @@ class PlayReplyUseCase @Inject constructor(
             _playbackStatus.value = PlaybackStatus.Playing(message.id)
             markMediaSessionPlaying(message)
 
-            val result = audioPlayer.play(audioFile, speed = settings.playbackSpeed) { playResult ->
+            val result = audioPlayer.play(
+                audioFile,
+                speed = settings.playbackSpeed,
+                focusMode = settings.audioFocusMode
+            ) { playResult ->
             // Use a scoped coroutine (not runBlocking) so the MediaPlayer
             // callback thread doesn't block on DB writes.
             playbackScope.launch {
@@ -357,8 +361,12 @@ class PlayReplyUseCase @Inject constructor(
         messageRepository.update(message.copy(state = MessageState.PLAYING))
         _playbackStatus.value = PlaybackStatus.Playing(message.id)
         markMediaSessionPlaying(message)
-        val speed = settingsRepository.get().playbackSpeed
-        val result = audioPlayer.play(audioFile, speed = speed) { playResult ->
+        val manualSettings = settingsRepository.get()
+        val result = audioPlayer.play(
+            audioFile,
+            speed = manualSettings.playbackSpeed,
+            focusMode = manualSettings.audioFocusMode
+        ) { playResult ->
             playbackScope.launch {
                 if (playResult.isSuccess) {
                     messageRepository.update(message.copy(

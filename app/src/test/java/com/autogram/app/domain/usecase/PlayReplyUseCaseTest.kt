@@ -69,7 +69,7 @@ class PlayReplyUseCaseTest {
         mediaPlayback = mockk(relaxed = true)
 
         every { audioPlayer.isPlaying() } returns false
-        every { audioPlayer.play(any(), any(), any()) } returns Result.success(Unit)
+        every { audioPlayer.play(any(), any(), any(), any()) } returns Result.success(Unit)
         every { audioRecorder.isRecording() } returns false
         coEvery { settingsRepository.get() } returns defaultSettings
 
@@ -121,7 +121,7 @@ class PlayReplyUseCaseTest {
         coVerify { messageRepository.update(match { it.state == MessageState.PENDING_PLAYBACK }) }
         coVerify { pendingPlaybackDao.insert(match { it.reason == PendingReason.IN_CALL }) }
         // And no playback was kicked off.
-        verify(exactly = 0) { audioPlayer.play(any(), any(), any()) }
+        verify(exactly = 0) { audioPlayer.play(any(), any(), any(), any()) }
     }
 
     @Test fun `autoPlay off enqueues with SILENT_MODE reason`() = runTest {
@@ -131,7 +131,7 @@ class PlayReplyUseCaseTest {
         val msg = voiceMessage()
         useCase.playVoiceMessage(msg, isCallActive = false)
         coVerify { pendingPlaybackDao.insert(match { it.reason == PendingReason.SILENT_MODE }) }
-        verify(exactly = 0) { audioPlayer.play(any(), any(), any()) }
+        verify(exactly = 0) { audioPlayer.play(any(), any(), any(), any()) }
     }
 
     @Test fun `something else playing - new message goes to queue`() = runTest {
@@ -142,19 +142,19 @@ class PlayReplyUseCaseTest {
         val s = useCase.playbackStatus.value
         assertTrue(s is PlayReplyUseCase.PlaybackStatus.PendingCount)
         assertEquals(1, (s as PlayReplyUseCase.PlaybackStatus.PendingCount).count)
-        verify(exactly = 0) { audioPlayer.play(any(), any(), any()) }
+        verify(exactly = 0) { audioPlayer.play(any(), any(), any(), any()) }
     }
 
     @Test fun `missing audio file - no play, no state churn`() = runTest {
         val msg = voiceMessage(path = "/nonexistent/missing.ogg")
         useCase.playVoiceMessage(msg, isCallActive = false)
-        verify(exactly = 0) { audioPlayer.play(any(), any(), any()) }
+        verify(exactly = 0) { audioPlayer.play(any(), any(), any(), any()) }
     }
 
     @Test fun `null audio path - no play`() = runTest {
         val msg = voiceMessage(path = null)
         useCase.playVoiceMessage(msg, isCallActive = false)
-        verify(exactly = 0) { audioPlayer.play(any(), any(), any()) }
+        verify(exactly = 0) { audioPlayer.play(any(), any(), any(), any()) }
     }
 
     @Test fun `playVoiceMessage with autoPlay off enqueues instead of dropping`() = runTest {
@@ -164,13 +164,13 @@ class PlayReplyUseCaseTest {
         coEvery { settingsRepository.get() } returns defaultSettings.copy(autoPlayReplies = false)
         useCase.playVoiceMessage(voiceMessage(), isCallActive = false)
         coVerify { pendingPlaybackDao.insert(match { it.reason == PendingReason.SILENT_MODE }) }
-        verify(exactly = 0) { audioPlayer.play(any(), any(), any()) }
+        verify(exactly = 0) { audioPlayer.play(any(), any(), any(), any()) }
     }
 
     @Test fun `happy path - audioPlayer play called, status flips to Playing`() = runTest {
         val msg = voiceMessage()
         useCase.playVoiceMessage(msg, isCallActive = false)
-        verify { audioPlayer.play(any(), any(), any()) }
+        verify { audioPlayer.play(any(), any(), any(), any()) }
         coVerify { messageRepository.update(match { it.state == MessageState.PLAYING }) }
         val s = useCase.playbackStatus.value
         assertTrue(s is PlayReplyUseCase.PlaybackStatus.Playing)
@@ -213,7 +213,7 @@ class PlayReplyUseCaseTest {
 
         useCase.playAllPending()
 
-        verify { audioPlayer.play(any(), any(), any()) }
+        verify { audioPlayer.play(any(), any(), any(), any()) }
     }
 
     @Test fun `playTextMessage happy path calls speak`() = runTest {

@@ -8,15 +8,26 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.os.Build
+import com.autogram.app.domain.model.AudioFocusMode
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import timber.log.Timber
 import java.io.File
 import javax.inject.Inject
+import javax.inject.Singleton
 
 /**
- * Reproductor de audio para mensajes de voz recibidos.
- * Usa MediaPlayer con atributos de CONTENT_TYPE_SPEECH.
+ * Audio player for incoming voice messages. Uses MediaPlayer with
+ * AudioAttributes(USAGE_MEDIA, CONTENT_TYPE_SPEECH). Audio focus strategy is
+ * caller-controlled (see [AudioFocusMode]) so the user can flip modes in
+ * Settings when diagnosing AA audio-routing issues.
+ *
+ * Marked @Singleton so the routed-device StateFlow has a stable subscriber
+ * surface for the phone Settings diagnostics card.
  */
+@Singleton
 class AudioPlayer @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
@@ -26,15 +37,31 @@ class AudioPlayer @Inject constructor(
     private var completionHandler: ((Result<Unit>) -> Unit)? = null
 
     /**
-     * Reproduce un archivo de audio.
-     * Solicita audio focus temporal antes de reproducir.
-     * @param file Archivo de audio OGG
-     * @param onComplete Callback invocado al finalizar la reproducción
+     * v1.24.0 — last audio output device type the MediaPlayer was routed
+     * to, as reported by `MediaPlayer.routedDevice.type` immediately after
+     * `start()`. Surfaced on the phone Settings "AA audio routing"
+     * diagnostics card so the user can see — in the parked car —
+     * whether a played message went to BLUETOOTH_A2DP / BUS (= AA media
+     * stream) / BUILTIN_SPEAKER / etc. Null = no playback yet this session.
      */
-    // BUG-51 FIX: Callback now receives Result so caller can distinguish success from error
+    private val _lastRoutedDeviceType = MutableStateFlow<Int?>(null)
+    val lastRoutedDeviceType: StateFlow<Int?> = _lastRoutedDeviceType.asStateFlow()
+
+    /**
+     * Play an audio file. Requests audio focus per [focusMode] before
+     * starting playback. The mode is caller-controlled (read from
+     * AppSettings.audioFocusMode by PlayReplyUseCase) so the user can
+     * cycle through modes from phone Settings when AA audio-routing
+     * doesn't land on the car speakers.
+     * @param file OGG audio file
+     * @param speed Playback speed multiplier (1.0 = unchanged)
+     * @param focusMode How to request audio focus — see [AudioFocusMode]
+     * @param onComplete Callback invoked when playback finishes or errors
+     */
     fun play(
         file: File,
         speed: Float = 1f,
+        focusMode: AudioFocusMode = AudioFocusMode.TRANSIENT_MAY_DUCK,
         onComplete: (Result<Unit>) -> Unit = {}
     ): Result<Unit> {
         return try {
@@ -45,12 +72,14 @@ class AudioPlayer @Inject constructor(
             val playbackAttributes = buildPlaybackAttributes()
 
             // Request audio focus. In an Android Auto session Google Maps /
-            // the AA host will typically already hold focus for navigation
-            // prompts, so AUDIOFOCUS_GAIN_TRANSIENT gets denied outright.
-            // We accept that and keep playing anyway — the platform's ducking
-            // layer mixes our playback with whatever else is active instead
-            // of muting us into silence like the old hard-fail did.
-            val focusGranted = requestAudioFocus(audioManager, playbackAttributes)
+            // the AA host typically already holds focus for navigation prompts.
+            // TRANSIENT_MAY_DUCK is accepted most freely but some cars treat
+            // it as a "soft" request and route the audio to a muted channel.
+            // TRANSIENT_EXCLUSIVE / GAIN are stricter (other media is ducked
+            // or paused). Whichever the user has selected, we keep playing
+            // even on denial — the platform's mixer is responsible for the
+            // final output. See [AudioFocusMode].
+            val focusGranted = requestAudioFocus(audioManager, playbackAttributes, focusMode)
             if (!focusGranted) {
                 Timber.w("Audio focus denied (likely AA/Maps active) — playing anyway with ducking")
             } else {
@@ -187,12 +216,16 @@ class AudioPlayer @Inject constructor(
     // BUG-38: minSdk=29, so we always have API O. Removed dead < O branches.
     private fun requestAudioFocus(
         audioManager: AudioManager,
-        attributes: AudioAttributes
+        attributes: AudioAttributes,
+        focusMode: AudioFocusMode
     ): Boolean {
+        val focusGainType = when (focusMode) {
+            AudioFocusMode.TRANSIENT_MAY_DUCK -> AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+            AudioFocusMode.TRANSIENT_EXCLUSIVE -> AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
+            AudioFocusMode.GAIN -> AudioManager.AUDIOFOCUS_GAIN
+        }
         val request = try {
-            AudioFocusRequest.Builder(
-                android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
-            )
+            AudioFocusRequest.Builder(focusGainType)
                 .setAudioAttributes(attributes)
                 .setWillPauseWhenDucked(false)
                 .setOnAudioFocusChangeListener { focusChange ->
@@ -337,7 +370,9 @@ class AudioPlayer @Inject constructor(
 
     private fun logRoutedDevice(player: MediaPlayer) {
         runCatching {
-            Timber.i("AudioPlayer started on routed output type=${player.routedDevice?.type}")
+            val type = player.routedDevice?.type
+            _lastRoutedDeviceType.value = type
+            Timber.i("AudioPlayer started on routed output type=$type")
         }
     }
 

@@ -16,12 +16,17 @@ import androidx.core.content.ContextCompat
 import androidx.car.app.Screen
 import androidx.car.app.constraints.ConstraintManager
 import androidx.car.app.model.*
+import androidx.car.app.model.Tab
+import androidx.car.app.model.TabContents
+import androidx.car.app.model.TabTemplate
 import androidx.car.app.messaging.model.CarMessage
 import androidx.car.app.messaging.model.ConversationCallback
 import androidx.car.app.messaging.model.ConversationItem
 import androidx.core.graphics.drawable.IconCompat
 import androidx.core.app.Person
 import com.autogram.app.R
+import com.autogram.app.domain.model.AppSettings
+import com.autogram.app.domain.model.AudioFocusMode
 import com.autogram.app.domain.model.Conversation
 import com.autogram.app.domain.model.Message
 import com.autogram.app.domain.model.MessageDirection
@@ -80,6 +85,17 @@ class MainScreen(
     private val cachedQuickReplies = MutableStateFlow<List<QuickReply>>(emptyList())
     private val cachedPinned = MutableStateFlow<List<Conversation>>(emptyList())
     private val cachedMessages = MutableStateFlow<List<Message>>(emptyList())
+    // v1.24.0 — feed the new Pending tab. Same Flow the phone Pending Queue
+    // screen consumes (messageRepository.observePendingPlaybackQueue), in
+    // drain order (oldest first).
+    private val cachedPending = MutableStateFlow<List<Message>>(emptyList())
+    // v1.24.0 — full settings snapshot so the Settings tab can render
+    // playbackSpeed / audioFocusMode / ttsAsNavigationPrompt cycle buttons
+    // synchronously inside onGetTemplate without re-querying the repo.
+    private val cachedSettings = MutableStateFlow<AppSettings?>(null)
+    // v1.24.0 — which TabTemplate tab is active. Persists across invalidate()
+    // so tab switches stick instead of resetting to Inbox every recomposition.
+    private val currentTab = MutableStateFlow(TabId.INBOX)
 
     // Unchanged from v1.17.x: icon cache only used by the fallback
     // GridTemplate on the non-home screens (recording / status).
@@ -122,11 +138,22 @@ class MainScreen(
         }
         screenScope.launch {
             manageSettingsUseCase.observe().collect {
+                cachedSettings.value = it
                 val muted = !it.autoPlayReplies
                 if (autoPlayOff.value != muted) {
                     autoPlayOff.value = muted
-                    invalidate()
                 }
+                // The Settings tab reads cycle-button labels from cachedSettings,
+                // so any settings change has to refresh the template — but only
+                // when that tab is currently visible, to avoid invalidating
+                // mid-recording-state on unrelated tabs.
+                if (currentTab.value == TabId.SETTINGS) invalidate()
+            }
+        }
+        screenScope.launch {
+            messageRepository.observePendingPlaybackQueue().collect { list ->
+                cachedPending.value = list
+                if (currentTab.value == TabId.PENDING) invalidate()
             }
         }
         screenScope.launch {
@@ -149,6 +176,23 @@ class MainScreen(
         }
     }
 
+    /**
+     * v1.24.0 — TabTemplate root identifies. Each value's [contentId] is
+     * what TabTemplate.setActiveTabContentId reads, and what
+     * TabCallback.onTabSelected reports back when the host switches tabs.
+     */
+    enum class TabId(val contentId: String) {
+        INBOX("inbox"),
+        SHORTCUTS("shortcuts"),
+        PENDING("pending"),
+        SETTINGS("settings");
+
+        companion object {
+            fun fromContentId(id: String): TabId =
+                values().firstOrNull { it.contentId == id } ?: INBOX
+        }
+    }
+
     override fun onGetTemplate(): Template {
         return when (val status = sendMessageUseCase.status.value) {
             // Recording uses a simple driver-safe status screen with
@@ -166,8 +210,252 @@ class MainScreen(
             is SendVoiceMtprotoUseCase.SendStatus.Error -> buildStatusTemplate(
                 carContext.getString(R.string.status_error) + ": ${status.message}"
             )
-            else -> buildHomeTemplate()
+            else -> buildTabbedHome()
         }
+    }
+
+    /**
+     * v1.24.0 — the new home is a [TabTemplate] with four tabs:
+     *   - Inbox: official messaging list (one [ConversationItem] per pinned
+     *     conversation, with inline reply + Record per row).
+     *   - Shortcuts: grid of one-tap quick replies.
+     *   - Pending: list of messages waiting to play.
+     *   - Settings: PaneTemplate with on-the-road tweakable toggles (audio
+     *     focus mode, autoplay, playback speed, TTS nav routing).
+     *
+     * Tab switching keeps state via [currentTab]; `onTabSelected` records
+     * the new selection and calls [invalidate] so the host re-asks for the
+     * template with the new active content.
+     */
+    private fun buildTabbedHome(): Template {
+        val tabCallback = object : TabTemplate.TabCallback {
+            override fun onTabSelected(tabContentId: String) {
+                currentTab.value = TabId.fromContentId(tabContentId)
+                invalidate()
+            }
+        }
+        val contents = when (currentTab.value) {
+            TabId.INBOX -> buildInboxTabContents()
+            TabId.SHORTCUTS -> buildShortcutsTabContents()
+            TabId.PENDING -> buildPendingTabContents()
+            TabId.SETTINGS -> buildSettingsTabContents()
+        }
+        return TabTemplate.Builder(tabCallback)
+            .setHeaderAction(Action.APP_ICON)
+            .addTab(buildTab(TabId.INBOX, R.string.aa_tab_inbox, R.drawable.ic_inbox))
+            .addTab(buildTab(TabId.SHORTCUTS, R.string.aa_tab_shortcuts, R.drawable.ic_bolt))
+            .addTab(buildTab(TabId.PENDING, R.string.aa_tab_pending, R.drawable.ic_play_circle))
+            .addTab(buildTab(TabId.SETTINGS, R.string.aa_tab_settings, R.drawable.ic_settings))
+            .setActiveTabContentId(currentTab.value.contentId)
+            .setTabContents(contents)
+            .build()
+    }
+
+    private fun buildTab(id: TabId, titleRes: Int, iconRes: Int): Tab =
+        Tab.Builder()
+            .setContentId(id.contentId)
+            .setTitle(carContext.getString(titleRes))
+            .setIcon(carIcon(iconRes, CarColor.DEFAULT))
+            .build()
+
+    /**
+     * Inbox tab — the messaging list that used to be the entire home in
+     * v1.23.x. ListTemplate + ConversationItem rows, ActionStrip with mute
+     * toggle + voice command stays here so it's reachable on the most-used
+     * tab.
+     */
+    private fun buildInboxTabContents(): TabContents =
+        TabContents.Builder(buildHomeTemplate()).build()
+
+    /**
+     * Shortcuts tab — GridTemplate of enabled quick replies. Tapping a tile
+     * sends the shortcut via [SendVoiceMtprotoUseCase.sendQuickReply] (or
+     * sendVoiceShortcut for voice). Falls back to an empty-state
+     * MessageTemplate when no shortcuts are configured.
+     */
+    private fun buildShortcutsTabContents(): TabContents {
+        val list = cachedQuickReplies.value.filter { it.isEnabled }
+        if (list.isEmpty()) {
+            return TabContents.Builder(
+                MessageTemplate.Builder(carContext.getString(R.string.aa_shortcuts_empty))
+                    .setTitle(carContext.getString(R.string.aa_tab_shortcuts))
+                    .setIcon(carIcon(R.drawable.ic_bolt, CarColor.YELLOW))
+                    .build()
+            ).build()
+        }
+        val items = ItemList.Builder()
+        val constraintManager = carContext.getCarService(ConstraintManager::class.java)
+        val maxItems = constraintManager.getContentLimit(ConstraintManager.CONTENT_LIMIT_TYPE_GRID)
+        for ((i, qr) in list.withIndex()) {
+            if (i >= maxItems) break
+            items.addItem(
+                GridItem.Builder()
+                    .setTitle(qr.label)
+                    .setImage(shortcutTileIcon(qr), GridItem.IMAGE_TYPE_LARGE)
+                    .setOnClickListener { sendShortcut(qr) }
+                    .build()
+            )
+        }
+        val grid = GridTemplate.Builder()
+            .setTitle(carContext.getString(R.string.aa_tab_shortcuts))
+            .setSingleList(items.build())
+            .setActionStrip(buildActionStrip())
+        runCatching { grid.setItemSize(GridTemplate.ITEM_SIZE_LARGE) }
+        return TabContents.Builder(grid.build()).build()
+    }
+
+    /**
+     * Pending tab — driver-safe ListTemplate of messages queued for
+     * playback. Tap a row to start playing from that point;
+     * "Mark all as listened" clears the backlog without playing.
+     */
+    private fun buildPendingTabContents(): TabContents {
+        val pending = cachedPending.value
+        if (pending.isEmpty()) {
+            return TabContents.Builder(
+                MessageTemplate.Builder(carContext.getString(R.string.aa_pending_empty))
+                    .setTitle(carContext.getString(R.string.aa_tab_pending))
+                    .setIcon(carIcon(R.drawable.ic_play_circle, CarColor.DEFAULT))
+                    .build()
+            ).build()
+        }
+        val convById = cachedPinned.value.associateBy { it.id }
+        val items = ItemList.Builder()
+        val constraintManager = carContext.getCarService(ConstraintManager::class.java)
+        val maxItems = constraintManager.getContentLimit(ConstraintManager.CONTENT_LIMIT_TYPE_LIST)
+        for ((i, msg) in pending.withIndex()) {
+            if (i >= maxItems) break
+            val conv = convById[msg.conversationId]
+            val title = conv?.let { tileTitle(it) } ?: carContext.getString(R.string.app_name)
+            val subtitle = msg.summary?.takeIf { it.isNotBlank() }
+                ?: msg.transcription?.takeIf { it.isNotBlank() }
+                ?: msg.textContent?.takeIf { it.isNotBlank() }
+                ?: carContext.getString(R.string.aa_voice_message)
+            items.addItem(
+                Row.Builder()
+                    .setTitle(title)
+                    .addText(subtitle)
+                    .setImage(carIcon(R.drawable.ic_play_circle, CarColor.PRIMARY))
+                    .setOnClickListener {
+                        screenScope.launch { playReplyUseCase.playFromHere(msg) }
+                    }
+                    .build()
+            )
+        }
+        return TabContents.Builder(
+            ListTemplate.Builder()
+                .setTitle(carContext.getString(R.string.aa_tab_pending))
+                .setSingleList(items.build())
+                .setActionStrip(
+                    ActionStrip.Builder()
+                        .addAction(
+                            Action.Builder()
+                                .setTitle(carContext.getString(R.string.aa_pending_mark_all))
+                                .setOnClickListener {
+                                    screenScope.launch {
+                                        playReplyUseCase.markAllPendingAsListened()
+                                        invalidate()
+                                    }
+                                }
+                                .build()
+                        )
+                        .build()
+                )
+                .build()
+        ).build()
+    }
+
+    /**
+     * Settings tab — driver-safe PaneTemplate. Each row cycles through its
+     * preset values on tap (no sliders / dropdowns in the car, both are
+     * banned by AA distraction guidelines). Reads + writes
+     * [manageSettingsUseCase] so changes persist + sync with the phone
+     * Settings screen.
+     */
+    private fun buildSettingsTabContents(): TabContents {
+        val settings = cachedSettings.value
+        val pane = Pane.Builder()
+        // 1. Auto-play toggle.
+        val autoLabel = if (settings?.autoPlayReplies == true)
+            carContext.getString(R.string.aa_settings_autoplay_on)
+        else
+            carContext.getString(R.string.aa_settings_autoplay_off)
+        pane.addRow(
+            Row.Builder()
+                .setTitle(carContext.getString(R.string.aa_settings_autoplay))
+                .addText(autoLabel)
+                .setOnClickListener { toggleAutoPlay() }
+                .build()
+        )
+        // 2. Playback speed cycle.
+        val speed = settings?.playbackSpeed ?: 1.25f
+        val speedLabel = carContext.getString(R.string.aa_settings_speed, "%.2f".format(speed))
+        pane.addRow(
+            Row.Builder()
+                .setTitle(carContext.getString(R.string.aa_settings_speed, "%.2f".format(speed)))
+                .addText(speedLabel)
+                .setOnClickListener {
+                    screenScope.launch {
+                        val current = manageSettingsUseCase.get()
+                        val next = nextPlaybackSpeed(current.playbackSpeed)
+                        manageSettingsUseCase.update(current.copy(playbackSpeed = next))
+                    }
+                }
+                .build()
+        )
+        // 3. Audio focus mode cycle.
+        val focusMode = settings?.audioFocusMode ?: AudioFocusMode.TRANSIENT_MAY_DUCK
+        pane.addRow(
+            Row.Builder()
+                .setTitle(carContext.getString(R.string.aa_settings_focus_mode, focusMode.name))
+                .addText(focusMode.name)
+                .setOnClickListener {
+                    screenScope.launch {
+                        val current = manageSettingsUseCase.get()
+                        manageSettingsUseCase.update(
+                            current.copy(audioFocusMode = nextFocusMode(current.audioFocusMode))
+                        )
+                    }
+                }
+                .build()
+        )
+        // 4. TTS as navigation prompt toggle.
+        val ttsNavOn = settings?.ttsAsNavigationPrompt == true
+        val ttsNavLabel = if (ttsNavOn)
+            carContext.getString(R.string.aa_state_on)
+        else
+            carContext.getString(R.string.aa_state_off)
+        pane.addRow(
+            Row.Builder()
+                .setTitle(carContext.getString(R.string.aa_settings_tts_nav, ttsNavLabel))
+                .addText(ttsNavLabel)
+                .setOnClickListener {
+                    screenScope.launch {
+                        val current = manageSettingsUseCase.get()
+                        manageSettingsUseCase.update(
+                            current.copy(ttsAsNavigationPrompt = !current.ttsAsNavigationPrompt)
+                        )
+                    }
+                }
+                .build()
+        )
+        return TabContents.Builder(
+            PaneTemplate.Builder(pane.build())
+                .setTitle(carContext.getString(R.string.aa_tab_settings))
+                .build()
+        ).build()
+    }
+
+    private fun nextPlaybackSpeed(current: Float): Float {
+        val presets = floatArrayOf(0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)
+        val idx = presets.indexOfFirst { kotlin.math.abs(it - current) < 0.01f }
+        return presets[(idx + 1).mod(presets.size).coerceAtLeast(0)]
+    }
+
+    private fun nextFocusMode(current: AudioFocusMode): AudioFocusMode {
+        val all = AudioFocusMode.values()
+        val idx = all.indexOf(current).let { if (it < 0) 0 else it }
+        return all[(idx + 1) % all.size]
     }
 
     /** Home = official Android Auto messaging list. */

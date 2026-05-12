@@ -101,12 +101,25 @@ class TtsPlayer @Inject constructor(
             )
         }
 
-        tts.setAudioAttributes(
+        // v1.24.0 — when [AppSettings.ttsAsNavigationPrompt] is on, request the
+        // same audio path Google Maps directions use (USAGE_ASSISTANCE_
+        // NAVIGATION_GUIDANCE). On most Android Auto setups that path speaks
+        // over music and routes reliably to the car speakers — useful when
+        // the default USAGE_MEDIA path gets silently muted by AA's media
+        // arbiter. Default is the legacy USAGE_MEDIA + CONTENT_TYPE_SPEECH
+        // pairing.
+        val ttsAttrs = if (settings.ttsAsNavigationPrompt) {
+            AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+        } else {
             AudioAttributes.Builder()
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                 .setUsage(AudioAttributes.USAGE_MEDIA)
                 .build()
-        )
+        }
+        tts.setAudioAttributes(ttsAttrs)
 
         // Hard-stop anything currently queued/playing before we hand the
         // new utterance to the engine. Combined with QUEUE_FLUSH below

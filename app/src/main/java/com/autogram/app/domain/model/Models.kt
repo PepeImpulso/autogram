@@ -49,6 +49,27 @@ enum class SummaryEngineType {
     LLM_ENDPOINT    // user-configured OpenAI-compatible HTTP endpoint
 }
 
+/**
+ * v1.24.0 — how AudioPlayer + TtsPlayer request audio focus before playing.
+ * Exposed as a user-tweakable setting so the AA audio-routing fix can be
+ * diagnosed in the car: if the default mode doesn't reach the speakers on
+ * a particular head unit / Bluetooth pairing, the user can cycle through
+ * the three modes to find one that does.
+ *
+ *  - TRANSIENT_MAY_DUCK: "we'd like focus but allow ducking" — accepted
+ *    most freely by AA / Maps. Some cars treat this as "we don't really
+ *    want focus" and route us into a muted channel.
+ *  - TRANSIENT_EXCLUSIVE: full transient focus, no ducking. Stops other
+ *    media for the duration of the message.
+ *  - GAIN: persistent focus — other media is paused, we keep the floor
+ *    until we abandon. Closest to what a phone call holds.
+ */
+enum class AudioFocusMode {
+    TRANSIENT_MAY_DUCK,
+    TRANSIENT_EXCLUSIVE,
+    GAIN
+}
+
 data class Message(
     val id: String,
     val conversationId: String,
@@ -190,7 +211,17 @@ data class AppSettings(
     // share sheet so the user can send it to the developer for
     // bug-report context. Default OFF; turning it on adds visual chrome
     // most users won't want.
-    val developerMode: Boolean = false
+    val developerMode: Boolean = false,
+    // v1.24.0 — Android Auto audio-routing diagnostics. See [AudioFocusMode]
+    // for the semantics of each mode. Default keeps the v1.23.x behaviour.
+    val audioFocusMode: AudioFocusMode = AudioFocusMode.TRANSIENT_MAY_DUCK,
+    // v1.24.0 — when ON, TtsPlayer requests USAGE_ASSISTANCE_NAVIGATION_GUIDANCE
+    // instead of USAGE_MEDIA. That's the audio path Google Maps directions
+    // use, so on most Android Auto setups it speaks over music and reaches
+    // the car speakers reliably — at the cost of being routed to a possibly
+    // quieter channel on some head units. OFF by default; turn ON only if
+    // the default playback doesn't reach the car speakers.
+    val ttsAsNavigationPrompt: Boolean = false
 )
 
 data class DeliveryAttempt(

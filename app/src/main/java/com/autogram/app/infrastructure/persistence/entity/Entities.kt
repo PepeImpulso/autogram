@@ -176,5 +176,9 @@ data class SettingsEntity(
     // kind is persisted as string on quick_replies.
     val quickReplyFilter: String = "ALL",
     val keepScreenOn: Boolean = false,
-    val developerMode: Boolean = false
+    val developerMode: Boolean = false,
+    // v1.24.0 — see [AppSettings.audioFocusMode]. Persisted as enum name
+    // so adding a new mode is backward-compatible.
+    val audioFocusMode: String = "TRANSIENT_MAY_DUCK",
+    val ttsAsNavigationPrompt: Boolean = false
 )

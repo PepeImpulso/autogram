@@ -92,19 +92,29 @@ class MtprotoReceiverService : Service() {
             scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
         }
         createNotificationChannel()
-        val notification = buildNotification("Conectando…")
+        val notification = buildNotification("Connecting…")
         try {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                // v1.24.0 — combine SPECIAL_USE (continuous MTProto long-poll
+                // is the use case) with MEDIA_PLAYBACK so Android 14+'s
+                // background-audio policy doesn't suppress the playback we
+                // trigger from this service. The FOREGROUND_SERVICE_MEDIA_
+                // PLAYBACK manifest permission is already declared.
                 startForeground(
                     NOTIFICATION_ID,
                     notification,
-                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or
+                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
                 )
             } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                // API 29–33: dataSync is the right umbrella type for the
+                // MTProto loop here; mediaPlayback is also valid since Q so
+                // include it for the same audio-routing reason.
                 startForeground(
                     NOTIFICATION_ID,
                     notification,
-                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or
+                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
                 )
             } else {
                 startForeground(NOTIFICATION_ID, notification)

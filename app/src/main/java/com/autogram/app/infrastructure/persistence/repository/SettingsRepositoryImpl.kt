@@ -1,6 +1,7 @@
 package com.autogram.app.infrastructure.persistence.repository
 
 import com.autogram.app.domain.model.AppSettings
+import com.autogram.app.domain.model.AudioFocusMode
 import com.autogram.app.domain.model.QuickReplyFilter
 import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.infrastructure.persistence.dao.SettingsDao
@@ -78,7 +79,10 @@ class SettingsRepositoryImpl @Inject constructor(
         quickReplyFilter = runCatching { QuickReplyFilter.valueOf(quickReplyFilter) }
             .getOrDefault(QuickReplyFilter.ALL),
         keepScreenOn = keepScreenOn,
-        developerMode = developerMode
+        developerMode = developerMode,
+        audioFocusMode = runCatching { AudioFocusMode.valueOf(audioFocusMode) }
+            .getOrDefault(AudioFocusMode.TRANSIENT_MAY_DUCK),
+        ttsAsNavigationPrompt = ttsAsNavigationPrompt
     )
 
     private fun AppSettings.toEntity() = SettingsEntity(
@@ -101,6 +105,8 @@ class SettingsRepositoryImpl @Inject constructor(
         summaryLlmModel = summaryLlmModel,
         quickReplyFilter = quickReplyFilter.name,
         keepScreenOn = keepScreenOn,
-        developerMode = developerMode
+        developerMode = developerMode,
+        audioFocusMode = audioFocusMode.name,
+        ttsAsNavigationPrompt = ttsAsNavigationPrompt
     )
 }

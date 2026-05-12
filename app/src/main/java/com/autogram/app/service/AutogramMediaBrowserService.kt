@@ -110,13 +110,6 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
     override fun onLoadChildren(parentId: String, result: Result<MutableList<MediaItem>>) {
         when (parentId) {
             ROOT_ID -> result.sendResult(rootChildren())
-            PENDING_ID -> {
-                result.detach()
-                serviceScope.launch {
-                    runCatching { result.sendResult(pendingChildren().toMutableList()) }
-                        .onFailure { Timber.w(it, "onLoadChildren($PENDING_ID) failed") }
-                }
-            }
             HISTORY_ID -> {
                 result.detach()
                 serviceScope.launch {
@@ -124,6 +117,12 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
                         .onFailure { Timber.w(it, "onLoadChildren($HISTORY_ID) failed") }
                 }
             }
+            // v1.24.0 — PENDING folder removed from the Media tab. The
+            // canonical pending-queue surface lives in the CarAppService
+            // home (Pending tab on the new TabTemplate). The legacy ID is
+            // still recognised here so a stale browser cache resolves to
+            // the empty list instead of an error.
+            PENDING_ID -> result.sendResult(mutableListOf())
             else -> result.sendResult(mutableListOf())
         }
     }
@@ -133,8 +132,11 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
         serviceScope.cancel()
     }
 
+    // v1.24.0 — Media tab only exposes History now. Pending duplicated the
+    // CarAppService home's new Pending tab; users typing through the Media
+    // tab were ending up in a browse-only surface with no reply path, which
+    // is the whole point of the messaging template on the home screen.
     private fun rootChildren(): MutableList<MediaItem> = mutableListOf(
-        browseable(PENDING_ID, getString(com.autogram.app.R.string.media_browser_pending)),
         browseable(HISTORY_ID, getString(com.autogram.app.R.string.media_browser_history))
     )
 
