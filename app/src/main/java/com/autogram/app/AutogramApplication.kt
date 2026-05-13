@@ -12,6 +12,7 @@ import com.autogram.app.infrastructure.audio.TtsPlayer
 import com.autogram.app.infrastructure.platform.LocaleHelper
 import com.autogram.app.infrastructure.platform.PendingReplyNotifier
 import com.autogram.app.infrastructure.retry.RetentionCleanupWorker
+import com.autogram.app.infrastructure.platform.FileLoggingTree
 import com.autogram.app.infrastructure.retry.RetryWorker
 import io.sentry.SentryLevel
 import io.sentry.android.core.SentryAndroid
@@ -32,6 +33,13 @@ class AutogramApplication : Application(), Configuration.Provider {
     @Inject lateinit var ttsPlayer: TtsPlayer
     @Inject lateinit var playReplyUseCase: PlayReplyUseCase
     @Inject lateinit var mediaPlayback: com.autogram.app.service.AutogramMediaPlaybackController
+
+    // v1.24.2 — plant from onCreate, expose to the Settings UI so the user
+    // can share / clear logs from inside the app. Initialised post-onCreate
+    // so accesses before then return null (defensive).
+    @Volatile
+    var fileLoggingTree: FileLoggingTree? = null
+        private set
 
     private val appScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
@@ -87,6 +95,11 @@ class AutogramApplication : Application(), Configuration.Provider {
         } else {
             Timber.plant(ReleaseTree())
         }
+        // v1.24.2 — file logging for release-mode in-car debugging.
+        // Always-on (release + debug) so the user can flip on the share
+        // button in Settings without needing a dev build.
+        fileLoggingTree = FileLoggingTree(this)
+        Timber.plant(fileLoggingTree!!)
         Timber.d("Autogram initialized (sentry=${dsn.isNotBlank()})")
 
         // Apply saved UI language before any activity inflates its layout.

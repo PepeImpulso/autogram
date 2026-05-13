@@ -388,6 +388,16 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 }
             }
 
+            // v1.24.2 — Debug log capture card. Always present so the user
+            // can grab a release-build trace when reporting a bug.
+            SectionCard(
+                icon = Icons.Filled.BugReport,
+                title = stringResource(R.string.settings_debug_logs),
+                subtitle = stringResource(R.string.settings_debug_logs_sub)
+            ) {
+                DebugLogsRow()
+            }
+
             SectionCard(
                 icon = Icons.Filled.TextFields,
                 title = stringResource(R.string.settings_section_transcribe),
@@ -1010,6 +1020,82 @@ private fun AaRoutingDiagnosticsRow(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+}
+
+/**
+ * v1.24.2 — pair of buttons that share or wipe the rolling debug log
+ * file maintained by [com.autogram.app.infrastructure.platform.FileLoggingTree].
+ * The share intent hands the FileProvider Uri to whatever messaging /
+ * email app the user picks; the clear button is so the user can start
+ * a clean capture before reproducing a bug.
+ */
+@Composable
+private fun DebugLogsRow() {
+    val context = LocalContext.current
+    val tree = (context.applicationContext as? com.autogram.app.AutogramApplication)
+        ?.fileLoggingTree
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Button(
+            modifier = Modifier.weight(1f),
+            onClick = {
+                val uri = tree?.exportUri()
+                if (uri == null) {
+                    android.widget.Toast.makeText(
+                        context,
+                        context.getString(R.string.settings_debug_logs_unavailable),
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                    return@Button
+                }
+                val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    // Uri implements both Parcelable and Serializable, so we
+                    // cast to disambiguate the putExtra overload.
+                    putExtra(android.content.Intent.EXTRA_STREAM, uri as android.os.Parcelable)
+                    putExtra(
+                        android.content.Intent.EXTRA_SUBJECT,
+                        context.getString(R.string.settings_debug_logs_share_subject)
+                    )
+                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                runCatching {
+                    context.startActivity(
+                        android.content.Intent.createChooser(
+                            intent,
+                            context.getString(R.string.settings_debug_logs_share)
+                        )
+                    )
+                }.onFailure {
+                    android.widget.Toast.makeText(
+                        context,
+                        context.getString(R.string.settings_debug_logs_unavailable),
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        ) {
+            Text(stringResource(R.string.settings_debug_logs_share))
+        }
+        Spacer(Modifier.width(12.dp))
+        OutlinedButton(
+            modifier = Modifier.weight(1f),
+            onClick = {
+                tree?.clear()
+                android.widget.Toast.makeText(
+                    context,
+                    context.getString(R.string.settings_debug_logs_cleared),
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+            }
+        ) {
+            Text(stringResource(R.string.settings_debug_logs_clear))
+        }
     }
 }
 

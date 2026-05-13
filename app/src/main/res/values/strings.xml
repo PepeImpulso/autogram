@@ -171,6 +171,13 @@
     <string name="settings_aa_routing_test_phrase">Autogram audio routing test.</string>
     <string name="settings_aa_last_routed">Last playback route</string>
     <string name="settings_aa_last_routed_unknown">No playback yet this session</string>
+    <string name="settings_debug_logs">Debug logs</string>
+    <string name="settings_debug_logs_sub">In-app log file capturing every Timber event. Share it with the developer when reporting an issue; clear it before reproducing.</string>
+    <string name="settings_debug_logs_share">Send debug logs</string>
+    <string name="settings_debug_logs_clear">Clear debug logs</string>
+    <string name="settings_debug_logs_share_subject">Autogram debug logs</string>
+    <string name="settings_debug_logs_unavailable">Logs unavailable</string>
+    <string name="settings_debug_logs_cleared">Debug logs cleared</string>
     <string name="settings_section_history">History</string>
     <string name="settings_section_history_sub">Storage and network limits.</string>
     <string name="settings_section_language">Language</string>
