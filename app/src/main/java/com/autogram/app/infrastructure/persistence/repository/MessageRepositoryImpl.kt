@@ -82,6 +82,9 @@ class MessageRepositoryImpl @Inject constructor(
     override fun observeNowPlaying(): Flow<Message?> =
         messageDao.observeNowPlaying().map { it?.toDomain() }
 
+    override suspend fun getStaleNowPlaying(): List<Message> =
+        messageDao.getStaleNowPlaying().map { it.toDomain() }
+
     private fun MessageEntity.toDomain() = Message(
         id = id,
         conversationId = conversationId,

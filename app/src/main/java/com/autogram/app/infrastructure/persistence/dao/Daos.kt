@@ -153,6 +153,19 @@ interface MessageDao {
     """)
     fun observeNowPlaying(): Flow<MessageEntity?>
 
+    // v1.24.4 — one-shot snapshot of all messages still flagged
+    // PLAYING / PAUSED. Used at app startup to demote rows that got
+    // stuck in those states because the process died mid-playback or
+    // the MediaPlayer crashed without writing PLAYED / FAILED. Without
+    // this sweep, observeNowPlaying() keeps returning a ghost row that
+    // renders the Now Playing panel forever, and tapping its play
+    // button is a no-op (no in-memory MediaPlayer to resume).
+    @Query("""
+        SELECT * FROM messages
+        WHERE state = 'PLAYING' OR state = 'PAUSED'
+    """)
+    suspend fun getStaleNowPlaying(): List<MessageEntity>
+
     // Badge counter: incoming messages received since the user last replied
     // to that conversation AND not yet played. Joins with
     // conversations.lastRepliedAt; NULL means the user has never replied,

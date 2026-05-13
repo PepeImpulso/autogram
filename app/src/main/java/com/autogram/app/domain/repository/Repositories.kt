@@ -31,6 +31,12 @@ interface MessageRepository {
     fun observePendingPlaybackQueue(): Flow<List<Message>>
     /** Single currently-playing (or paused) message, for Now Playing panel. */
     fun observeNowPlaying(): Flow<Message?>
+    /**
+     * One-shot snapshot of every message stuck in PLAYING / PAUSED state.
+     * Called at app startup so PlayReplyUseCase can demote them to PLAYED
+     * before the Now Playing observers latch onto stale rows.
+     */
+    suspend fun getStaleNowPlaying(): List<Message>
 }
 
 interface ConversationRepository {

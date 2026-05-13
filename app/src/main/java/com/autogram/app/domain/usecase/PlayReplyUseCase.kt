@@ -764,6 +764,27 @@ class PlayReplyUseCase @Inject constructor(
      * BUG-05: Restore pending queue from database after service restart.
      */
     suspend fun restorePendingQueue() {
+        // v1.24.4 — clean up any message stuck in PLAYING / PAUSED state
+        // BEFORE the rest of restoration runs. These rows are leftover
+        // from a process that died mid-playback or a MediaPlayer that
+        // crashed without writing PLAYED / FAILED. Without this sweep
+        // observeNowPlaying() keeps returning a ghost row and the
+        // Now Playing panel renders forever — its play button is a
+        // no-op because there's no live MediaPlayer to resume.
+        runCatching {
+            val stale = messageRepository.getStaleNowPlaying()
+            val now = System.currentTimeMillis()
+            for (message in stale) {
+                messageRepository.update(message.copy(
+                    state = MessageState.PLAYED,
+                    playedAt = message.playedAt ?: now
+                ))
+            }
+            if (stale.isNotEmpty()) {
+                Timber.i("Cleared ${stale.size} stale PLAYING/PAUSED message(s) at startup")
+            }
+        }.onFailure { Timber.w(it, "Stale-now-playing sweep failed") }
+
         val entities = pendingPlaybackDao.getAll()
         for (entity in entities) {
             val message = messageRepository.getById(entity.messageId) ?: continue

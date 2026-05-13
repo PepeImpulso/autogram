@@ -107,6 +107,26 @@ class PendingQueueViewModel @Inject constructor(
 
     fun pause() = playReplyUseCase.pause()
     fun resume() = playReplyUseCase.resume()
+
+    /**
+     * v1.24.4 — what the NowPlayingPanel's Play button calls when tapped.
+     * Decides between resume (we have a live MediaPlayer / TTS engine
+     * paused mid-playback) and a fresh play-from-here (the row is in
+     * PLAYING/PAUSED state in the DB but no in-memory player exists —
+     * usually because the process was killed mid-playback and the row
+     * survived in a stale state). Without this branch the panel's Play
+     * button is a no-op on the stale-state case, which is exactly the
+     * "play does nothing the first time" bug Pepe hit in v1.24.3.
+     */
+    fun playOrResumeNowPlaying() = viewModelScope.launch {
+        val msg = nowPlaying.value ?: return@launch
+        when (playReplyUseCase.playbackStatus.value) {
+            is PlayReplyUseCase.PlaybackStatus.Paused -> playReplyUseCase.resume()
+            is PlayReplyUseCase.PlaybackStatus.Playing -> Unit
+            else -> playReplyUseCase.playFromHere(msg)
+        }
+    }
+
     fun skipNext() = viewModelScope.launch { playReplyUseCase.skipNext() }
     fun skipPrevious() = viewModelScope.launch { playReplyUseCase.skipPrevious() }
     fun restartCurrent() = viewModelScope.launch { playReplyUseCase.restartCurrent() }
@@ -197,7 +217,9 @@ internal fun PendingQueueTabContent(viewModel: PendingQueueViewModel) {
             positionMsProvider = { viewModel.currentPositionMs() },
             durationMsProvider = { viewModel.durationMs() },
             onPause = viewModel::pause,
-            onResume = viewModel::resume,
+            // v1.24.4 — playOrResumeNowPlaying handles the
+            // "stale-state Play tap" case where resume() would be a no-op.
+            onResume = { viewModel.playOrResumeNowPlaying() },
             onSkipNext = { viewModel.skipNext() },
             onSkipPrevious = { viewModel.skipPrevious() },
             canSkipPrevious = canSkipPrevious,
