@@ -360,10 +360,6 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                     onCheckedChange = viewModel::updateTtsAsNavigationPrompt
                 )
                 SettingsDivider()
-                AaRoutingDiagnosticsRow(
-                    attempt = state.lastPlaybackAttempt
-                )
-                SettingsDivider()
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -386,16 +382,6 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                         Text(stringResource(R.string.settings_aa_test_playback))
                     }
                 }
-            }
-
-            // v1.24.2 — Debug log capture card. Always present so the user
-            // can grab a release-build trace when reporting a bug.
-            SectionCard(
-                icon = Icons.Filled.BugReport,
-                title = stringResource(R.string.settings_debug_logs),
-                subtitle = stringResource(R.string.settings_debug_logs_sub)
-            ) {
-                DebugLogsRow()
             }
 
             SectionCard(
@@ -556,65 +542,147 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 BatteryOptimizationRow(context)
             }
 
-            // v1.20.14: developer-mode toggle lives in Diagnostics whether
-            // or not Sentry is wired up — both rows are about debugging.
-            // The Sentry test row is conditionally shown below.
+            // v1.24.3 — unified Diagnostics card. Pulls in the last-playback
+            // route (was on AA routing) + debug-log share/clear (was its own
+            // card) so everything debug-related lives in one place. The
+            // primary "Send bug report" CTA captures a Sentry event with the
+            // rolling log file attached automatically — one tap is all the
+            // user has to do; no separate manual share required.
             SectionCard(
                 icon = Icons.Filled.BugReport,
                 title = stringResource(R.string.settings_diagnostics_section)
             ) {
+                AaRoutingDiagnosticsRow(attempt = state.lastPlaybackAttempt)
+                SettingsDivider()
+                BugReportRow()
+                SettingsDivider()
+                DebugLogsRow()
+                SettingsDivider()
                 SwitchRow(
                     label = stringResource(R.string.settings_developer_mode),
                     supporting = stringResource(R.string.settings_developer_mode_sub),
                     checked = state.developerMode,
                     onCheckedChange = viewModel::updateDeveloperMode
                 )
-                if (com.autogram.app.BuildConfig.SENTRY_DSN.isNotBlank()) {
-                    SettingsDivider()
-                    SentryTestRow()
-                }
             }
         }
     }
 }
 
+/**
+ * v1.24.3 — primary "Send bug report" CTA. Replaces the old "Send test
+ * event to Sentry" affordance and merges in the debug-log file attach
+ * so the user gets a one-tap report:
+ *
+ *   1. Materialise the rolling debug log via [FileLoggingTree].
+ *   2. Attach the file to a Sentry scope.
+ *   3. Capture a message-level event tagged `manual_report=true` so the
+ *      developer can spot it amid auto-captured crashes.
+ *
+ * When Sentry isn't configured (empty DSN in dev builds) the row falls
+ * back to the system share intent — same payload, manual delivery.
+ */
 @Composable
-private fun SentryTestRow() {
-    val ctx = LocalContext.current
+private fun BugReportRow() {
+    val context = LocalContext.current
     var sentAtMs by remember { mutableStateOf(0L) }
     val justSent = sentAtMs != 0L && System.currentTimeMillis() - sentAtMs < 3000
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable {
-                    io.sentry.Sentry.captureException(
-                        RuntimeException("Test event from Ajustes → Diagnóstico")
-                    )
-                    sentAtMs = System.currentTimeMillis()
+    val hasSentry = com.autogram.app.BuildConfig.SENTRY_DSN.isNotBlank()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                val tree = (context.applicationContext as? com.autogram.app.AutogramApplication)
+                    ?.fileLoggingTree
+                val logFile = runCatching { tree?.materialiseExportFile() }.getOrNull()
+                if (hasSentry) {
+                    runCatching {
+                        io.sentry.Sentry.withScope { scope ->
+                            scope.setTag("manual_report", "true")
+                            scope.setTag(
+                                "app_version",
+                                com.autogram.app.BuildConfig.VERSION_NAME
+                            )
+                            if (logFile != null && logFile.exists()) {
+                                scope.addAttachment(
+                                    io.sentry.Attachment(
+                                        logFile.absolutePath,
+                                        "autogram.log",
+                                        "text/plain"
+                                    )
+                                )
+                            }
+                            io.sentry.Sentry.captureMessage(
+                                "Manual bug report from user",
+                                io.sentry.SentryLevel.INFO
+                            )
+                        }
+                        sentAtMs = System.currentTimeMillis()
+                    }.onFailure {
+                        android.widget.Toast.makeText(
+                            context,
+                            it.message ?: context.getString(R.string.settings_bug_report_failed),
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    }
+                } else {
+                    // Sentry disabled — share the log file via the system
+                    // chooser instead. Same payload, manual delivery.
+                    val uri = tree?.exportUri()
+                    if (uri == null) {
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.settings_debug_logs_unavailable),
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                        return@clickable
+                    }
+                    val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(
+                            android.content.Intent.EXTRA_STREAM,
+                            uri as android.os.Parcelable
+                        )
+                        putExtra(
+                            android.content.Intent.EXTRA_SUBJECT,
+                            context.getString(R.string.settings_debug_logs_share_subject)
+                        )
+                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    runCatching {
+                        context.startActivity(
+                            android.content.Intent.createChooser(
+                                intent,
+                                context.getString(R.string.settings_bug_report_share)
+                            )
+                        )
+                    }
                 }
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    stringResource(R.string.settings_diagnostics_test_sentry),
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                Text(
-                    if (justSent) stringResource(R.string.settings_diagnostics_test_sent)
-                    else stringResource(R.string.settings_diagnostics_test_sentry_sub),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (justSent) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
-            Icon(
-                Icons.Filled.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                stringResource(R.string.settings_bug_report),
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Text(
+                when {
+                    justSent -> stringResource(R.string.settings_bug_report_sent)
+                    hasSentry -> stringResource(R.string.settings_bug_report_sub_sentry)
+                    else -> stringResource(R.string.settings_bug_report_sub_share)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = if (justSent) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+        Icon(
+            Icons.Filled.ChevronRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
