@@ -12,4 +12,11 @@
          Cover the whole files/ subtree under tdlib/ so a misclassified
          voice still resolves to a content:// Uri. -->
     <files-path name="tdlib_files" path="tdlib/files/" />
+    <!-- v1.24.6 — expose the rolling debug-log directory written by
+         FileLoggingTree (cacheDir/autogram-logs/). Without this entry,
+         FileProvider.getUriForFile() throws IllegalArgumentException
+         because the file path doesn't match any configured root, and
+         the share button shows "Logs unavailable". The log export file
+         lives next to the rotating .log/.log.1 in the same folder. -->
+    <cache-path name="autogram_logs" path="autogram-logs/" />
 </paths>

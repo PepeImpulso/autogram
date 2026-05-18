@@ -66,11 +66,26 @@ class AudioPlayer @Inject constructor(
         onComplete: (Result<Unit>) -> Unit = {}
     ): Result<Unit> {
         return try {
+            // v1.24.6 — entry log up-front so the file log makes it
+            // obvious which playback path (and which attributes) was
+            // actually used for an incoming voice reply. The previous
+            // entry log only fired AFTER start() succeeded, which made
+            // routing-silenced playback indistinguishable from "play()
+            // never called" in the log file.
+            Timber.i(
+                "AudioPlayer.play start file=${file.name} speed=$speed " +
+                    "focusMode=$focusMode navUsage=$useNavigationUsage exists=${file.exists()} size=${file.length()}"
+            )
             stop()
             completionHandler = onComplete
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             val outputSnapshot = getOutputDevices(audioManager)
             val playbackAttributes = buildPlaybackAttributes(useNavigationUsage)
+            Timber.d(
+                "AudioPlayer.play attrs " +
+                    "usage=${playbackAttributes.usage} contentType=${playbackAttributes.contentType} " +
+                    "outputs=${outputSnapshot.typeSummary()}"
+            )
 
             // Request audio focus. In an Android Auto session Google Maps /
             // the AA host typically already holds focus for navigation prompts.
