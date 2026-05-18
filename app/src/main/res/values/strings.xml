@@ -139,7 +139,7 @@
     <string name="aa_settings_autoplay_off">Auto-play: OFF</string>
     <string name="aa_settings_speed">Playback speed: %1$s×</string>
     <string name="aa_settings_focus_mode">Focus mode: %1$s</string>
-    <string name="aa_settings_tts_nav">TTS as nav prompt: %1$s</string>
+    <string name="aa_settings_tts_nav">Nav-prompt audio path: %1$s</string>
     <string name="aa_pending_empty">No messages pending playback.</string>
     <string name="aa_pending_play">Play</string>
     <string name="aa_pending_mark_all">Mark all as listened</string>
@@ -164,8 +164,8 @@
     <string name="settings_aa_focus_transient_may_duck">Transient + duck (default)</string>
     <string name="settings_aa_focus_transient">Transient (exclusive)</string>
     <string name="settings_aa_focus_gain">Gain (persistent)</string>
-    <string name="settings_aa_tts_nav_prompt">Speak text as navigation prompt</string>
-    <string name="settings_aa_tts_nav_prompt_sub">Routes TTS through the same audio path as Google Maps directions. Helps when the regular media stream doesn\'t reach the car.</string>
+    <string name="settings_aa_tts_nav_prompt">Use navigation-prompt audio path</string>
+    <string name="settings_aa_tts_nav_prompt_sub">Routes BOTH TTS and incoming voice replies through the same audio path as Google Maps directions. Turn ON if voice replies don\'t reach the car speakers while text replies do.</string>
     <string name="settings_aa_test_playback">Test playback in car</string>
     <string name="settings_aa_test_playback_sub">Plays a short tone + a TTS sample using the settings above. Park, tap, listen — switch mode if you didn\'t hear it through the speakers.</string>
     <string name="settings_aa_routing_test_phrase">Autogram audio routing test.</string>

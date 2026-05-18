@@ -277,7 +277,8 @@ class PlayReplyUseCase @Inject constructor(
             val result = audioPlayer.play(
                 audioFile,
                 speed = settings.playbackSpeed,
-                focusMode = settings.audioFocusMode
+                focusMode = settings.audioFocusMode,
+                useNavigationUsage = settings.ttsAsNavigationPrompt
             ) { playResult ->
             // Use a scoped coroutine (not runBlocking) so the MediaPlayer
             // callback thread doesn't block on DB writes.
@@ -365,7 +366,8 @@ class PlayReplyUseCase @Inject constructor(
         val result = audioPlayer.play(
             audioFile,
             speed = manualSettings.playbackSpeed,
-            focusMode = manualSettings.audioFocusMode
+            focusMode = manualSettings.audioFocusMode,
+            useNavigationUsage = manualSettings.ttsAsNavigationPrompt
         ) { playResult ->
             playbackScope.launch {
                 if (playResult.isSuccess) {

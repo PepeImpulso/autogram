@@ -48,12 +48,21 @@ class AudioPlayer @Inject constructor(
      * @param file OGG audio file
      * @param speed Playback speed multiplier (1.0 = unchanged)
      * @param focusMode How to request audio focus — see [AudioFocusMode]
+     * @param useNavigationUsage v1.24.5 — when true, route playback through
+     *   `USAGE_ASSISTANCE_NAVIGATION_GUIDANCE` (the Google Maps directions
+     *   path) instead of `USAGE_MEDIA`. Mirrors `TtsPlayer.speak`'s
+     *   `ttsAsNavigationPrompt` branch; used by `PlayReplyUseCase` so the
+     *   single user-facing toggle covers both engines. Without this, voice
+     *   message replies were stuck on `USAGE_MEDIA` while TTS already had
+     *   the nav-path escape hatch — manifested as "text replies play in
+     *   the car but voice replies don't" on Pepe's Seat Ateca.
      * @param onComplete Callback invoked when playback finishes or errors
      */
     fun play(
         file: File,
         speed: Float = 1f,
         focusMode: AudioFocusMode = AudioFocusMode.TRANSIENT_MAY_DUCK,
+        useNavigationUsage: Boolean = false,
         onComplete: (Result<Unit>) -> Unit = {}
     ): Result<Unit> {
         return try {
@@ -61,7 +70,7 @@ class AudioPlayer @Inject constructor(
             completionHandler = onComplete
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             val outputSnapshot = getOutputDevices(audioManager)
-            val playbackAttributes = buildPlaybackAttributes()
+            val playbackAttributes = buildPlaybackAttributes(useNavigationUsage)
 
             // Request audio focus. In an Android Auto session Google Maps /
             // the AA host typically already holds focus for navigation prompts.
@@ -335,7 +344,20 @@ class AudioPlayer @Inject constructor(
         }
     }
 
-    private fun buildPlaybackAttributes(): AudioAttributes {
+    private fun buildPlaybackAttributes(useNavigationUsage: Boolean): AudioAttributes {
+        // v1.24.5 — mirrors `TtsPlayer.speak`'s `ttsAsNavigationPrompt`
+        // branch so the user-facing toggle covers BOTH engines. Same
+        // USAGE_ASSISTANCE_NAVIGATION_GUIDANCE + CONTENT_TYPE_SONIFICATION
+        // pairing Google Maps directions use; that path speaks over music
+        // and routes reliably to car speakers when the default USAGE_MEDIA
+        // path gets silently muted by AA's media arbiter (the symptom Pepe
+        // saw on the Seat Ateca for voice replies but not text replies).
+        if (useNavigationUsage) {
+            return AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+        }
         return AudioAttributes.Builder()
             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
             .setUsage(AudioAttributes.USAGE_MEDIA)
