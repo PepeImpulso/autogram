@@ -8,7 +8,9 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.os.Build
+import androidx.car.app.connection.CarConnection
 import com.autogram.app.domain.model.AudioFocusMode
+import com.autogram.app.infrastructure.platform.CarConnectionMonitor
 import dagger.hilt.android.qualifiers.ApplicationContext
 import timber.log.Timber
 import java.io.File
@@ -16,10 +18,11 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Audio player for incoming voice messages. Uses MediaPlayer with
- * AudioAttributes(USAGE_MEDIA, CONTENT_TYPE_SPEECH). Audio focus strategy is
- * caller-controlled (see [AudioFocusMode]) so the user can flip modes in
- * Settings when diagnosing AA audio-routing issues.
+ * Audio player for incoming voice messages. Uses MediaPlayer with speech
+ * audio attributes, promoting to the navigation-prompt usage while Android
+ * Auto is connected so voice files follow the same reliable car route as TTS.
+ * Audio focus strategy is caller-controlled (see [AudioFocusMode]) so the
+ * user can flip modes in Settings when diagnosing AA audio-routing issues.
  *
  * Marked @Singleton so the routed-device StateFlow has a stable subscriber
  * surface for the phone Settings diagnostics card.
@@ -27,7 +30,8 @@ import javax.inject.Singleton
 @Singleton
 class AudioPlayer @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val diagnostics: PlaybackDiagnostics
+    private val diagnostics: PlaybackDiagnostics,
+    private val carConnectionMonitor: CarConnectionMonitor
 ) {
     private var mediaPlayer: MediaPlayer? = null
     private var isPlaying = false
@@ -80,10 +84,17 @@ class AudioPlayer @Inject constructor(
             completionHandler = onComplete
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             val outputSnapshot = getOutputDevices(audioManager)
-            val playbackAttributes = buildPlaybackAttributes(useNavigationUsage)
+            val carConnectionType = carConnectionMonitor.currentType()
+            val effectiveNavigationUsage = shouldUseNavigationUsage(
+                requestedNavigationUsage = useNavigationUsage,
+                carConnectionType = carConnectionType
+            )
+            val playbackAttributes = buildPlaybackAttributes(effectiveNavigationUsage)
             Timber.d(
                 "AudioPlayer.play attrs " +
                     "usage=${playbackAttributes.usage} contentType=${playbackAttributes.contentType} " +
+                    "requestedNavUsage=$useNavigationUsage effectiveNavUsage=$effectiveNavigationUsage " +
+                    "carConnection=${carConnectionMonitor.typeLabel(carConnectionType)} " +
                     "outputs=${outputSnapshot.typeSummary()}"
             )
 
@@ -132,7 +143,13 @@ class AudioPlayer @Inject constructor(
                 // Prefer routing to a connected Bluetooth / car output so the
                 // driver hears replies through the car speakers / headset
                 // instead of the phone's loudspeaker.
-                preferOutputRoute(this, audioManager, playbackAttributes, outputSnapshot)
+                preferOutputRoute(
+                    player = this,
+                    audioManager = audioManager,
+                    attributes = playbackAttributes,
+                    outputSnapshot = outputSnapshot,
+                    carConnectionType = carConnectionType
+                )
                 start()
                 logRoutedDevice(this)
             }
@@ -272,7 +289,8 @@ class AudioPlayer @Inject constructor(
         player: MediaPlayer,
         audioManager: AudioManager,
         attributes: AudioAttributes,
-        outputSnapshot: List<AudioDeviceInfo>
+        outputSnapshot: List<AudioDeviceInfo>,
+        carConnectionType: Int
     ) {
         try {
             val routedDevices = getRoutedDevices(audioManager, attributes)
@@ -298,8 +316,8 @@ class AudioPlayer @Inject constructor(
             // media app; if it doesn't, silence is no worse than an
             // inaudible phone speaker buzzing in a pocket. BT/wired
             // users hear the message through the car regardless.
-            val carPresent = (routedDevices + outputSnapshot)
-                .any { isProjectedCarOutputType(it.type) }
+            val carPresent = isConnectedCarConnectionType(carConnectionType) ||
+                (routedDevices + outputSnapshot).any { isProjectedCarOutputType(it.type) }
             if (carPresent) {
                 // v1.23.2 — leave routing to the OS when a projected AA
                 // sink is present. The previous logic forced BT A2DP /
@@ -317,20 +335,21 @@ class AudioPlayer @Inject constructor(
                 // skipped setPreferredDevice, which let the OS route
                 // through AA's media stream and the audio came through.
                 //
-                // The MediaSession + AudioAttributes(USAGE_MEDIA,
-                // CONTENT_TYPE_SPEECH) we already set are what AA needs
-                // to surface our playback in its media stream; no
+                // The MediaSession + current AudioAttributes are what AA
+                // needs to surface playback in its car-controlled stream; no
                 // setPreferredDevice call is required for that path.
                 Timber.i(
                     "AudioPlayer: AA connected — leaving routing to OS so AA's " +
                         "media stream picks up the playback " +
-                        "(routed=${routedDevices.typeSummary()}, outputs=${outputSnapshot.typeSummary()})"
+                        "(carConnection=${carConnectionMonitor.typeLabel(carConnectionType)}, " +
+                        "routed=${routedDevices.typeSummary()}, outputs=${outputSnapshot.typeSummary()})"
                 )
                 return
             }
             val preferredType = choosePreferredOutputType(
                 routedTypes = routedDevices.map { it.type },
-                outputTypes = outputSnapshot.map { it.type }
+                outputTypes = outputSnapshot.map { it.type },
+                carConnectionType = carConnectionType
             )
             if (preferredType == null) {
                 Timber.d(
@@ -464,8 +483,10 @@ class AudioPlayer @Inject constructor(
 
         internal fun choosePreferredOutputType(
             routedTypes: List<Int>,
-            outputTypes: List<Int>
+            outputTypes: List<Int>,
+            carConnectionType: Int = CarConnection.CONNECTION_TYPE_NOT_CONNECTED
         ): Int? {
+            if (isConnectedCarConnectionType(carConnectionType)) return null
             if ((routedTypes + outputTypes).any { isProjectedCarOutputType(it) }) return null
             return firstByPriority(routedTypes, PERSONAL_OUTPUT_PRIORITY)
                 ?: firstByPriority(outputTypes, PERSONAL_OUTPUT_PRIORITY)
@@ -473,6 +494,15 @@ class AudioPlayer @Inject constructor(
 
         internal fun isProjectedCarOutputType(type: Int): Boolean =
             type in PROJECTED_CAR_OUTPUT_PRIORITY
+
+        internal fun isConnectedCarConnectionType(type: Int): Boolean =
+            type == CarConnection.CONNECTION_TYPE_NATIVE ||
+                type == CarConnection.CONNECTION_TYPE_PROJECTION
+
+        internal fun shouldUseNavigationUsage(
+            requestedNavigationUsage: Boolean,
+            carConnectionType: Int
+        ): Boolean = requestedNavigationUsage || isConnectedCarConnectionType(carConnectionType)
 
         private fun firstByPriority(types: List<Int>, priority: List<Int>): Int? =
             priority.firstOrNull { it in types }

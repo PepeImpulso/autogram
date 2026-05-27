@@ -267,8 +267,9 @@ class SettingsViewModel @Inject constructor(
                 val toneFile = synthesiseTestTone()
                 audioPlayer.play(
                     toneFile,
-                    speed = 1f,
-                    focusMode = settings.audioFocusMode
+                    speed = settings.playbackSpeed,
+                    focusMode = settings.audioFocusMode,
+                    useNavigationUsage = settings.ttsAsNavigationPrompt
                 ) {
                     // Once the tone finishes, speak a short test phrase so the
                     // user also hears the TTS path. TTS reads the current

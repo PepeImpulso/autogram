@@ -1,6 +1,7 @@
 package com.autogram.app.infrastructure.audio
 
 import android.media.AudioDeviceInfo
+import androidx.car.app.connection.CarConnection
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -20,6 +21,19 @@ class AudioPlayerRouteTest {
                 AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
                 AudioDeviceInfo.TYPE_USB_ACCESSORY
             )
+        )
+
+        assertNull(selected)
+    }
+
+    @Test fun `projected car connection leaves routing to the os even without projected sink`() {
+        val selected = AudioPlayer.choosePreferredOutputType(
+            routedTypes = emptyList(),
+            outputTypes = listOf(
+                AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
+                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+            ),
+            carConnectionType = CarConnection.CONNECTION_TYPE_PROJECTION
         )
 
         assertNull(selected)
@@ -70,5 +84,29 @@ class AudioPlayerRouteTest {
     @Test fun `projected car output detection excludes plain usb headset`() {
         assertTrue(AudioPlayer.isProjectedCarOutputType(AudioDeviceInfo.TYPE_USB_ACCESSORY))
         assertTrue(!AudioPlayer.isProjectedCarOutputType(AudioDeviceInfo.TYPE_USB_HEADSET))
+    }
+
+    @Test fun `android auto connection promotes voice playback to navigation usage`() {
+        assertTrue(
+            AudioPlayer.shouldUseNavigationUsage(
+                requestedNavigationUsage = false,
+                carConnectionType = CarConnection.CONNECTION_TYPE_PROJECTION
+            )
+        )
+    }
+
+    @Test fun `disconnected phone preserves requested navigation usage`() {
+        assertTrue(
+            AudioPlayer.shouldUseNavigationUsage(
+                requestedNavigationUsage = true,
+                carConnectionType = CarConnection.CONNECTION_TYPE_NOT_CONNECTED
+            )
+        )
+        assertTrue(
+            !AudioPlayer.shouldUseNavigationUsage(
+                requestedNavigationUsage = false,
+                carConnectionType = CarConnection.CONNECTION_TYPE_NOT_CONNECTED
+            )
+        )
     }
 }
