@@ -105,6 +105,11 @@ class SendVoiceMtprotoUseCase @Inject constructor(
                 return Result.failure(IllegalStateException("Pipeline ocupado: ${_status.value::class.simpleName}"))
             }
         }
+        // Open the recording gate before touching playback/recorder state.
+        // This covers the short startup window before AudioRecorder itself
+        // reports isRecording=true.
+        playReplyUseCase.markUserRecordingStarting()
+
         // Interrupt any voice reply currently playing so the driver can speak
         // over an unwanted/long-winded answer from Merlin and send their own
         // prompt. v1.20.11: stopAll no longer wipes the pending queue — the
@@ -123,6 +128,7 @@ class SendVoiceMtprotoUseCase @Inject constructor(
             hapticCues.playStart()
             Result.success(Unit)
         } else {
+            playReplyUseCase.clearUserRecordingGate()
             val err = result.exceptionOrNull()?.message ?: "Error al iniciar grabación"
             _status.value = SendStatus.Error(err)
             Result.failure(result.exceptionOrNull() ?: Exception(err))
@@ -141,6 +147,7 @@ class SendVoiceMtprotoUseCase @Inject constructor(
         // v1.22.0 — recording ended; resume any messages that were
         // deferred to the queue while the mic was hot. No-op if the
         // user has auto-play off (queue stays parked for manual drain).
+        playReplyUseCase.clearUserRecordingGate()
         playReplyUseCase.drainPendingIfAutoPlay()
     }
 
@@ -162,6 +169,7 @@ class SendVoiceMtprotoUseCase @Inject constructor(
         _status.value = SendStatus.Idle
         recordingSounds.playEnd()
         hapticCues.playEnd()
+        playReplyUseCase.clearUserRecordingGate()
         playReplyUseCase.drainPendingIfAutoPlay()
         return audioFile
     }
@@ -185,6 +193,7 @@ class SendVoiceMtprotoUseCase @Inject constructor(
         // can resume now. drainPendingIfAutoPlay is a no-op when nothing
         // is queued, autoplay is off, or the audio path is busy.
         if (_status.value !is SendStatus.PreviewReady) {
+            playReplyUseCase.clearUserRecordingGate()
             playReplyUseCase.drainPendingIfAutoPlay()
         }
         return result
@@ -458,6 +467,7 @@ class SendVoiceMtprotoUseCase @Inject constructor(
         _status.value = SendStatus.Idle
         // v1.22.0 — preview discarded; resume any messages parked while
         // the mic / preview was tying up the audio path.
+        playReplyUseCase.clearUserRecordingGate()
         playReplyUseCase.drainPendingIfAutoPlay()
     }
 
@@ -467,6 +477,7 @@ class SendVoiceMtprotoUseCase @Inject constructor(
      */
     suspend fun confirmPreview(): Result<Long> {
         val result = confirmPreviewInner()
+        playReplyUseCase.clearUserRecordingGate()
         playReplyUseCase.drainPendingIfAutoPlay()
         return result
     }

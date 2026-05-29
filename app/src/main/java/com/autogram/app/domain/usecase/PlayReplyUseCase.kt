@@ -167,6 +167,11 @@ class PlayReplyUseCase @Inject constructor(
     // and race to start MediaPlayer twice, dropping the first message.
     private val playbackStartLock = Mutex()
     @Volatile private var currentPlayingId: String? = null
+    // Guards the small gap between "user tapped record" and the recorder
+    // backend reporting isRecording=true. Without this latch, an incoming
+    // reply can begin playback in that startup window and talk over the
+    // outgoing voice note the user is trying to record.
+    @Volatile private var userRecordingGateActive: Boolean = false
     // Dedicated scope for MediaPlayer callbacks (instead of runBlocking) —
     // recreated after stopAll() so cancelled work doesn't leak into future
     // playbacks. `@Volatile` because MediaPlayer callbacks fire on the
@@ -201,7 +206,7 @@ class PlayReplyUseCase @Inject constructor(
         // is hot, so any output would (a) talk over the user mid-thought
         // and (b) leak into the recording's audio. Defer to the queue;
         // [drainPendingIfAutoPlay] resumes after stopAndSend / cancel.
-        if (respectUserGates && audioRecorder.isRecording()) {
+        if (respectUserGates && isUserRecordingOrStarting()) {
             Timber.i("playVoiceMessage ${message.id} → enqueue (user recording)")
             enqueuePending(message, PendingReason.USER_RECORDING)
             return
@@ -483,7 +488,7 @@ class PlayReplyUseCase @Inject constructor(
             Timber.i("playSummaryOrTranscription ${message.id} → enqueue (in-call)")
             enqueuePending(message, PendingReason.IN_CALL); return
         }
-        if (respectUserGates && audioRecorder.isRecording()) {
+        if (respectUserGates && isUserRecordingOrStarting()) {
             Timber.i("playSummaryOrTranscription ${message.id} → enqueue (user recording)")
             enqueuePending(message, PendingReason.USER_RECORDING); return
         }
@@ -560,7 +565,7 @@ class PlayReplyUseCase @Inject constructor(
             enqueuePending(message, PendingReason.IN_CALL)
             return
         }
-        if (respectUserGates && audioRecorder.isRecording()) {
+        if (respectUserGates && isUserRecordingOrStarting()) {
             Timber.i("playTextMessage ${message.id} → enqueue (user recording)")
             enqueuePending(message, PendingReason.USER_RECORDING)
             return
@@ -736,6 +741,19 @@ class PlayReplyUseCase @Inject constructor(
         // DB updates against a "now playing" row that's no longer playing.
         playbackScope.cancel()
         playbackScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    }
+
+    /**
+     * Called before the outgoing recorder starts. This closes the race where
+     * autoplay sees audioRecorder.isRecording()==false for a few milliseconds
+     * while the UI is already entering the recording flow.
+     */
+    fun markUserRecordingStarting() {
+        userRecordingGateActive = true
+    }
+
+    fun clearUserRecordingGate() {
+        userRecordingGateActive = false
     }
 
     /**
@@ -943,7 +961,7 @@ class PlayReplyUseCase @Inject constructor(
         // start playing back over the new mic. The recorder guard at
         // the playVoiceMessage level already exists, but this defense
         // catches the drain path too.
-        if (audioRecorder.isRecording() || audioPlayer.isPlaying() || ttsPlayer.isSpeaking()) return
+        if (isUserRecordingOrStarting() || audioPlayer.isPlaying() || ttsPlayer.isSpeaking()) return
         // v1.23.0-rc.6 — give the user a 2 s beat after the mic releases
         // before the queue starts auto-playing. Without this, the audio
         // of the first queued message steps on the user's own
@@ -956,7 +974,7 @@ class PlayReplyUseCase @Inject constructor(
         delay(POST_RECORDING_DRAIN_DELAY_MS)
         if (pendingCount() == 0) return
         if (!settingsRepository.get().autoPlayReplies) return
-        if (audioRecorder.isRecording() || audioPlayer.isPlaying() || ttsPlayer.isSpeaking()) return
+        if (isUserRecordingOrStarting() || audioPlayer.isPlaying() || ttsPlayer.isSpeaking()) return
         playAllPending()
     }
 
@@ -1207,6 +1225,9 @@ class PlayReplyUseCase @Inject constructor(
          */
         private const val PLAYED_HISTORY_CAP: Int = 5
     }
+
+    private fun isUserRecordingOrStarting(): Boolean =
+        userRecordingGateActive || audioRecorder.isRecording()
 
     private suspend fun playQueued(message: Message) {
         val settings = settingsRepository.get()

@@ -23,6 +23,10 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -41,6 +45,7 @@ import java.io.File
  * immediately without invoking their completion callbacks; tests that need
  * the success-path callback path invoke the captured lambda manually.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class PlayReplyUseCaseTest {
 
     private lateinit var audioPlayer: AudioPlayer
@@ -175,6 +180,47 @@ class PlayReplyUseCaseTest {
         val s = useCase.playbackStatus.value
         assertTrue(s is PlayReplyUseCase.PlaybackStatus.Playing)
         assertEquals(msg.id, (s as PlayReplyUseCase.PlaybackStatus.Playing).messageId)
+    }
+
+    @Test fun `recording startup gate queues voice before recorder reports recording`() = runTest {
+        every { audioRecorder.isRecording() } returns false
+        val msg = voiceMessage()
+
+        useCase.markUserRecordingStarting()
+        useCase.playVoiceMessage(msg, isCallActive = false)
+
+        coVerify { pendingPlaybackDao.insert(match { it.reason == PendingReason.USER_RECORDING }) }
+        verify(exactly = 0) { audioPlayer.play(any(), any(), any()) }
+    }
+
+    @Test fun `recording startup gate queues text before recorder reports recording`() = runTest {
+        every { audioRecorder.isRecording() } returns false
+        val msg = textMessage()
+
+        useCase.markUserRecordingStarting()
+        useCase.playTextMessage(msg, isCallActive = false)
+
+        coVerify { pendingPlaybackDao.insert(match { it.reason == PendingReason.USER_RECORDING }) }
+        coVerify(exactly = 0) { ttsPlayer.speak(any(), any(), any()) }
+    }
+
+    @Test fun `recording drain waits two seconds after gate clears`() = runTest {
+        useCase.markUserRecordingStarting()
+        useCase.playVoiceMessage(voiceMessage("queued"), isCallActive = false)
+        useCase.clearUserRecordingGate()
+
+        val drainJob = launch { useCase.drainPendingIfAutoPlay() }
+        runCurrent()
+        verify(exactly = 0) { audioPlayer.play(any(), any(), any()) }
+
+        advanceTimeBy(1_999)
+        runCurrent()
+        verify(exactly = 0) { audioPlayer.play(any(), any(), any()) }
+
+        advanceTimeBy(1)
+        runCurrent()
+        verify { audioPlayer.play(any(), any(), any()) }
+        drainJob.cancel()
     }
 
     // --- playTextMessage gates --------------------------------------------
