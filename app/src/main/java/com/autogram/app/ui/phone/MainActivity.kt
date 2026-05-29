@@ -542,9 +542,12 @@ private fun MainScreen(
                 NoPrimaryState(onConfigure = onManagePinned)
             }
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(16.dp))
 
             SecondaryCirclesRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
                 circles = secondary,
                 activeTargetId = activeTargetId,
                 playingConversationId = playingConversationId,
@@ -558,8 +561,6 @@ private fun MainScreen(
                 onManage = onManagePinned,
                 onOpenHistoryFor = onOpenHistoryFor
             )
-
-            Spacer(Modifier.weight(1f))
         }
     }
 
@@ -1188,6 +1189,7 @@ private fun PendingBadge(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SecondaryCirclesRow(
+    modifier: Modifier = Modifier,
     circles: List<Conversation>,
     activeTargetId: String?,
     playingConversationId: String?,
@@ -1205,20 +1207,30 @@ private fun SecondaryCirclesRow(
     // up. Circle size is recalculated from the visible count and width so
     // hiding contacts lets the remaining circles claim the freed space.
     BoxWithConstraints(
-        modifier = Modifier
+        contentAlignment = Alignment.Center,
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
     ) {
         val itemCount = (circles.size + 1).coerceAtLeast(1)
         val columns = itemCount.coerceAtMost(4)
         val totalSpacing = 12.dp * (columns - 1).toFloat()
-        val circleSize = ((maxWidth - totalSpacing) / columns.toFloat()).coerceIn(72.dp, 112.dp)
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            circles.forEach { conv ->
+        val gridCircleSize = ((maxWidth - totalSpacing) / columns.toFloat()).coerceIn(72.dp, 112.dp)
+        val singleWidthSize = maxWidth * 0.48f
+        val singleHeightSize = maxHeight * 0.62f
+        val singleCircleSize = if (singleWidthSize < singleHeightSize) singleWidthSize else singleHeightSize
+        val circleSize = if (circles.size == 1) {
+            singleCircleSize.coerceIn(128.dp, 184.dp)
+        } else {
+            gridCircleSize
+        }
+        val addButtonSize = if (circles.size == 1) 72.dp else circleSize
+        if (circles.size == 1) {
+            val conv = circles.first()
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     RecordCircle(
                         conversation = conv,
@@ -1243,33 +1255,97 @@ private fun SecondaryCirclesRow(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-            }
-            // "+" button — always visible, opens the manage screen.
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier.size(circleSize)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(bottom = 8.dp)
                 ) {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                        IconButton(onClick = onManage) {
-                            Icon(
-                                Icons.Filled.Add,
-                                contentDescription = stringResource(R.string.main_manage_shortcuts_cd),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.size(addButtonSize)
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            IconButton(onClick = onManage) {
+                                Icon(
+                                    Icons.Filled.Add,
+                                    contentDescription = stringResource(R.string.main_manage_shortcuts_cd),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        stringResource(R.string.main_add_shortcut),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.width(addButtonSize),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    stringResource(R.string.main_add_shortcut),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.width(circleSize),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+            }
+        } else {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                circles.forEach { conv ->
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        RecordCircle(
+                            conversation = conv,
+                            size = circleSize,
+                            isRecordingThis = activeTargetId == conv.id &&
+                                sendStatus is SendVoiceMtprotoUseCase.SendStatus.Recording,
+                            isPlayingThis = playingConversationId == conv.id,
+                            pendingCount = pendingCounts[conv.id] ?: 0,
+                            hasPermission = hasPermission,
+                            onRequestPermission = onRequestPermission,
+                            onStart = { onStart(conv) },
+                            onSend = onSend,
+                            onCancel = onCancel,
+                            onPendingBadgeClick = { onOpenHistoryFor(conv.id) }
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            conv.topicName ?: conv.targetTitle ?: "",
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                            modifier = Modifier.width(circleSize),
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                // "+" button — always visible, opens the manage screen.
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.size(addButtonSize)
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            IconButton(onClick = onManage) {
+                                Icon(
+                                    Icons.Filled.Add,
+                                    contentDescription = stringResource(R.string.main_manage_shortcuts_cd),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        stringResource(R.string.main_add_shortcut),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.width(addButtonSize),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }
@@ -1313,6 +1389,7 @@ private fun PrimaryRow(
                 quickReplies.filter { it.kind == com.autogram.app.domain.model.QuickReplyKind.VOICE }
         }
     }
+    val showShortcutColumn = showQuickReplyShortcuts && visible.isNotEmpty()
     Column(modifier = Modifier.fillMaxWidth()) {
         if (showQuickReplyFilters && hasBothKinds) {
             QuickReplyFilterRow(
@@ -1325,7 +1402,11 @@ private fun PrimaryRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalArrangement = if (showShortcutColumn) {
+                Arrangement.spacedBy(16.dp)
+            } else {
+                Arrangement.Center
+            },
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1356,7 +1437,7 @@ private fun PrimaryRow(
                     )
                 }
             }
-            if (showQuickReplyShortcuts) {
+            if (showShortcutColumn) {
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
