@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -143,7 +144,7 @@ class UpdateInstaller @Inject constructor(
         var lastChange = System.currentTimeMillis()
         val started = lastChange
 
-        while (isActive && synchronized(lock) { currentDownloadId == id }) {
+        while (currentCoroutineContext().isActive && synchronized(lock) { currentDownloadId == id }) {
             val snapshot = querySnapshot(dm, id)
             val now = System.currentTimeMillis()
             if (snapshot == null) {

@@ -1209,7 +1209,7 @@ private fun UpdatesRow(viewModel: UpdateViewModel = androidx.hilt.navigation.com
             enabled = !isBusy,
             modifier = Modifier.fillMaxWidth()
         ) {
-            when (state) {
+            when (val current = state) {
                 is UpdateViewModel.State.Checking -> {
                     CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(8.dp))
@@ -1218,7 +1218,7 @@ private fun UpdatesRow(viewModel: UpdateViewModel = androidx.hilt.navigation.com
                 is UpdateViewModel.State.Downloading -> {
                     CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(8.dp))
-                    Text(state.message ?: ctx.getString(R.string.update_downloading))
+                    Text(current.message ?: ctx.getString(R.string.update_downloading))
                 }
                 else -> Text(ctx.getString(R.string.settings_updates_check))
             }
