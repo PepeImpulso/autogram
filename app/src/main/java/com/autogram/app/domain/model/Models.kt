@@ -111,6 +111,9 @@ data class Conversation(
     val photoLocalPath: String? = null,
     val sortOrder: Int = 0,
     val lastRepliedAt: Long? = null,
+    // Secondary circles can be hidden from Home without being unpinned or
+    // deleted. Primary ignores this flag and always remains visible.
+    val showOnHome: Boolean = true,
     // null = not in any folder (shown in the "All" tab, not in any specific folder tab).
     val folderId: String? = null
 )

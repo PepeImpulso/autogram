@@ -52,6 +52,7 @@ interface ConversationRepository {
     suspend fun setPhotoPath(id: String, path: String?)
     suspend fun setSortOrder(id: String, order: Int)
     suspend fun setLastRepliedAt(id: String, timestampMs: Long)
+    suspend fun setShowOnHome(id: String, show: Boolean)
     suspend fun setFolder(id: String, folderId: String?)
     suspend fun delete(id: String)
 }

@@ -60,6 +60,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -232,6 +233,7 @@ private fun ManagePinnedScreen(
                     onRemove = { viewModel.remove(conv.id) },
                     onMoveUp = { viewModel.moveUp(conv.id) },
                     onMoveDown = { viewModel.moveDown(conv.id) },
+                    onShowOnHomeChange = { viewModel.setShowOnHome(conv.id, it) },
                     onAssignFolder = { folderId -> viewModel.assignFolder(conv.id, folderId) }
                 )
             }
@@ -288,6 +290,7 @@ private fun PinnedRow(
     onRemove: () -> Unit,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
+    onShowOnHomeChange: (Boolean) -> Unit,
     onAssignFolder: (String?) -> Unit
 ) {
     val hasPhoto = conv.photoLocalPath != null
@@ -358,21 +361,35 @@ private fun PinnedRow(
                     enabled = false,
                     label = {
                         Text(
-                            if (conv.isActive) stringResource(R.string.pinned_label_primary)
-                            else stringResource(R.string.pinned_label_secondary),
+                            when {
+                                conv.isActive -> stringResource(R.string.pinned_label_primary)
+                                conv.showOnHome -> stringResource(R.string.pinned_label_secondary)
+                                else -> stringResource(R.string.pinned_label_hidden_home)
+                            },
                             style = MaterialTheme.typography.labelSmall
                         )
                     },
                     colors = AssistChipDefaults.assistChipColors(
                         disabledContainerColor = if (conv.isActive)
                             MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                        else if (!conv.showOnHome)
+                            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
                         else MaterialTheme.colorScheme.surfaceVariant,
                         disabledLabelColor = if (conv.isActive)
                             MaterialTheme.colorScheme.primary
+                        else if (!conv.showOnHome)
+                            MaterialTheme.colorScheme.error
                         else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 )
             }
+            if (!conv.isActive) {
+                Switch(
+                    checked = conv.showOnHome,
+                    onCheckedChange = onShowOnHomeChange
+                )
+            }
+            Spacer(Modifier.width(4.dp))
             // Reorder chevrons on the right — only for secondary circles,
             // disabled at range ends. Smaller than the old IconButtons so
             // they don't dominate the card.

@@ -234,6 +234,9 @@ interface ConversationDao {
     @Query("UPDATE conversations SET lastRepliedAt = :ts WHERE id = :id")
     suspend fun setLastRepliedAt(id: String, ts: Long)
 
+    @Query("UPDATE conversations SET showOnHome = :show WHERE id = :id")
+    suspend fun setShowOnHome(id: String, show: Boolean)
+
     @Query("UPDATE conversations SET folderId = :folderId WHERE id = :id")
     suspend fun setFolder(id: String, folderId: String?)
 

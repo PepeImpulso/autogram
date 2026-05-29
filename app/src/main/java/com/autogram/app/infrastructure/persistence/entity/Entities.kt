@@ -73,6 +73,9 @@ data class ConversationEntity(
     // compute the "pending-to-reply" badge: count of INCOMING messages with
     // createdAt > lastRepliedAt. Null = user has never replied to this circle.
     val lastRepliedAt: Long? = null,
+    // Hide secondary circles from Home without unpinning or deleting them.
+    // Primary rows ignore this and are always shown.
+    val showOnHome: Boolean = true,
     // Optional grouping folder. Null = not in any folder — shown under the
     // "All" tab on Main but not filtered into any specific folder tab.
     val folderId: String? = null

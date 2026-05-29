@@ -418,6 +418,7 @@
     <string name="pinned_empty">No shortcuts yet. Add your main bot or a forum topic.</string>
     <string name="pinned_label_primary">Primary (Merlin)</string>
     <string name="pinned_label_secondary">Shortcut</string>
+    <string name="pinned_label_hidden_home">Hidden from Home</string>
     <string name="pinned_mark_primary_cd">Mark as primary</string>
     <string name="pinned_move_up">Move up</string>
     <string name="pinned_move_down">Move down</string>

@@ -367,6 +367,7 @@
     <string name="pinned_empty">Aún no hay accesos rápidos. Añade el bot principal o un topic de un grupo foro.</string>
     <string name="pinned_label_primary">Principal (Merlin)</string>
     <string name="pinned_label_secondary">Acceso rápido</string>
+    <string name="pinned_label_hidden_home">Oculto en principal</string>
     <string name="pinned_mark_primary_cd">Marcar como principal</string>
     <string name="pinned_move_up">Subir</string>
     <string name="pinned_move_down">Bajar</string>

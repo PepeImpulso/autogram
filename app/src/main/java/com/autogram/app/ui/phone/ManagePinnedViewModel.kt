@@ -69,11 +69,20 @@ class ManagePinnedViewModel @Inject constructor(
         }
     }
 
+    fun setShowOnHome(conversationId: String, show: Boolean) {
+        viewModelScope.launch {
+            val conv = conversationRepository.getById(conversationId) ?: return@launch
+            if (conv.isActive) return@launch
+            conversationRepository.setShowOnHome(conversationId, show)
+        }
+    }
+
     fun setPrimary(id: String) {
         viewModelScope.launch {
             conversationRepository.setActive(id)
             // Primary is implicitly pinned too so it shows up on main screen.
             conversationRepository.setPinned(id, true)
+            conversationRepository.setShowOnHome(id, true)
         }
     }
 

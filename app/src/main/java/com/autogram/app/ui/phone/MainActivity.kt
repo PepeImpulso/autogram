@@ -420,11 +420,16 @@ private fun MainScreen(
     // When a folder is selected, only its members (non-primary) appear in
     // the secondary row. Primary stays visible always — it's the user's
     // main target regardless of folder.
-    val secondary = pinned.filter { !it.isActive }
+    val secondary = pinned.filter { !it.isActive && it.showOnHome }
         .let { all ->
             if (selectedFolderId == null) all
             else all.filter { it.folderId == selectedFolderId }
         }
+    val primaryCircleSize = when {
+        secondary.isEmpty() -> 204.dp
+        secondary.size <= 2 -> 192.dp
+        else -> 176.dp
+    }
 
     Scaffold(
         bottomBar = {
@@ -524,6 +529,7 @@ private fun MainScreen(
                     quickReplyFilter = quickReplyFilter,
                     showQuickReplyFilters = showQuickReplyFilters,
                     showQuickReplyShortcuts = showQuickReplyShortcuts,
+                    circleSize = primaryCircleSize,
                     onFilterChange = viewModel::setQuickReplyFilter,
                     onRequestPermission = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
                     onStart = { viewModel.startRecording(primary.id) },
@@ -1196,62 +1202,75 @@ private fun SecondaryCirclesRow(
     onOpenHistoryFor: (conversationId: String) -> Unit
 ) {
     // Wrapping grid — circles flow onto a new row once the current row fills
-    // up. Keeps the layout clean up to ~8 circles on a phone-width screen
-    // without horizontal scrolling.
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+    // up. Circle size is recalculated from the visible count and width so
+    // hiding contacts lets the remaining circles claim the freed space.
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
     ) {
-        circles.forEach { conv ->
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                RecordCircle(
-                    conversation = conv,
-                    size = 72.dp,
-                    isRecordingThis = activeTargetId == conv.id &&
-                        sendStatus is SendVoiceMtprotoUseCase.SendStatus.Recording,
-                    isPlayingThis = playingConversationId == conv.id,
-                    pendingCount = pendingCounts[conv.id] ?: 0,
-                    hasPermission = hasPermission,
-                    onRequestPermission = onRequestPermission,
-                    onStart = { onStart(conv) },
-                    onSend = onSend,
-                    onCancel = onCancel,
-                    onPendingBadgeClick = { onOpenHistoryFor(conv.id) }
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    conv.topicName ?: conv.targetTitle ?: "",
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = 1
-                )
-            }
-        }
-        // "+" button — always visible, opens the manage screen.
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier.size(72.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                    IconButton(onClick = onManage) {
-                        Icon(
-                            Icons.Filled.Add,
-                            contentDescription = stringResource(R.string.main_manage_shortcuts_cd),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+        val itemCount = (circles.size + 1).coerceAtLeast(1)
+        val columns = itemCount.coerceAtMost(4)
+        val totalSpacing = 12.dp * (columns - 1).toFloat()
+        val circleSize = ((maxWidth - totalSpacing) / columns.toFloat()).coerceIn(72.dp, 112.dp)
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            circles.forEach { conv ->
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    RecordCircle(
+                        conversation = conv,
+                        size = circleSize,
+                        isRecordingThis = activeTargetId == conv.id &&
+                            sendStatus is SendVoiceMtprotoUseCase.SendStatus.Recording,
+                        isPlayingThis = playingConversationId == conv.id,
+                        pendingCount = pendingCounts[conv.id] ?: 0,
+                        hasPermission = hasPermission,
+                        onRequestPermission = onRequestPermission,
+                        onStart = { onStart(conv) },
+                        onSend = onSend,
+                        onCancel = onCancel,
+                        onPendingBadgeClick = { onOpenHistoryFor(conv.id) }
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        conv.topicName ?: conv.targetTitle ?: "",
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        modifier = Modifier.width(circleSize),
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
-            Spacer(Modifier.height(4.dp))
-            Text(
-                stringResource(R.string.main_add_shortcut),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            // "+" button — always visible, opens the manage screen.
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.size(circleSize)
+                ) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        IconButton(onClick = onManage) {
+                            Icon(
+                                Icons.Filled.Add,
+                                contentDescription = stringResource(R.string.main_manage_shortcuts_cd),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    stringResource(R.string.main_add_shortcut),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.width(circleSize),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
@@ -1272,6 +1291,7 @@ private fun PrimaryRow(
     quickReplyFilter: com.autogram.app.domain.model.QuickReplyFilter,
     showQuickReplyFilters: Boolean,
     showQuickReplyShortcuts: Boolean,
+    circleSize: androidx.compose.ui.unit.Dp,
     onFilterChange: (com.autogram.app.domain.model.QuickReplyFilter) -> Unit,
     onRequestPermission: () -> Unit,
     onStart: () -> Unit,
@@ -1311,7 +1331,7 @@ private fun PrimaryRow(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 RecordCircle(
                     conversation = primary,
-                    size = 176.dp,
+                    size = circleSize,
                     isRecordingThis = isRecordingThis,
                     isPlayingThis = isPlayingThis,
                     pendingCount = pendingCount,

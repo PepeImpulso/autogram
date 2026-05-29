@@ -57,6 +57,10 @@ class ConversationRepositoryImpl @Inject constructor(
         conversationDao.setLastRepliedAt(id, timestampMs)
     }
 
+    override suspend fun setShowOnHome(id: String, show: Boolean) {
+        conversationDao.setShowOnHome(id, show)
+    }
+
     override suspend fun setFolder(id: String, folderId: String?) {
         conversationDao.setFolder(id, folderId)
     }
@@ -70,7 +74,7 @@ class ConversationRepositoryImpl @Inject constructor(
         isActive = isActive, createdAt = createdAt,
         lastMessageAt = lastMessageAt, topicId = topicId, topicName = topicName,
         isPinned = isPinned, photoLocalPath = photoLocalPath, sortOrder = sortOrder,
-        lastRepliedAt = lastRepliedAt, folderId = folderId
+        lastRepliedAt = lastRepliedAt, showOnHome = showOnHome, folderId = folderId
     )
 
     private fun Conversation.toEntity() = ConversationEntity(
@@ -78,6 +82,6 @@ class ConversationRepositoryImpl @Inject constructor(
         isActive = isActive, createdAt = createdAt,
         lastMessageAt = lastMessageAt, topicId = topicId, topicName = topicName,
         isPinned = isPinned, photoLocalPath = photoLocalPath, sortOrder = sortOrder,
-        lastRepliedAt = lastRepliedAt, folderId = folderId
+        lastRepliedAt = lastRepliedAt, showOnHome = showOnHome, folderId = folderId
     )
 }
