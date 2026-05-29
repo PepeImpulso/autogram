@@ -549,6 +549,7 @@ private fun MainScreen(
                     .fillMaxWidth()
                     .weight(1f),
                 circles = secondary,
+                primaryCircleSize = primaryCircleSize,
                 activeTargetId = activeTargetId,
                 playingConversationId = playingConversationId,
                 sendStatus = sendStatus,
@@ -558,7 +559,6 @@ private fun MainScreen(
                 onStart = { viewModel.startRecording(it.id) },
                 onSend = { viewModel.stopAndSend() },
                 onCancel = { viewModel.cancelRecording() },
-                onManage = onManagePinned,
                 onOpenHistoryFor = onOpenHistoryFor
             )
         }
@@ -1191,6 +1191,7 @@ private fun PendingBadge(
 private fun SecondaryCirclesRow(
     modifier: Modifier = Modifier,
     circles: List<Conversation>,
+    primaryCircleSize: androidx.compose.ui.unit.Dp,
     activeTargetId: String?,
     playingConversationId: String?,
     sendStatus: SendVoiceMtprotoUseCase.SendStatus,
@@ -1200,154 +1201,117 @@ private fun SecondaryCirclesRow(
     onStart: (Conversation) -> Unit,
     onSend: () -> Unit,
     onCancel: () -> Unit,
-    onManage: () -> Unit,
     onOpenHistoryFor: (conversationId: String) -> Unit
 ) {
+    if (circles.isEmpty()) return
+
     // Wrapping grid — circles flow onto a new row once the current row fills
-    // up. Circle size is recalculated from the visible count and width so
-    // hiding contacts lets the remaining circles claim the freed space.
+    // up. Only actual secondary contacts are measured here so hidden contacts
+    // and the manage action do not steal space from the visible targets.
     BoxWithConstraints(
         contentAlignment = Alignment.Center,
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
     ) {
-        val itemCount = (circles.size + 1).coerceAtLeast(1)
-        val columns = itemCount.coerceAtMost(4)
-        val totalSpacing = 12.dp * (columns - 1).toFloat()
-        val gridCircleSize = ((maxWidth - totalSpacing) / columns.toFloat()).coerceIn(72.dp, 112.dp)
-        val singleWidthSize = maxWidth * 0.48f
-        val singleHeightSize = maxHeight * 0.62f
-        val singleCircleSize = if (singleWidthSize < singleHeightSize) singleWidthSize else singleHeightSize
-        val circleSize = if (circles.size == 1) {
-            singleCircleSize.coerceIn(128.dp, 184.dp)
-        } else {
-            gridCircleSize
-        }
-        val addButtonSize = if (circles.size == 1) 72.dp else circleSize
-        if (circles.size == 1) {
-            val conv = circles.first()
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    RecordCircle(
-                        conversation = conv,
-                        size = circleSize,
-                        isRecordingThis = activeTargetId == conv.id &&
-                            sendStatus is SendVoiceMtprotoUseCase.SendStatus.Recording,
-                        isPlayingThis = playingConversationId == conv.id,
-                        pendingCount = pendingCounts[conv.id] ?: 0,
-                        hasPermission = hasPermission,
-                        onRequestPermission = onRequestPermission,
-                        onStart = { onStart(conv) },
-                        onSend = onSend,
-                        onCancel = onCancel,
-                        onPendingBadgeClick = { onOpenHistoryFor(conv.id) }
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        conv.topicName ?: conv.targetTitle ?: "",
-                        style = MaterialTheme.typography.labelSmall,
-                        maxLines = 1,
-                        modifier = Modifier.width(circleSize),
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(bottom = 8.dp)
-                ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        modifier = Modifier.size(addButtonSize)
-                    ) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                            IconButton(onClick = onManage) {
-                                Icon(
-                                    Icons.Filled.Add,
-                                    contentDescription = stringResource(R.string.main_manage_shortcuts_cd),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        stringResource(R.string.main_add_shortcut),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.width(addButtonSize),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+        fun minDp(a: androidx.compose.ui.unit.Dp, b: androidx.compose.ui.unit.Dp) = if (a < b) a else b
+
+        val columns = circles.size.coerceAtMost(4)
+        val totalSpacing = 16.dp * (columns - 1).toFloat()
+        val circleSize = when {
+            circles.size == 1 -> {
+                val widthBound = maxWidth * 0.62f
+                val heightBound = maxHeight * 0.78f
+                minDp(primaryCircleSize, minDp(widthBound, heightBound)).coerceIn(128.dp, primaryCircleSize)
             }
+            circles.size == 2 -> {
+                val widthBound = (maxWidth - totalSpacing) / 2f
+                val heightBound = maxHeight * 0.78f
+                minDp(widthBound, heightBound).coerceIn(128.dp, primaryCircleSize)
+            }
+            else -> ((maxWidth - totalSpacing) / columns.toFloat()).coerceIn(72.dp, 132.dp)
+        }
+
+        if (circles.size == 1) {
+            SecondaryContactCircle(
+                conversation = circles.first(),
+                circleSize = circleSize,
+                activeTargetId = activeTargetId,
+                playingConversationId = playingConversationId,
+                sendStatus = sendStatus,
+                pendingCounts = pendingCounts,
+                hasPermission = hasPermission,
+                onRequestPermission = onRequestPermission,
+                onStart = onStart,
+                onSend = onSend,
+                onCancel = onCancel,
+                onOpenHistoryFor = onOpenHistoryFor
+            )
         } else {
             FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 circles.forEach { conv ->
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        RecordCircle(
-                            conversation = conv,
-                            size = circleSize,
-                            isRecordingThis = activeTargetId == conv.id &&
-                                sendStatus is SendVoiceMtprotoUseCase.SendStatus.Recording,
-                            isPlayingThis = playingConversationId == conv.id,
-                            pendingCount = pendingCounts[conv.id] ?: 0,
-                            hasPermission = hasPermission,
-                            onRequestPermission = onRequestPermission,
-                            onStart = { onStart(conv) },
-                            onSend = onSend,
-                            onCancel = onCancel,
-                            onPendingBadgeClick = { onOpenHistoryFor(conv.id) }
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            conv.topicName ?: conv.targetTitle ?: "",
-                            style = MaterialTheme.typography.labelSmall,
-                            maxLines = 1,
-                            modifier = Modifier.width(circleSize),
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-                // "+" button — always visible, opens the manage screen.
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        modifier = Modifier.size(addButtonSize)
-                    ) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                            IconButton(onClick = onManage) {
-                                Icon(
-                                    Icons.Filled.Add,
-                                    contentDescription = stringResource(R.string.main_manage_shortcuts_cd),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        stringResource(R.string.main_add_shortcut),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.width(addButtonSize),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                    SecondaryContactCircle(
+                        conversation = conv,
+                        circleSize = circleSize,
+                        activeTargetId = activeTargetId,
+                        playingConversationId = playingConversationId,
+                        sendStatus = sendStatus,
+                        pendingCounts = pendingCounts,
+                        hasPermission = hasPermission,
+                        onRequestPermission = onRequestPermission,
+                        onStart = onStart,
+                        onSend = onSend,
+                        onCancel = onCancel,
+                        onOpenHistoryFor = onOpenHistoryFor
                     )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SecondaryContactCircle(
+    conversation: Conversation,
+    circleSize: androidx.compose.ui.unit.Dp,
+    activeTargetId: String?,
+    playingConversationId: String?,
+    sendStatus: SendVoiceMtprotoUseCase.SendStatus,
+    pendingCounts: Map<String, Int>,
+    hasPermission: Boolean,
+    onRequestPermission: () -> Unit,
+    onStart: (Conversation) -> Unit,
+    onSend: () -> Unit,
+    onCancel: () -> Unit,
+    onOpenHistoryFor: (conversationId: String) -> Unit
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        RecordCircle(
+            conversation = conversation,
+            size = circleSize,
+            isRecordingThis = activeTargetId == conversation.id &&
+                sendStatus is SendVoiceMtprotoUseCase.SendStatus.Recording,
+            isPlayingThis = playingConversationId == conversation.id,
+            pendingCount = pendingCounts[conversation.id] ?: 0,
+            hasPermission = hasPermission,
+            onRequestPermission = onRequestPermission,
+            onStart = { onStart(conversation) },
+            onSend = onSend,
+            onCancel = onCancel,
+            onPendingBadgeClick = { onOpenHistoryFor(conversation.id) }
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            conversation.topicName ?: conversation.targetTitle ?: "",
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            modifier = Modifier.width(circleSize),
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
