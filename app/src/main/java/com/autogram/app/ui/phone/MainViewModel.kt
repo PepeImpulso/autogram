@@ -209,6 +209,16 @@ class MainViewModel @Inject constructor(
             .map { it.quickReplyFilter }
             .stateIn(viewModelScope, SharingStarted.Eagerly, QuickReplyFilter.ALL)
 
+    val showQuickReplyFilters: StateFlow<Boolean> =
+        settingsRepository.observe()
+            .map { it.showQuickReplyFilters }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    val showQuickReplyShortcuts: StateFlow<Boolean> =
+        settingsRepository.observe()
+            .map { it.showQuickReplyShortcuts }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
     fun setQuickReplyFilter(filter: QuickReplyFilter) {
         viewModelScope.launch {
             val current = settingsRepository.get()

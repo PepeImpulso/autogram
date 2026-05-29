@@ -384,6 +384,8 @@ private fun MainScreen(
     val folders by viewModel.folders.collectAsState()
     val selectedFolderId by viewModel.selectedFolderId.collectAsState()
     val quickReplyFilter by viewModel.quickReplyFilter.collectAsState()
+    val showQuickReplyFilters by viewModel.showQuickReplyFilters.collectAsState()
+    val showQuickReplyShortcuts by viewModel.showQuickReplyShortcuts.collectAsState()
 
     LaunchedEffect(Unit) {
         // Silent update check throttled: the ViewModel check() is cheap but we
@@ -520,6 +522,8 @@ private fun MainScreen(
                     hasPermission = hasMicPermission,
                     quickReplies = quickReplies,
                     quickReplyFilter = quickReplyFilter,
+                    showQuickReplyFilters = showQuickReplyFilters,
+                    showQuickReplyShortcuts = showQuickReplyShortcuts,
                     onFilterChange = viewModel::setQuickReplyFilter,
                     onRequestPermission = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
                     onStart = { viewModel.startRecording(primary.id) },
@@ -1266,6 +1270,8 @@ private fun PrimaryRow(
     hasPermission: Boolean,
     quickReplies: List<com.autogram.app.domain.model.QuickReply>,
     quickReplyFilter: com.autogram.app.domain.model.QuickReplyFilter,
+    showQuickReplyFilters: Boolean,
+    showQuickReplyShortcuts: Boolean,
     onFilterChange: (com.autogram.app.domain.model.QuickReplyFilter) -> Unit,
     onRequestPermission: () -> Unit,
     onStart: () -> Unit,
@@ -1288,7 +1294,7 @@ private fun PrimaryRow(
         }
     }
     Column(modifier = Modifier.fillMaxWidth()) {
-        if (hasBothKinds) {
+        if (showQuickReplyFilters && hasBothKinds) {
             QuickReplyFilterRow(
                 selected = quickReplyFilter,
                 onSelect = onFilterChange,
@@ -1330,15 +1336,17 @@ private fun PrimaryRow(
                     )
                 }
             }
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                visible.forEach { r ->
-                    QuickReplyChipButton(
-                        reply = r,
-                        onTap = { onQuickReply(r) }
-                    )
+            if (showQuickReplyShortcuts) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    visible.forEach { r ->
+                        QuickReplyChipButton(
+                            reply = r,
+                            onTap = { onQuickReply(r) }
+                        )
+                    }
                 }
             }
         }

@@ -115,6 +115,12 @@
     <string name="quick_replies_filter_all">All</string>
     <string name="quick_replies_filter_text">Text</string>
     <string name="quick_replies_filter_voice">Voice</string>
+    <string name="quick_replies_home_visibility_title">Home screen</string>
+    <string name="quick_replies_home_visibility_subtitle">Choose which shortcut controls appear above the main contact.</string>
+    <string name="quick_replies_show_filters">Show All / Text / Voice</string>
+    <string name="quick_replies_show_filters_desc">Displays the type filter chips on the home screen.</string>
+    <string name="quick_replies_show_shortcuts">Show shortcut buttons</string>
+    <string name="quick_replies_show_shortcuts_desc">Displays your saved shortcut chips next to the record button.</string>
 
     <string name="aa_record">Record</string>
     <string name="aa_conversations">Conversations</string>

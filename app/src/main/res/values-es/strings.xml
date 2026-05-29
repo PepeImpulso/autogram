@@ -112,6 +112,12 @@
     <string name="quick_replies_filter_all">Todos</string>
     <string name="quick_replies_filter_text">Texto</string>
     <string name="quick_replies_filter_voice">Voz</string>
+    <string name="quick_replies_home_visibility_title">Pantalla principal</string>
+    <string name="quick_replies_home_visibility_subtitle">Elige qué controles de atajos aparecen encima del contacto principal.</string>
+    <string name="quick_replies_show_filters">Mostrar Todos / Texto / Voz</string>
+    <string name="quick_replies_show_filters_desc">Muestra los filtros de tipo en la pantalla principal.</string>
+    <string name="quick_replies_show_shortcuts">Mostrar botones de atajos</string>
+    <string name="quick_replies_show_shortcuts_desc">Muestra tus atajos guardados junto al botón de grabar.</string>
 
     <!-- Android Auto labels -->
     <string name="aa_record">Grabar</string>

@@ -175,6 +175,8 @@ data class SettingsEntity(
     // "ALL" | "TEXT" | "VOICE" — persisted as string for the same reason
     // kind is persisted as string on quick_replies.
     val quickReplyFilter: String = "ALL",
+    val showQuickReplyFilters: Boolean = true,
+    val showQuickReplyShortcuts: Boolean = true,
     val keepScreenOn: Boolean = false,
     val developerMode: Boolean = false,
     // v1.24.0 — see [AppSettings.audioFocusMode]. Persisted as enum name

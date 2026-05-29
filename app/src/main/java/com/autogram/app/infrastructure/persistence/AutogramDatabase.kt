@@ -28,7 +28,7 @@ import javax.inject.Singleton
         SettingsEntity::class,
         CircleFolderEntity::class
     ],
-    version = 20,
+    version = 21,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -257,6 +257,16 @@ object DatabaseModule {
         }
     }
 
+    // v20 → v21: home shortcut visibility. Lets users keep their shortcut
+    // definitions but hide the filter chips and/or shortcut buttons above
+    // the primary contact for a cleaner Home screen.
+    private val MIGRATION_20_21 = object : Migration(20, 21) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE settings ADD COLUMN showQuickReplyFilters INTEGER NOT NULL DEFAULT 1")
+            db.execSQL("ALTER TABLE settings ADD COLUMN showQuickReplyShortcuts INTEGER NOT NULL DEFAULT 1")
+        }
+    }
+
     // v11 → v12: summary fields on messages + summary engine config in settings.
     // Feature is off by default (summaryEngine=NONE); turning it on requires
     // the user to pick an engine in Settings → Summary.
@@ -280,7 +290,7 @@ object DatabaseModule {
             AutogramDatabase::class.java,
             "autogram.db"
         )
-            .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20)
+            .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21)
             // Fallback for any earlier schema (v1 / v2) that has no proper path
             // forward — those versions predate the stable 1.2 line and already
             // wiped once, so destroying from them is acceptable.

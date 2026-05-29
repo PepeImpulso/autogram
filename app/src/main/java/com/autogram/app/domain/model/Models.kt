@@ -201,6 +201,11 @@ data class AppSettings(
     // Which kind of quick-reply shortcuts show in the chip row on the home
     // screen. ALL shows both; user can bias toward just text or just voice.
     val quickReplyFilter: QuickReplyFilter = QuickReplyFilter.ALL,
+    // Home-screen shortcut chrome. Both default ON to preserve the existing
+    // layout; users can hide either from Shortcuts when they want a quieter
+    // primary-contact surface.
+    val showQuickReplyFilters: Boolean = true,
+    val showQuickReplyShortcuts: Boolean = true,
     // Keep the device's screen on while Autogram is in the foreground —
     // bypasses the system screen-timeout so the user can glance at the
     // app while driving / cooking without it dimming. Default OFF so we

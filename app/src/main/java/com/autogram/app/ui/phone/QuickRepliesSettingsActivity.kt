@@ -40,9 +40,11 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.autogram.app.domain.model.AppSettings
 import com.autogram.app.domain.model.QuickReply
 import com.autogram.app.domain.model.QuickReplyKind
 import com.autogram.app.domain.repository.QuickReplyRepository
+import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.infrastructure.audio.AudioRecorder
 import com.autogram.app.ui.theme.AutogramTheme
 import sh.calvin.reorderable.ReorderableItem
@@ -96,6 +98,7 @@ class QuickRepliesSettingsViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val repo: QuickReplyRepository,
     private val conversationRepository: com.autogram.app.domain.repository.ConversationRepository,
+    private val settingsRepository: SettingsRepository,
     private val recorder: AudioRecorder
 ) : ViewModel() {
 
@@ -111,6 +114,10 @@ class QuickRepliesSettingsViewModel @Inject constructor(
     val pinned: StateFlow<List<com.autogram.app.domain.model.Conversation>> =
         conversationRepository.observePinned()
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val settings: StateFlow<AppSettings> =
+        settingsRepository.observe()
+            .stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings())
 
     // Standalone MediaPlayer for the in-editor preview. Bypasses the
     // app's AudioPlayer abstraction on purpose: AudioPlayer prefers BT
@@ -260,6 +267,26 @@ class QuickRepliesSettingsViewModel @Inject constructor(
         if (reply.isEnabled == enabled) return
         viewModelScope.launch {
             repo.upsert(reply.copy(isEnabled = enabled))
+        }
+    }
+
+    fun setShowQuickReplyFilters(show: Boolean) {
+        if (settings.value.showQuickReplyFilters == show) return
+        viewModelScope.launch {
+            val current = settingsRepository.get()
+            if (current.showQuickReplyFilters != show) {
+                settingsRepository.update(current.copy(showQuickReplyFilters = show))
+            }
+        }
+    }
+
+    fun setShowQuickReplyShortcuts(show: Boolean) {
+        if (settings.value.showQuickReplyShortcuts == show) return
+        viewModelScope.launch {
+            val current = settingsRepository.get()
+            if (current.showQuickReplyShortcuts != show) {
+                settingsRepository.update(current.copy(showQuickReplyShortcuts = show))
+            }
         }
     }
 
@@ -423,6 +450,7 @@ private fun QuickRepliesScreen(
 ) {
     val replies by viewModel.replies.collectAsState()
     val pinned by viewModel.pinned.collectAsState()
+    val settings by viewModel.settings.collectAsState()
     var target by remember { mutableStateOf<EditorTarget>(EditorTarget.None) }
 
     Scaffold(
@@ -453,10 +481,6 @@ private fun QuickRepliesScreen(
             )
         }
     ) { padding ->
-        if (replies.isEmpty()) {
-            QuickRepliesEmptyState(modifier = Modifier.fillMaxSize().padding(padding))
-            return@Scaffold
-        }
         // Drag-reorder: keep an optional draft order that wins over the
         // upstream Flow while a drag is in progress, so the dragged item
         // glides smoothly without flicker. Cleared once the persisted
@@ -483,23 +507,41 @@ private fun QuickRepliesScreen(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            items(displayList, key = { it.id }) { r ->
-                ReorderableItem(reorderableState, key = r.id) { isDragging ->
-                    QuickReplyCard(
-                        reply = r,
-                        isDragging = isDragging,
-                        dragHandleModifier = Modifier.draggableHandle(
-                            onDragStopped = {
-                                draftOrder?.let { d -> viewModel.reorder(d.map { it.id }) }
-                            }
-                        ),
-                        onTap = {
-                            target = if (r.kind == QuickReplyKind.VOICE) EditorTarget.Voice(r)
-                                     else EditorTarget.Text(r)
-                        },
-                        onDelete = { viewModel.delete(r) },
-                        onEnabledChange = { viewModel.setEnabled(r, it) }
+            item {
+                HomeShortcutVisibilityCard(
+                    showFilters = settings.showQuickReplyFilters,
+                    showShortcuts = settings.showQuickReplyShortcuts,
+                    onShowFiltersChange = viewModel::setShowQuickReplyFilters,
+                    onShowShortcutsChange = viewModel::setShowQuickReplyShortcuts
+                )
+            }
+            if (displayList.isEmpty()) {
+                item {
+                    QuickRepliesEmptyState(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 260.dp)
                     )
+                }
+            } else {
+                items(displayList, key = { it.id }) { r ->
+                    ReorderableItem(reorderableState, key = r.id) { isDragging ->
+                        QuickReplyCard(
+                            reply = r,
+                            isDragging = isDragging,
+                            dragHandleModifier = Modifier.draggableHandle(
+                                onDragStopped = {
+                                    draftOrder?.let { d -> viewModel.reorder(d.map { it.id }) }
+                                }
+                            ),
+                            onTap = {
+                                target = if (r.kind == QuickReplyKind.VOICE) EditorTarget.Voice(r)
+                                         else EditorTarget.Text(r)
+                            },
+                            onDelete = { viewModel.delete(r) },
+                            onEnabledChange = { viewModel.setEnabled(r, it) }
+                        )
+                    }
                 }
             }
             item { Spacer(Modifier.height(72.dp)) }
@@ -534,6 +576,83 @@ private fun QuickRepliesScreen(
                 viewModel.resetVoiceState()
                 target = EditorTarget.None
             }
+        )
+    }
+}
+
+@Composable
+private fun HomeShortcutVisibilityCard(
+    showFilters: Boolean,
+    showShortcuts: Boolean,
+    onShowFiltersChange: (Boolean) -> Unit,
+    onShowShortcutsChange: (Boolean) -> Unit
+) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    stringResource(R.string.quick_replies_home_visibility_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    stringResource(R.string.quick_replies_home_visibility_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            VisibilitySwitchRow(
+                title = stringResource(R.string.quick_replies_show_filters),
+                subtitle = stringResource(R.string.quick_replies_show_filters_desc),
+                checked = showFilters,
+                onCheckedChange = onShowFiltersChange
+            )
+            VisibilitySwitchRow(
+                title = stringResource(R.string.quick_replies_show_shortcuts),
+                subtitle = stringResource(R.string.quick_replies_show_shortcuts_desc),
+                checked = showShortcuts,
+                onCheckedChange = onShowShortcutsChange
+            )
+        }
+    }
+}
+
+@Composable
+private fun VisibilitySwitchRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange
         )
     }
 }

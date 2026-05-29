@@ -78,6 +78,8 @@ class SettingsRepositoryImpl @Inject constructor(
         summaryLlmModel = summaryLlmModel,
         quickReplyFilter = runCatching { QuickReplyFilter.valueOf(quickReplyFilter) }
             .getOrDefault(QuickReplyFilter.ALL),
+        showQuickReplyFilters = showQuickReplyFilters,
+        showQuickReplyShortcuts = showQuickReplyShortcuts,
         keepScreenOn = keepScreenOn,
         developerMode = developerMode,
         audioFocusMode = runCatching { AudioFocusMode.valueOf(audioFocusMode) }
@@ -104,6 +106,8 @@ class SettingsRepositoryImpl @Inject constructor(
         summaryLlmApiKey = "",
         summaryLlmModel = summaryLlmModel,
         quickReplyFilter = quickReplyFilter.name,
+        showQuickReplyFilters = showQuickReplyFilters,
+        showQuickReplyShortcuts = showQuickReplyShortcuts,
         keepScreenOn = keepScreenOn,
         developerMode = developerMode,
         audioFocusMode = audioFocusMode.name,
