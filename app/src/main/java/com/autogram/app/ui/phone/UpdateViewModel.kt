@@ -26,7 +26,7 @@ class UpdateViewModel @Inject constructor(
         object Checking : State()
         data class UpToDate(val latest: String) : State()
         data class Available(val info: UpdateInfo) : State()
-        object Downloading : State()
+        data class Downloading(val message: String? = null) : State()
         data class Error(val message: String) : State()
     }
 
@@ -39,7 +39,9 @@ class UpdateViewModel @Inject constructor(
         viewModelScope.launch {
             updateInstaller.events().collect { ev ->
                 when (ev) {
-                    is UpdateInstaller.InstallEvent.Started -> _state.value = State.Downloading
+                    is UpdateInstaller.InstallEvent.Started -> _state.value = State.Downloading()
+                    is UpdateInstaller.InstallEvent.Progress ->
+                        _state.value = State.Downloading(ev.message)
                     is UpdateInstaller.InstallEvent.Completed -> {
                         // OS prompt takes over from here.
                         _state.value = State.Idle

@@ -62,7 +62,7 @@
     <string name="status_queued_offline">En cola · sin conexión</string>
     <string name="status_queued_offline_count">En cola sin conexión · %d</string>
     <string name="status_sending_queue">Enviando cola · %d</string>
-    <string name="status_outbox_count">%d en cola · se enviarán al reconectar</string>
+    <string name="status_outbox_count">%d en cola · esperando conexión</string>
     <string name="status_playing">Reproduciendo respuesta…</string>
 
     <!-- Main screen -->
@@ -273,7 +273,7 @@
     <string name="settings_updates_error">No se pudo comprobar: %s</string>
     <string name="update_dialog_title">Nueva versión disponible</string>
     <string name="update_dialog_body">Hay una versión nueva (v%1$s). La actual es v%2$s.\n\nDescarga ~%3$d KB. Al finalizar, Android te pedirá confirmación para instalarla.</string>
-    <string name="update_dialog_install">Actualizar</string>
+    <string name="update_dialog_install">Descargar e instalar</string>
     <string name="update_dialog_later">Luego</string>
     <string name="update_dialog_release_notes">Notas de la versión</string>
     <string name="update_downloading">Descargando actualización…</string>

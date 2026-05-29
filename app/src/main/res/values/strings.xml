@@ -66,7 +66,7 @@
     <string name="quick_replies_send_to_no_circles">Pin a circle in Settings to bind this shortcut to a specific contact.</string>
     <string name="status_queued_offline">Queued offline</string>
     <string name="status_queued_offline_count">Queued offline · %d</string>
-    <string name="status_outbox_count">%d queued · sent when online</string>
+    <string name="status_outbox_count">%d queued · waiting for connection</string>
     <string name="status_sending_queue">Sending queued · %d</string>
     <string name="status_playing">Playing reply…</string>
 
@@ -326,7 +326,7 @@
     <string name="settings_updates_error">Couldn\'t check: %s</string>
     <string name="update_dialog_title">New version available</string>
     <string name="update_dialog_body">A new version is available (v%1$s). Current: v%2$s.\n\nDownload ~%3$d KB. When done, Android will ask for install confirmation.</string>
-    <string name="update_dialog_install">Update</string>
+    <string name="update_dialog_install">Download and install</string>
     <string name="update_dialog_later">Later</string>
     <string name="update_dialog_release_notes">Release notes</string>
     <string name="update_downloading">Downloading update…</string>

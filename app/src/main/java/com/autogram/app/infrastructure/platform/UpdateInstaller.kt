@@ -10,9 +10,16 @@ import android.os.Build
 import android.os.Environment
 import androidx.core.content.FileProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.io.File
 import javax.inject.Inject
@@ -30,6 +37,7 @@ class UpdateInstaller @Inject constructor(
 
     sealed class InstallEvent {
         data class Started(val downloadId: Long) : InstallEvent()
+        data class Progress(val downloadId: Long, val message: String) : InstallEvent()
         data class Completed(val apkFile: File) : InstallEvent()
         data class Failed(val reason: String) : InstallEvent()
     }
@@ -38,6 +46,10 @@ class UpdateInstaller @Inject constructor(
     fun events(): Flow<InstallEvent> = events.receiveAsFlow()
 
     private var currentReceiver: BroadcastReceiver? = null
+    private var currentDownloadId: Long? = null
+    private var monitorJob: Job? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val lock = Any()
 
     /**
      * Enqueue a download and register a broadcast receiver that will fire the
@@ -45,10 +57,7 @@ class UpdateInstaller @Inject constructor(
      */
     fun downloadAndInstall(apkUrl: String, filename: String) {
         val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        currentReceiver?.let { old ->
-            runCatching { context.unregisterReceiver(old) }
-            currentReceiver = null
-        }
+        resetActiveDownload(removeDownload = true, dm = dm)
 
         // Clean up any previous APK with the same filename to avoid "Unable to
         // open APK" errors when DownloadManager can't overwrite.
@@ -76,19 +85,10 @@ class UpdateInstaller @Inject constructor(
                 val completedId = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
                 if (completedId != pendingIdHolder[0]) return
                 try {
-                    val apkFile = resolveDownloadedFile(dm, completedId, outFile)
-                    if (apkFile == null) {
-                        events.trySend(InstallEvent.Failed("Descarga fallida"))
-                        return
-                    }
-                    events.trySend(InstallEvent.Completed(apkFile))
-                    launchInstall(apkFile)
+                    completeDownload(dm, completedId, outFile)
                 } catch (e: Exception) {
                     Timber.e(e, "UpdateInstaller: onReceive")
-                    events.trySend(InstallEvent.Failed(e.message ?: "Error desconocido"))
-                } finally {
-                    try { ctx.unregisterReceiver(this) } catch (_: Exception) {}
-                    currentReceiver = null
+                    failDownload(completedId, e.message ?: "Error desconocido")
                 }
             }
         }
@@ -109,7 +109,122 @@ class UpdateInstaller @Inject constructor(
         // completion event fires, even immediately.
         val id = dm.enqueue(request)
         pendingIdHolder[0] = id
+        synchronized(lock) { currentDownloadId = id }
         events.trySend(InstallEvent.Started(id))
+        monitorJob = scope.launch {
+            monitorDownload(dm, id, outFile)
+        }
+    }
+
+    private fun completeDownload(dm: DownloadManager, id: Long, fallback: File) {
+        val apkFile = resolveDownloadedFile(dm, id, fallback)
+        if (apkFile == null) {
+            failDownload(id, "Descarga fallida")
+            return
+        }
+        val shouldHandle = synchronized(lock) {
+            if (currentDownloadId != id) false
+            else {
+                currentDownloadId = null
+                true
+            }
+        }
+        if (!shouldHandle) return
+        cleanupReceiver()
+        monitorJob?.cancel()
+        monitorJob = null
+        events.trySend(InstallEvent.Completed(apkFile))
+        launchInstall(apkFile)
+    }
+
+    private suspend fun monitorDownload(dm: DownloadManager, id: Long, fallback: File) {
+        var lastDownloaded = -1L
+        var lastStatus = -1
+        var lastChange = System.currentTimeMillis()
+        val started = lastChange
+
+        while (isActive && synchronized(lock) { currentDownloadId == id }) {
+            val snapshot = querySnapshot(dm, id)
+            val now = System.currentTimeMillis()
+            if (snapshot == null) {
+                failDownload(id, "La descarga ya no está disponible. Vuelve a intentarlo.")
+                return
+            }
+
+            if (snapshot.downloadedBytes != lastDownloaded || snapshot.status != lastStatus) {
+                lastDownloaded = snapshot.downloadedBytes
+                lastStatus = snapshot.status
+                lastChange = now
+            }
+
+            when (snapshot.status) {
+                DownloadManager.STATUS_SUCCESSFUL -> {
+                    completeDownload(dm, id, fallback)
+                    return
+                }
+                DownloadManager.STATUS_FAILED -> {
+                    failDownload(id, failedReason(snapshot.reason))
+                    return
+                }
+                DownloadManager.STATUS_PAUSED -> {
+                    events.trySend(InstallEvent.Progress(id, pausedReason(snapshot.reason)))
+                }
+                DownloadManager.STATUS_PENDING -> {
+                    events.trySend(InstallEvent.Progress(id, "Descarga en cola…"))
+                }
+                DownloadManager.STATUS_RUNNING -> {
+                    events.trySend(InstallEvent.Progress(id, progressMessage(snapshot)))
+                }
+            }
+
+            if (now - started > MAX_DOWNLOAD_MS) {
+                failDownload(id, "La descarga tarda demasiado. Comprueba la conexión y vuelve a intentarlo.")
+                return
+            }
+            if (now - lastChange > STALL_TIMEOUT_MS) {
+                failDownload(id, "La descarga no avanza. Comprueba la conexión y vuelve a intentarlo.")
+                return
+            }
+            delay(MONITOR_INTERVAL_MS)
+        }
+    }
+
+    private fun failDownload(id: Long, reason: String) {
+        val shouldHandle = synchronized(lock) {
+            if (currentDownloadId != id) false
+            else {
+                currentDownloadId = null
+                true
+            }
+        }
+        if (!shouldHandle) return
+        cleanupReceiver()
+        monitorJob?.cancel()
+        monitorJob = null
+        val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        runCatching { dm.remove(id) }
+        events.trySend(InstallEvent.Failed(reason))
+    }
+
+    private fun resetActiveDownload(removeDownload: Boolean, dm: DownloadManager) {
+        val previousId = synchronized(lock) {
+            val old = currentDownloadId
+            currentDownloadId = null
+            old
+        }
+        monitorJob?.cancel()
+        monitorJob = null
+        cleanupReceiver()
+        if (removeDownload && previousId != null) {
+            runCatching { dm.remove(previousId) }
+        }
+    }
+
+    private fun cleanupReceiver() {
+        currentReceiver?.let { old ->
+            runCatching { context.unregisterReceiver(old) }
+            currentReceiver = null
+        }
     }
 
     private fun resolveDownloadedFile(dm: DownloadManager, id: Long, fallback: File): File? {
@@ -129,6 +244,60 @@ class UpdateInstaller @Inject constructor(
             }
         }
         return if (fallback.exists()) fallback else null
+    }
+
+    private fun querySnapshot(dm: DownloadManager, id: Long): DownloadSnapshot? {
+        val query = DownloadManager.Query().setFilterById(id)
+        dm.query(query).use { cursor ->
+            if (cursor == null || !cursor.moveToFirst()) return null
+            val status = cursor.getIntOrNull(DownloadManager.COLUMN_STATUS) ?: return null
+            val reason = cursor.getIntOrNull(DownloadManager.COLUMN_REASON) ?: 0
+            val downloaded = cursor.getLongOrNull(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR) ?: -1L
+            val total = cursor.getLongOrNull(DownloadManager.COLUMN_TOTAL_SIZE_BYTES) ?: -1L
+            return DownloadSnapshot(status, reason, downloaded, total)
+        }
+    }
+
+    private fun android.database.Cursor.getIntOrNull(columnName: String): Int? {
+        val index = getColumnIndex(columnName)
+        return if (index >= 0) getInt(index) else null
+    }
+
+    private fun android.database.Cursor.getLongOrNull(columnName: String): Long? {
+        val index = getColumnIndex(columnName)
+        return if (index >= 0) getLong(index) else null
+    }
+
+    private fun progressMessage(snapshot: DownloadSnapshot): String {
+        val total = snapshot.totalBytes
+        val downloaded = snapshot.downloadedBytes
+        return if (total > 0 && downloaded >= 0) {
+            val pct = ((downloaded * 100) / total).coerceIn(0, 100)
+            "Descargando actualización… $pct%"
+        } else {
+            "Descargando actualización…"
+        }
+    }
+
+    private fun pausedReason(reason: Int): String = when (reason) {
+        DownloadManager.PAUSED_WAITING_FOR_NETWORK -> "Esperando conexión para descargar…"
+        DownloadManager.PAUSED_QUEUED_FOR_WIFI -> "Esperando Wi-Fi para descargar…"
+        DownloadManager.PAUSED_WAITING_TO_RETRY -> "Descarga pausada, reintentando…"
+        DownloadManager.PAUSED_UNKNOWN -> "Descarga pausada…"
+        else -> "Descarga pausada…"
+    }
+
+    private fun failedReason(reason: Int): String = when (reason) {
+        DownloadManager.ERROR_CANNOT_RESUME -> "No se pudo reanudar la descarga. Vuelve a intentarlo."
+        DownloadManager.ERROR_DEVICE_NOT_FOUND -> "No se encontró el almacenamiento para guardar la actualización."
+        DownloadManager.ERROR_FILE_ALREADY_EXISTS -> "El APK ya existe. Vuelve a intentarlo."
+        DownloadManager.ERROR_FILE_ERROR -> "Error guardando el APK descargado."
+        DownloadManager.ERROR_HTTP_DATA_ERROR -> "Error de red durante la descarga."
+        DownloadManager.ERROR_INSUFFICIENT_SPACE -> "No hay espacio suficiente para descargar la actualización."
+        DownloadManager.ERROR_TOO_MANY_REDIRECTS -> "La descarga tiene demasiadas redirecciones."
+        DownloadManager.ERROR_UNHANDLED_HTTP_CODE -> "GitHub devolvió un error al descargar el APK."
+        DownloadManager.ERROR_UNKNOWN -> "Descarga fallida por un error desconocido."
+        else -> "Descarga fallida (código $reason)."
     }
 
     private fun launchInstall(apkFile: File) {
@@ -164,5 +333,18 @@ class UpdateInstaller @Inject constructor(
             Timber.e(e, "UpdateInstaller: launchInstall failed")
             events.trySend(InstallEvent.Failed("No se pudo iniciar la instalación: ${e.message}"))
         }
+    }
+
+    private data class DownloadSnapshot(
+        val status: Int,
+        val reason: Int,
+        val downloadedBytes: Long,
+        val totalBytes: Long
+    )
+
+    private companion object {
+        const val MONITOR_INTERVAL_MS = 1_000L
+        const val STALL_TIMEOUT_MS = 120_000L
+        const val MAX_DOWNLOAD_MS = 10 * 60_000L
     }
 }

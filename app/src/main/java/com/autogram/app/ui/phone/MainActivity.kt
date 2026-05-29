@@ -568,7 +568,7 @@ private fun MainScreen(
             )
         }
         is UpdateViewModel.State.Downloading -> UpdateBanner(
-            text = stringResource(R.string.update_downloading_banner),
+            text = s.message ?: stringResource(R.string.update_downloading_banner),
             showSpinner = true,
             actionLabel = null,
             onAction = {}
@@ -808,6 +808,8 @@ private fun StatusPill(
             // Removed in v1.20.17; the button is the single surface for
             // the queued count.
             when {
+                outboxCount > 0 && online ->
+                    Pill(ctx.getString(R.string.status_sending_queue, outboxCount), scheme.primaryContainer, scheme.onPrimaryContainer)
                 outboxCount > 0 ->
                     Pill(ctx.getString(R.string.status_outbox_count, outboxCount), scheme.tertiaryContainer, scheme.onTertiaryContainer)
                 else -> null

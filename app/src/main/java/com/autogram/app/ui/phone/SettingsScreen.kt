@@ -1218,7 +1218,7 @@ private fun UpdatesRow(viewModel: UpdateViewModel = androidx.hilt.navigation.com
                 is UpdateViewModel.State.Downloading -> {
                     CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(8.dp))
-                    Text(ctx.getString(R.string.update_downloading))
+                    Text(state.message ?: ctx.getString(R.string.update_downloading))
                 }
                 else -> Text(ctx.getString(R.string.settings_updates_check))
             }
