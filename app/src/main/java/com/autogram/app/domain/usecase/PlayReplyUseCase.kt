@@ -424,18 +424,23 @@ class PlayReplyUseCase @Inject constructor(
             java.util.Locale.forLanguageTag(settings.languageTag)
         else java.util.Locale.getDefault()
         val detected = TtsPlayer.detectLocale(text, uiLocale)
-        ttsPlayer.speak(text, locale = detected) {
-            playbackScope.launch {
-                messageRepository.update(message.copy(
-                    state = MessageState.PLAYED,
-                    playedAt = System.currentTimeMillis()
-                ))
-                pushPlayedHistory(message)
-                currentPlayingId = null
-                _playbackStatus.value = PlaybackStatus.Idle
-                mediaPlayback.markStopped()
+        ttsPlayer.speak(
+            text,
+            locale = detected,
+            speed = settings.playbackSpeed,
+            onDone = {
+                playbackScope.launch {
+                    messageRepository.update(message.copy(
+                        state = MessageState.PLAYED,
+                        playedAt = System.currentTimeMillis()
+                    ))
+                    pushPlayedHistory(message)
+                    currentPlayingId = null
+                    _playbackStatus.value = PlaybackStatus.Idle
+                    mediaPlayback.markStopped()
+                }
             }
-        }
+        )
     }
 
     /**
@@ -532,18 +537,23 @@ class PlayReplyUseCase @Inject constructor(
             // Content-based override wins over UI locale if the script doesn't
             // match (e.g. UI is English but the summary came out in Spanish).
             val detected = com.autogram.app.infrastructure.audio.TtsPlayer.detectLocale(text, uiLocale)
-            ttsPlayer.speak(text, locale = detected) {
-                playbackScope.launch {
-                    messageRepository.update(message.copy(
-                        state = MessageState.PLAYED,
-                        playedAt = System.currentTimeMillis()
-                    ))
-                    pushPlayedHistory(message)
-                    currentPlayingId = null
-                    _playbackStatus.value = PlaybackStatus.Idle
-                    playNext()
+            ttsPlayer.speak(
+                text,
+                locale = detected,
+                speed = settings.playbackSpeed,
+                onDone = {
+                    playbackScope.launch {
+                        messageRepository.update(message.copy(
+                            state = MessageState.PLAYED,
+                            playedAt = System.currentTimeMillis()
+                        ))
+                        pushPlayedHistory(message)
+                        currentPlayingId = null
+                        _playbackStatus.value = PlaybackStatus.Idle
+                        playNext()
+                    }
                 }
-            }
+            )
         }
     }
 
@@ -615,17 +625,22 @@ class PlayReplyUseCase @Inject constructor(
             else java.util.Locale.getDefault()
             val detected = com.autogram.app.infrastructure.audio.TtsPlayer.detectLocale(text, uiLocale)
 
-            ttsPlayer.speak(text, locale = detected) {
-                playbackScope.launch {
-                    messageRepository.update(message.copy(
-                        state = MessageState.PLAYED,
-                        playedAt = System.currentTimeMillis()
-                    ))
-                    pushPlayedHistory(message)
-                    currentPlayingId = null
-                    playNext()
+            ttsPlayer.speak(
+                text,
+                locale = detected,
+                speed = settings.playbackSpeed,
+                onDone = {
+                    playbackScope.launch {
+                        messageRepository.update(message.copy(
+                            state = MessageState.PLAYED,
+                            playedAt = System.currentTimeMillis()
+                        ))
+                        pushPlayedHistory(message)
+                        currentPlayingId = null
+                        playNext()
+                    }
                 }
-            }
+            )
         }
     }
 

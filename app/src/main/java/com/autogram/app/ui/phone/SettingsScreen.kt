@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.autogram.app.R
+import com.autogram.app.infrastructure.audio.PlaybackSpeed
 import kotlinx.coroutines.launch
 
 // Must match ExportImportUseCase.MAX_BACKUP_BYTES so the pre-read guard
@@ -288,7 +289,7 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                     value = state.playbackSpeed,
                     valueLabel = "${"%.2f".format(state.playbackSpeed)}x",
                     onValueChange = viewModel::updatePlaybackSpeed,
-                    valueRange = 0.5f..2.0f,
+                    valueRange = PlaybackSpeed.MIN..PlaybackSpeed.MAX,
                     steps = 29
                 )
                 SettingsDivider()

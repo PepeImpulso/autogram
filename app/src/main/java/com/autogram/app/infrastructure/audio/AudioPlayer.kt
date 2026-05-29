@@ -76,8 +76,10 @@ class AudioPlayer @Inject constructor(
             // entry log only fired AFTER start() succeeded, which made
             // routing-silenced playback indistinguishable from "play()
             // never called" in the log file.
+            val effectiveSpeed = PlaybackSpeed.coerce(speed)
             Timber.i(
                 "AudioPlayer.play start file=${file.name} speed=$speed " +
+                    "effectiveSpeed=$effectiveSpeed " +
                     "focusMode=$focusMode navUsage=$useNavigationUsage exists=${file.exists()} size=${file.length()}"
             )
             stop()
@@ -134,11 +136,10 @@ class AudioPlayer @Inject constructor(
                 // Applying PlaybackParams before start() on some OEMs silently
                 // auto-starts playback; set it after prepare() + right before
                 // start() and guard against invalid speeds.
-                if (speed != 1f) {
+                if (effectiveSpeed != 1f) {
                     runCatching {
-                        val clamped = speed.coerceIn(0.25f, 4f)
-                        playbackParams = playbackParams.setSpeed(clamped)
-                    }.onFailure { Timber.w(it, "setSpeed($speed) failed — playing at 1x") }
+                        playbackParams = playbackParams.setSpeed(effectiveSpeed)
+                    }.onFailure { Timber.w(it, "setSpeed($effectiveSpeed) failed — playing at 1x") }
                 }
                 // Prefer routing to a connected Bluetooth / car output so the
                 // driver hears replies through the car speakers / headset
@@ -154,7 +155,7 @@ class AudioPlayer @Inject constructor(
                 logRoutedDevice(this)
             }
             isPlaying = true
-            Timber.d("Playing: ${file.name} (speed=${speed}x)")
+            Timber.d("Playing: ${file.name} (speed=${effectiveSpeed}x)")
             Result.success(Unit)
         } catch (e: Exception) {
             Timber.e(e, "Failed to play audio")

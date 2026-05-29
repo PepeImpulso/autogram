@@ -71,7 +71,12 @@ class TtsPlayer @Inject constructor(
      * pass an explicit [locale] so a Spanish summary isn't read by an English
      * voice.
      */
-    suspend fun speak(text: String, locale: Locale? = null, onDone: () -> Unit = {}) {
+    suspend fun speak(
+        text: String,
+        locale: Locale? = null,
+        onDone: () -> Unit = {},
+        speed: Float? = null
+    ) {
         if (text.isBlank()) {
             onDone()
             return
@@ -175,7 +180,7 @@ class TtsPlayer @Inject constructor(
         // setSpeechRate AFTER stop() so the rate isn't dropped by engines
         // that reset state on stop. The rate set here applies to the next
         // utterance queued via speak(QUEUE_FLUSH) immediately below.
-        tts.setSpeechRate(settings.playbackSpeed.coerceIn(0.5f, 2.0f))
+        tts.setSpeechRate(PlaybackSpeed.coerce(speed ?: settings.playbackSpeed))
 
         val utteranceId = UUID.randomUUID().toString()
         pendingOnDone = onDone

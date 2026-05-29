@@ -39,6 +39,7 @@ import com.autogram.app.domain.repository.QuickReplyRepository
 import com.autogram.app.domain.usecase.ManageSettingsUseCase
 import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.domain.usecase.SendVoiceMtprotoUseCase
+import com.autogram.app.infrastructure.audio.PlaybackSpeed
 import com.autogram.app.infrastructure.platform.VoiceCommandRecognizer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -388,7 +389,7 @@ class MainScreen(
                 .build()
         )
         // 2. Playback speed cycle.
-        val speed = settings?.playbackSpeed ?: 1.25f
+        val speed = settings?.playbackSpeed ?: PlaybackSpeed.DEFAULT
         val speedLabel = carContext.getString(R.string.aa_settings_speed, "%.2f".format(speed))
         pane.addRow(
             Row.Builder()

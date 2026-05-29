@@ -11,6 +11,7 @@ import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.domain.usecase.ExportImportUseCase
 import com.autogram.app.infrastructure.audio.AudioPlayer
+import com.autogram.app.infrastructure.audio.PlaybackSpeed
 import com.autogram.app.infrastructure.audio.PlaybackDiagnostics
 import com.autogram.app.infrastructure.audio.TtsPlayer
 import com.autogram.app.infrastructure.platform.LocaleHelper
@@ -108,7 +109,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun updatePlaybackSpeed(speed: Float) {
-        val clamped = speed.coerceIn(0.5f, 2.0f)
+        val clamped = PlaybackSpeed.coerce(speed)
         _uiState.value = _uiState.value.copy(playbackSpeed = clamped)
         viewModelScope.launch {
             val settings = settingsRepository.get()

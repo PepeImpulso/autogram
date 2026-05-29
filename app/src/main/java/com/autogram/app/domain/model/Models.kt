@@ -162,7 +162,7 @@ data class AppSettings(
     val pollingIntervalMs: Long = 3000,
     val maxRetryAttempts: Int = 3,
     val autoPlayReplies: Boolean = true,
-    // Speed multiplier applied to incoming voice playback. 1.0 = unchanged.
+    // Speed multiplier applied to incoming voice and TTS playback. 1.0 = unchanged.
     // Default 1.25 — most people already listen to podcasts faster than 1x.
     val playbackSpeed: Float = 1.25f,
     // Volume of the start/end recording beeps, 0..100. 0 disables them entirely.
