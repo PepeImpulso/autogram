@@ -1218,15 +1218,18 @@ private fun SecondaryCirclesRow(
 
         val columns = circles.size.coerceAtMost(4)
         val totalSpacing = 16.dp * (columns - 1).toFloat()
+        val labelHeightAllowance = 28.dp
+        val verticalSafePadding = 12.dp
+        val usableHeight = (maxHeight - labelHeightAllowance - verticalSafePadding).coerceAtLeast(72.dp)
         val circleSize = when {
             circles.size == 1 -> {
                 val widthBound = maxWidth * 0.62f
-                val heightBound = maxHeight * 0.78f
+                val heightBound = usableHeight * 0.92f
                 minDp(primaryCircleSize, minDp(widthBound, heightBound)).coerceIn(128.dp, primaryCircleSize)
             }
             circles.size == 2 -> {
                 val widthBound = (maxWidth - totalSpacing) / 2f
-                val heightBound = maxHeight * 0.78f
+                val heightBound = usableHeight * 0.92f
                 minDp(widthBound, heightBound).coerceIn(128.dp, primaryCircleSize)
             }
             else -> ((maxWidth - totalSpacing) / columns.toFloat()).coerceIn(72.dp, 132.dp)
@@ -1247,6 +1250,29 @@ private fun SecondaryCirclesRow(
                 onCancel = onCancel,
                 onOpenHistoryFor = onOpenHistoryFor
             )
+        } else if (circles.size == 2) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                circles.forEach { conv ->
+                    SecondaryContactCircle(
+                        conversation = conv,
+                        circleSize = circleSize,
+                        activeTargetId = activeTargetId,
+                        playingConversationId = playingConversationId,
+                        sendStatus = sendStatus,
+                        pendingCounts = pendingCounts,
+                        hasPermission = hasPermission,
+                        onRequestPermission = onRequestPermission,
+                        onStart = onStart,
+                        onSend = onSend,
+                        onCancel = onCancel,
+                        onOpenHistoryFor = onOpenHistoryFor
+                    )
+                }
+            }
         } else {
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
