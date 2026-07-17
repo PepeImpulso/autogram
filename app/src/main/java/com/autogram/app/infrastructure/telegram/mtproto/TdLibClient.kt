@@ -178,6 +178,20 @@ class TdLibClient @Inject constructor(
         sendAuthRequest(TdApi.CheckAuthenticationPassword(password))
     }
 
+    @Synchronized
+    fun reconnectAfterClosed() {
+        clearLastAuthError()
+        ensureStarted()
+    }
+
+    @Synchronized
+    fun resetLocalAuthAndReconnect() {
+        clearLastAuthError()
+        client = null
+        clearTdlibStorage()
+        ensureStarted()
+    }
+
     fun logOut() {
         _authState.value = AuthState.LoggingOut
         sendFireAndForget(TdApi.LogOut())
@@ -221,8 +235,11 @@ class TdLibClient @Inject constructor(
             is TdApi.AuthorizationStateLoggingOut -> {
                 _authState.value = AuthState.LoggingOut
             }
-            is TdApi.AuthorizationStateClosing,
+            is TdApi.AuthorizationStateClosing -> {
+                _authState.value = AuthState.LoggingOut
+            }
             is TdApi.AuthorizationStateClosed -> {
+                client = null
                 _authState.value = AuthState.Closed
             }
             else -> {
@@ -293,6 +310,29 @@ class TdLibClient @Inject constructor(
         }.getOrElse {
             Timber.w(it, "Falling back to empty TDLib DB key")
             ByteArray(0)
+        }
+    }
+
+    private fun clearTdlibStorage() {
+        runCatching {
+            val masterKey = MasterKey.Builder(appContext)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            EncryptedSharedPreferences.create(
+                appContext,
+                "tdlib_secure",
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            ).edit().remove(KEY_TDLIB_DB).apply()
+        }.onFailure {
+            Timber.w(it, "Unable to clear TDLib secure preferences before reconnect")
+        }
+
+        runCatching {
+            File(appContext.filesDir, "tdlib").deleteRecursively()
+        }.onFailure {
+            Timber.w(it, "Unable to clear TDLib local database before reconnect")
         }
     }
 }

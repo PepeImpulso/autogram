@@ -95,7 +95,7 @@ private fun TelegramLoginScreen(
                 is AuthState.WaitPassword -> PasswordStep(ui, viewModel, s)
                 AuthState.Ready -> Text(ctx.getString(R.string.tg_login_ready))
                 AuthState.LoggingOut -> Text(ctx.getString(R.string.tg_login_logging_out))
-                AuthState.Closed -> Text(ctx.getString(R.string.tg_login_closed))
+                AuthState.Closed -> ClosedStep(ui, viewModel)
                 is AuthState.Error -> ErrorStep(s.message)
             }
 
@@ -103,6 +103,27 @@ private fun TelegramLoginScreen(
                 Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
         }
+    }
+}
+
+@Composable
+private fun ClosedStep(ui: TelegramLoginViewModel.UiState, vm: TelegramLoginViewModel) {
+    val ctx = LocalContext.current
+    Text(ctx.getString(R.string.tg_login_closed), style = MaterialTheme.typography.bodyMedium)
+    Button(
+        onClick = vm::reconnect,
+        enabled = !ui.busy,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        if (ui.busy) CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+        else Text(ctx.getString(R.string.tg_login_reconnect))
+    }
+    OutlinedButton(
+        onClick = vm::resetAndReconnect,
+        enabled = !ui.busy,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(ctx.getString(R.string.tg_login_reset_connection))
     }
 }
 

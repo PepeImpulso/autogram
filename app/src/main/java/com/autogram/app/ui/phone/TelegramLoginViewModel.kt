@@ -80,4 +80,20 @@ class TelegramLoginViewModel @Inject constructor(
         _ui.value = _ui.value.copy(busy = true)
         tdLibClient.submit2faPassword(pw)
     }
+
+    fun reconnect() {
+        _ui.value = _ui.value.copy(busy = true, errorMessage = null)
+        tdLibClient.reconnectAfterClosed()
+    }
+
+    fun resetAndReconnect() {
+        _ui.value = _ui.value.copy(
+            phoneInput = "",
+            codeInput = "",
+            passwordInput = "",
+            busy = true,
+            errorMessage = null
+        )
+        tdLibClient.resetLocalAuthAndReconnect()
+    }
 }

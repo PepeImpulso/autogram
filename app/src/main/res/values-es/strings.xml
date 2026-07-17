@@ -446,7 +446,9 @@
     <string name="tg_login_2fa_submit">Entrar</string>
     <string name="tg_login_ready">Conectado ✓</string>
     <string name="tg_login_logging_out">Cerrando sesión…</string>
-    <string name="tg_login_closed">Sesión cerrada. Reabre la app para volver a conectar.</string>
+    <string name="tg_login_closed">Sesión cerrada. Puedes volver a conectar Telegram ahora.</string>
+    <string name="tg_login_reconnect">Reconectar</string>
+    <string name="tg_login_reset_connection">Reconfigurar conexión</string>
     <string name="tg_login_error_title">Algo ha salido mal</string>
     <string name="tg_login_error_retry">Cierra la app y vuelve a abrirla para reintentar, o desinstálala si el error persiste.</string>
 </resources>

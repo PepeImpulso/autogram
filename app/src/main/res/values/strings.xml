@@ -495,7 +495,9 @@
     <string name="tg_login_2fa_submit">Sign in</string>
     <string name="tg_login_ready">Connected ✓</string>
     <string name="tg_login_logging_out">Signing out…</string>
-    <string name="tg_login_closed">Signed out. Reopen the app to connect again.</string>
+    <string name="tg_login_closed">Signed out. You can reconnect Telegram now.</string>
+    <string name="tg_login_reconnect">Reconnect</string>
+    <string name="tg_login_reset_connection">Reconfigure connection</string>
     <string name="tg_login_error_title">Something went wrong</string>
     <string name="tg_login_error_retry">Close the app and reopen it to retry, or uninstall if the error persists.</string>
 </resources>
