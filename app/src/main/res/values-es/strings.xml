@@ -199,6 +199,10 @@
     <string name="settings_summary_llm_api_key">Clave API</string>
     <string name="settings_summary_llm_model">Modelo</string>
     <string name="settings_summary_llm_model_hint">gpt-4o-mini</string>
+    <string name="settings_summary_llm_disclosure_title">¿Enviar texto de mensajes a un servicio de IA externo?</string>
+    <string name="settings_summary_llm_disclosure_body">Si continúas, Autogram enviará el texto de los mensajes que elijas resumir al endpoint HTTPS que configures. Ese proveedor tratará el texto según sus propias condiciones de privacidad. Autogram no opera ni controla ese servicio.</string>
+    <string name="settings_summary_llm_disclosure_accept">Entiendo y quiero continuar</string>
+    <string name="settings_summary_llm_disclosure_reminder">El texto elegido para resumir se envía al servicio HTTPS externo configurado abajo.</string>
     <string name="history_summary_label">Resumen IA</string>
     <string name="history_transcription_label">Transcripción</string>
     <string name="history_summary_in_progress">Resumiendo…</string>
@@ -451,4 +455,14 @@
     <string name="tg_login_reset_connection">Reconfigurar conexión</string>
     <string name="tg_login_error_title">Algo ha salido mal</string>
     <string name="tg_login_error_retry">Cierra la app y vuelve a abrirla para reintentar, o desinstálala si el error persiste.</string>
+    <string name="settings_data_section">Privacidad y datos</string>
+    <string name="settings_data_section_sub">Consulta la información de privacidad o elimina tus datos locales</string>
+    <string name="settings_privacy_policy">Política de privacidad</string>
+    <string name="settings_privacy_policy_sub">Consulta cómo gestiona Autogram tu información</string>
+    <string name="settings_data_erase">Desconectar Telegram y borrar datos locales</string>
+    <string name="settings_data_erase_sub">Elimina la sesión, conversaciones, grabaciones, atajos, ajustes y diagnósticos guardados en este dispositivo</string>
+    <string name="settings_data_erase_confirm_title">¿Borrar los datos locales de Autogram?</string>
+    <string name="settings_data_erase_confirm_body">Esto desconecta Telegram y elimina permanentemente todos los datos de Autogram guardados en este dispositivo. No elimina tu cuenta de Telegram ni los mensajes almacenados por Telegram.</string>
+    <string name="settings_data_erase_confirm">Desconectar y borrar</string>
+    <string name="settings_data_erase_failed">No se pudieron borrar todos los datos locales: %1$s</string>
 </resources>

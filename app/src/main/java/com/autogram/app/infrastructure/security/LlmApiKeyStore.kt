@@ -59,6 +59,12 @@ class LlmApiKeyStore @Inject constructor(
         else p.edit().putString(KEY_API, value).apply()
     }
 
+    fun clear() {
+        prefs()?.edit()?.clear()?.commit()
+        cached = null
+        context.deleteSharedPreferences(FILE_NAME)
+    }
+
     /** True when the encrypted store currently holds a non-empty value. */
     fun isPopulated(): Boolean = get().isNotEmpty()
 

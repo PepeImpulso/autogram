@@ -170,6 +170,10 @@
     <string name="settings_summary_llm_api_key">API 密钥</string>
     <string name="settings_summary_llm_model">模型</string>
     <string name="settings_summary_llm_model_hint">gpt-4o-mini</string>
+    <string name="settings_summary_llm_disclosure_title">将消息文本发送到外部 AI 服务？</string>
+    <string name="settings_summary_llm_disclosure_body">如果继续，Autogram 会将您选择摘要的消息文本发送到您配置的 HTTPS 端点。该提供商将根据其自己的隐私条款处理文本。Autogram 不运营或控制该服务。</string>
+    <string name="settings_summary_llm_disclosure_accept">我已了解并继续</string>
+    <string name="settings_summary_llm_disclosure_reminder">选择用于摘要的消息文本会发送到下面配置的外部 HTTPS 服务。</string>
     <string name="history_summary_label">摘要</string>
     <string name="history_summary_in_progress">生成摘要中…</string>
     <string name="history_summary_unavailable">未配置摘要引擎</string>
@@ -400,4 +404,14 @@
     <string name="tg_login_closed">已退出。重新打开应用以再次连接。</string>
     <string name="tg_login_error_title">出错了</string>
     <string name="tg_login_error_retry">关闭应用并重新打开以重试,或在持续出错时卸载。</string>
+    <string name="settings_data_section">隐私和数据</string>
+    <string name="settings_data_section_sub">查看隐私信息或删除本地数据</string>
+    <string name="settings_privacy_policy">隐私政策</string>
+    <string name="settings_privacy_policy_sub">了解 Autogram 如何处理您的信息</string>
+    <string name="settings_data_erase">断开 Telegram 并删除本地数据</string>
+    <string name="settings_data_erase_sub">删除此设备上存储的会话、对话、录音、快捷方式、设置和诊断信息</string>
+    <string name="settings_data_erase_confirm_title">删除 Autogram 本地数据？</string>
+    <string name="settings_data_erase_confirm_body">此操作会断开 Telegram，并永久删除此设备上存储的所有 Autogram 数据。不会删除您的 Telegram 帐户或 Telegram 存储的消息。</string>
+    <string name="settings_data_erase_confirm">断开并删除</string>
+    <string name="settings_data_erase_failed">无法删除所有本地数据：%1$s</string>
 </resources>

@@ -34,12 +34,12 @@ val sentryDsn: String = localProperties.getProperty("sentry.dsn", "")
 
 android {
     namespace = "com.autogram.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.autogram.app"
         minSdk = 29
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 135
         versionName = "1.24.17"
 
@@ -48,11 +48,34 @@ android {
         buildConfigField("int", "TELEGRAM_API_ID", telegramApiId)
         buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")
         buildConfigField("String", "SENTRY_DSN", "\"$sentryDsn\"")
+        buildConfigField(
+            "String",
+            "PRIVACY_POLICY_URL",
+            "\"https://www.impulsotecnologico.com/legal/privacidad-autogram\""
+        )
 
         // Restrict native libs to architectures we actually ship.
         // arm64-v8a: all modern phones. x86_64: Android emulators on Intel.
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
+        }
+    }
+
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("github") {
+            dimension = "distribution"
+            buildConfigField("boolean", "ENABLE_SELF_UPDATE", "true")
+            buildConfigField("boolean", "ENABLE_AUTOMATIC_CRASH_REPORTING", "true")
+            buildConfigField("boolean", "ENABLE_SENTRY_SCREENSHOTS", "true")
+            buildConfigField("boolean", "ALLOW_CLEARTEXT_LLM_ENDPOINT", "true")
+        }
+        create("play") {
+            dimension = "distribution"
+            buildConfigField("boolean", "ENABLE_SELF_UPDATE", "false")
+            buildConfigField("boolean", "ENABLE_AUTOMATIC_CRASH_REPORTING", "false")
+            buildConfigField("boolean", "ENABLE_SENTRY_SCREENSHOTS", "false")
+            buildConfigField("boolean", "ALLOW_CLEARTEXT_LLM_ENDPOINT", "false")
         }
     }
 

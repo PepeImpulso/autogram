@@ -18,7 +18,9 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import org.drinkless.tdlib.Client
 import org.drinkless.tdlib.TdApi
 import timber.log.Timber
@@ -195,6 +197,29 @@ class TdLibClient @Inject constructor(
     fun logOut() {
         _authState.value = AuthState.LoggingOut
         sendFireAndForget(TdApi.LogOut())
+    }
+
+    /**
+     * Logs out the Telegram session and removes TDLib's local database even if
+     * TDLib does not finish its normal shutdown within the bounded wait.
+     */
+    suspend fun logOutAndClearLocalSession() {
+        val activeClient = client
+        if (activeClient != null) {
+            _authState.value = AuthState.LoggingOut
+            val response = CompletableDeferred<TdApi.Object>()
+            activeClient.send(TdApi.LogOut()) { response.complete(it) }
+            withTimeoutOrNull(10_000L) { response.await() }
+            withTimeoutOrNull(10_000L) {
+                authState.first { it is AuthState.Closed }
+            }
+        }
+
+        synchronized(this) {
+            client = null
+            clearTdlibStorage()
+            _authState.value = AuthState.Closed
+        }
     }
 
     // --- Update dispatcher ---

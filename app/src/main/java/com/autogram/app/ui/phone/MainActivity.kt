@@ -387,15 +387,17 @@ private fun MainScreen(
     val showQuickReplyFilters by viewModel.showQuickReplyFilters.collectAsState()
     val showQuickReplyShortcuts by viewModel.showQuickReplyShortcuts.collectAsState()
 
-    LaunchedEffect(Unit) {
-        // Silent update check throttled: the ViewModel check() is cheap but we
-        // only bother once per 6 h across app launches.
-        val prefs = ctx.getSharedPreferences("autogram_updates", android.content.Context.MODE_PRIVATE)
-        val last = prefs.getLong("last_check_ms", 0)
-        val sixHours = 6L * 60 * 60 * 1000
-        if (System.currentTimeMillis() - last > sixHours) {
-            prefs.edit().putLong("last_check_ms", System.currentTimeMillis()).apply()
-            updateViewModel.check(userInitiated = false)
+    if (BuildConfig.ENABLE_SELF_UPDATE) {
+        LaunchedEffect(Unit) {
+            // Silent update check throttled: the ViewModel check() is cheap but we
+            // only bother once per 6 h across app launches.
+            val prefs = ctx.getSharedPreferences("autogram_updates", android.content.Context.MODE_PRIVATE)
+            val last = prefs.getLong("last_check_ms", 0)
+            val sixHours = 6L * 60 * 60 * 1000
+            if (System.currentTimeMillis() - last > sixHours) {
+                prefs.edit().putLong("last_check_ms", System.currentTimeMillis()).apply()
+                updateViewModel.check(userInitiated = false)
+            }
         }
     }
 
@@ -569,7 +571,7 @@ private fun MainScreen(
     // "Open Settings" shortcut so the user can retry from the full Updates
     // screen if auto-install fails (e.g. the install-packages permission
     // prompt was denied).
-    when (val s = updateState) {
+    if (BuildConfig.ENABLE_SELF_UPDATE) when (val s = updateState) {
         is UpdateViewModel.State.Available -> {
             UpdateDialog(
                 state = s,

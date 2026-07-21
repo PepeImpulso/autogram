@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Summarize
@@ -32,6 +33,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.autogram.app.BuildConfig
 import com.autogram.app.R
 import com.autogram.app.infrastructure.audio.PlaybackSpeed
 import kotlinx.coroutines.launch
@@ -61,6 +63,7 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
     var showExportPasswordDialog by remember { mutableStateOf(false) }
     var showImportPasswordDialog by remember { mutableStateOf(false) }
     var showImportConfirmDialog by remember { mutableStateOf(false) }
+    var showEraseLocalDataDialog by remember { mutableStateOf(false) }
 
     val createDocumentLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/octet-stream")
@@ -157,6 +160,32 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
         }
     }
 
+    LaunchedEffect(Unit) {
+        viewModel.dataEraseEvents.collect { event ->
+            when (event) {
+                SettingsViewModel.DataEraseEvent.Success -> {
+                    androidx.appcompat.app.AppCompatDelegate.setApplicationLocales(
+                        androidx.core.os.LocaleListCompat.getEmptyLocaleList()
+                    )
+                    context.startActivity(
+                        android.content.Intent(context, TelegramLoginActivity::class.java).apply {
+                            addFlags(
+                                android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                                    android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK
+                            )
+                        }
+                    )
+                }
+                is SettingsViewModel.DataEraseEvent.Failed ->
+                    android.widget.Toast.makeText(
+                        context,
+                        context.getString(R.string.settings_data_erase_failed, event.message),
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+            }
+        }
+    }
+
     if (showExportPasswordDialog) {
         ExportPasswordDialog(
             onDismiss = { showExportPasswordDialog = false },
@@ -183,6 +212,27 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                     showImportConfirmDialog = false
                     pendingImportBytes = null
                 }) { Text(stringResource(R.string.backup_cancel)) }
+            }
+        )
+    }
+
+    if (showEraseLocalDataDialog) {
+        AlertDialog(
+            onDismissRequest = { showEraseLocalDataDialog = false },
+            title = { Text(stringResource(R.string.settings_data_erase_confirm_title)) },
+            text = { Text(stringResource(R.string.settings_data_erase_confirm_body)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showEraseLocalDataDialog = false
+                        viewModel.eraseLocalData()
+                    }
+                ) { Text(stringResource(R.string.settings_data_erase_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEraseLocalDataDialog = false }) {
+                    Text(stringResource(R.string.backup_cancel))
+                }
             }
         )
     }
@@ -227,17 +277,19 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
             // the user should see is whether their app is up to date. Title +
             // installed version share a single line; only the "Check for
             // updates" button lives below it.
-            val updateViewModel: UpdateViewModel = androidx.hilt.navigation.compose.hiltViewModel()
-            SectionCard(
-                icon = Icons.Filled.SystemUpdate,
-                title = stringResource(R.string.settings_updates_section) +
-                    " - " +
-                    stringResource(
-                        R.string.settings_updates_current_version,
-                        updateViewModel.currentVersion
-                    )
-            ) {
-                UpdatesRow(updateViewModel)
+            if (BuildConfig.ENABLE_SELF_UPDATE) {
+                val updateViewModel: UpdateViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+                SectionCard(
+                    icon = Icons.Filled.SystemUpdate,
+                    title = stringResource(R.string.settings_updates_section) +
+                        " - " +
+                        stringResource(
+                            R.string.settings_updates_current_version,
+                            updateViewModel.currentVersion
+                        )
+                ) {
+                    UpdatesRow(updateViewModel)
+                }
             }
 
             SectionCard(
@@ -537,6 +589,31 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
             }
 
             SectionCard(
+                icon = Icons.Filled.Security,
+                title = stringResource(R.string.settings_data_section),
+                subtitle = stringResource(R.string.settings_data_section_sub)
+            ) {
+                NavigationRow(
+                    label = stringResource(R.string.settings_privacy_policy),
+                    supporting = stringResource(R.string.settings_privacy_policy_sub),
+                    onClick = {
+                        context.startActivity(
+                            android.content.Intent(
+                                android.content.Intent.ACTION_VIEW,
+                                android.net.Uri.parse(BuildConfig.PRIVACY_POLICY_URL)
+                            )
+                        )
+                    }
+                )
+                SettingsDivider()
+                NavigationRow(
+                    label = stringResource(R.string.settings_data_erase),
+                    supporting = stringResource(R.string.settings_data_erase_sub),
+                    onClick = { showEraseLocalDataDialog = true }
+                )
+            }
+
+            SectionCard(
                 icon = Icons.Filled.Battery4Bar,
                 title = stringResource(R.string.settings_battery_section)
             ) {
@@ -588,7 +665,8 @@ private fun BugReportRow() {
     val context = LocalContext.current
     var sentAtMs by remember { mutableStateOf(0L) }
     val justSent = sentAtMs != 0L && System.currentTimeMillis() - sentAtMs < 3000
-    val hasSentry = com.autogram.app.BuildConfig.SENTRY_DSN.isNotBlank()
+    val hasSentry = com.autogram.app.BuildConfig.SENTRY_DSN.isNotBlank() &&
+        com.autogram.app.BuildConfig.ENABLE_AUTOMATIC_CRASH_REPORTING
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1404,6 +1482,36 @@ private fun SummarySection(
     onApiKeyChange: (String) -> Unit,
     onModelChange: (String) -> Unit
 ) {
+    var showExternalLlmDisclosure by remember { mutableStateOf(false) }
+    fun selectEngine(type: com.autogram.app.domain.model.SummaryEngineType) {
+        if (type == com.autogram.app.domain.model.SummaryEngineType.LLM_ENDPOINT && engine != type) {
+            showExternalLlmDisclosure = true
+        } else {
+            onEngineChange(type)
+        }
+    }
+
+    if (showExternalLlmDisclosure) {
+        AlertDialog(
+            onDismissRequest = { showExternalLlmDisclosure = false },
+            title = { Text(stringResource(R.string.settings_summary_llm_disclosure_title)) },
+            text = { Text(stringResource(R.string.settings_summary_llm_disclosure_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showExternalLlmDisclosure = false
+                    onEngineChange(com.autogram.app.domain.model.SummaryEngineType.LLM_ENDPOINT)
+                }) {
+                    Text(stringResource(R.string.settings_summary_llm_disclosure_accept))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExternalLlmDisclosure = false }) {
+                    Text(stringResource(R.string.backup_cancel))
+                }
+            }
+        )
+    }
+
     SwitchRow(
         label = stringResource(R.string.settings_summarize),
         checked = enabled,
@@ -1425,13 +1533,13 @@ private fun SummarySection(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onEngineChange(type) }
+                    .clickable { selectEngine(type) }
                     .padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 RadioButton(
                     selected = engine == type,
-                    onClick = { onEngineChange(type) }
+                    onClick = { selectEngine(type) }
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(stringResource(stringRes))
@@ -1440,6 +1548,12 @@ private fun SummarySection(
     }
     if (engine == com.autogram.app.domain.model.SummaryEngineType.LLM_ENDPOINT) {
         SettingsDivider()
+        Text(
+            text = stringResource(R.string.settings_summary_llm_disclosure_reminder),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
         DebouncedTextField(
             initial = endpoint,
             onCommit = onEndpointChange,

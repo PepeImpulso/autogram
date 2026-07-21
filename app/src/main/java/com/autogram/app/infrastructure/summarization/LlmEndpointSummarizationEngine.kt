@@ -1,5 +1,6 @@
 package com.autogram.app.infrastructure.summarization
 
+import com.autogram.app.BuildConfig
 import com.autogram.app.domain.repository.SettingsRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -48,7 +49,9 @@ class LlmEndpointSummarizationEngine @Inject constructor(
             val url = if (endpoint.endsWith("/chat/completions")) endpoint
                       else endpoint.trimEnd('/') + "/chat/completions"
             val parsed = url.toHttpUrlOrNull()
-            if (parsed == null || (parsed.scheme != "http" && parsed.scheme != "https")) {
+            val allowedScheme = parsed?.scheme == "https" ||
+                (BuildConfig.ALLOW_CLEARTEXT_LLM_ENDPOINT && parsed?.scheme == "http")
+            if (parsed == null || !allowedScheme) {
                 Timber.w("LLM summary endpoint invalid (scheme or parse)")
                 return@withContext SummarizationEngine.Result.Error("invalid endpoint")
             }

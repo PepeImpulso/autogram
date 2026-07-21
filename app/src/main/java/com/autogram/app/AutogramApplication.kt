@@ -61,7 +61,7 @@ class AutogramApplication : Application(), Configuration.Provider {
         // Crash reporting via Sentry. If SENTRY_DSN is empty (dev box without
         // the key in local.properties) we skip init and fall back to Log.e.
         val dsn = BuildConfig.SENTRY_DSN
-        if (dsn.isNotBlank()) {
+        if (dsn.isNotBlank() && BuildConfig.ENABLE_AUTOMATIC_CRASH_REPORTING) {
             SentryAndroid.init(this) { options ->
                 options.dsn = dsn
                 options.environment = if (BuildConfig.DEBUG) "debug" else "release"
@@ -73,8 +73,9 @@ class AutogramApplication : Application(), Configuration.Provider {
                         minBreadcrumbLevel = SentryLevel.INFO
                     )
                 )
-                // Attach screenshots/ANR context to crashes in release builds.
-                options.isAttachScreenshot = !BuildConfig.DEBUG
+                // Play builds avoid collecting screen contents in crash reports.
+                options.isAttachScreenshot =
+                    !BuildConfig.DEBUG && BuildConfig.ENABLE_SENTRY_SCREENSHOTS
                 options.isAnrEnabled = true
                 // PII scrubbing: the default integration sends user identifiers
                 // (device id, locale) which we don't need. Also opt out of
@@ -100,7 +101,10 @@ class AutogramApplication : Application(), Configuration.Provider {
         // button in Settings without needing a dev build.
         fileLoggingTree = FileLoggingTree(this)
         Timber.plant(fileLoggingTree!!)
-        Timber.d("Autogram initialized (sentry=${dsn.isNotBlank()})")
+        Timber.d(
+            "Autogram initialized " +
+                "(sentry=${dsn.isNotBlank() && BuildConfig.ENABLE_AUTOMATIC_CRASH_REPORTING})"
+        )
 
         // Apply saved UI language before any activity inflates its layout.
         // Reading from the DB is suspend so we launch a coroutine — activities

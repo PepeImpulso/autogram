@@ -171,6 +171,10 @@
     <string name="settings_summary_llm_api_key">API-Schlüssel</string>
     <string name="settings_summary_llm_model">Modell</string>
     <string name="settings_summary_llm_model_hint">gpt-4o-mini</string>
+    <string name="settings_summary_llm_disclosure_title">Nachrichtentext an einen externen KI-Dienst senden?</string>
+    <string name="settings_summary_llm_disclosure_body">Wenn Sie fortfahren, sendet Autogram den Text der zum Zusammenfassen ausgewählten Nachrichten an den von Ihnen konfigurierten HTTPS-Endpunkt. Der Anbieter verarbeitet den Text nach seinen eigenen Datenschutzbestimmungen. Autogram betreibt oder kontrolliert diesen Dienst nicht.</string>
+    <string name="settings_summary_llm_disclosure_accept">Ich verstehe und fahre fort</string>
+    <string name="settings_summary_llm_disclosure_reminder">Zum Zusammenfassen ausgewählter Nachrichtentext wird an den unten konfigurierten externen HTTPS-Dienst gesendet.</string>
     <string name="history_summary_label">Zusammenfassung</string>
     <string name="history_summary_in_progress">Wird zusammengefasst…</string>
     <string name="history_summary_unavailable">Engine nicht konfiguriert</string>
@@ -401,4 +405,14 @@
     <string name="tg_login_closed">Abgemeldet. Öffne die App erneut, um dich zu verbinden.</string>
     <string name="tg_login_error_title">Etwas ist schiefgelaufen</string>
     <string name="tg_login_error_retry">Schließe die App und öffne sie erneut, oder deinstalliere sie bei anhaltendem Fehler.</string>
+    <string name="settings_data_section">Datenschutz und Daten</string>
+    <string name="settings_data_section_sub">Datenschutzinformationen ansehen oder lokale Daten entfernen</string>
+    <string name="settings_privacy_policy">Datenschutzerklärung</string>
+    <string name="settings_privacy_policy_sub">Erfahren Sie, wie Autogram Ihre Daten verarbeitet</string>
+    <string name="settings_data_erase">Telegram trennen und lokale Daten löschen</string>
+    <string name="settings_data_erase_sub">Entfernt Sitzung, Unterhaltungen, Aufnahmen, Kurzbefehle, Einstellungen und Diagnosedaten von diesem Gerät</string>
+    <string name="settings_data_erase_confirm_title">Lokale Autogram-Daten löschen?</string>
+    <string name="settings_data_erase_confirm_body">Dadurch wird Telegram getrennt und alle auf diesem Gerät gespeicherten Autogram-Daten werden dauerhaft gelöscht. Ihr Telegram-Konto und bei Telegram gespeicherte Nachrichten bleiben bestehen.</string>
+    <string name="settings_data_erase_confirm">Trennen und löschen</string>
+    <string name="settings_data_erase_failed">Nicht alle lokalen Daten konnten gelöscht werden: %1$s</string>
 </resources>

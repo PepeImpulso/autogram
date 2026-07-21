@@ -170,6 +170,10 @@
     <string name="settings_summary_llm_api_key">API キー</string>
     <string name="settings_summary_llm_model">モデル</string>
     <string name="settings_summary_llm_model_hint">gpt-4o-mini</string>
+    <string name="settings_summary_llm_disclosure_title">メッセージ本文を外部 AI サービスに送信しますか？</string>
+    <string name="settings_summary_llm_disclosure_body">続行すると、Autogram は要約対象として選択したメッセージ本文を、設定した HTTPS エンドポイントへ送信します。提供者は独自のプライバシー規約に基づいて本文を処理します。Autogram はそのサービスを運営または管理しません。</string>
+    <string name="settings_summary_llm_disclosure_accept">理解して続行</string>
+    <string name="settings_summary_llm_disclosure_reminder">要約対象として選択したメッセージ本文は、以下で設定した外部 HTTPS サービスへ送信されます。</string>
     <string name="history_summary_label">要約</string>
     <string name="history_summary_in_progress">要約中…</string>
     <string name="history_summary_unavailable">要約エンジンが未設定</string>
@@ -400,4 +404,14 @@
     <string name="tg_login_closed">ログアウトしました。再接続するにはアプリを再度開いてください。</string>
     <string name="tg_login_error_title">問題が発生しました</string>
     <string name="tg_login_error_retry">アプリを閉じて再度開いて再試行してください。エラーが続く場合はアンインストール。</string>
+    <string name="settings_data_section">プライバシーとデータ</string>
+    <string name="settings_data_section_sub">プライバシー情報の確認またはローカルデータの削除</string>
+    <string name="settings_privacy_policy">プライバシーポリシー</string>
+    <string name="settings_privacy_policy_sub">Autogram による情報の取り扱いを確認します</string>
+    <string name="settings_data_erase">Telegram を切断してローカルデータを削除</string>
+    <string name="settings_data_erase_sub">この端末に保存されたセッション、会話、録音、ショートカット、設定、診断情報を削除します</string>
+    <string name="settings_data_erase_confirm_title">Autogram のローカルデータを削除しますか？</string>
+    <string name="settings_data_erase_confirm_body">Telegram を切断し、この端末に保存されたすべての Autogram データを完全に削除します。Telegram アカウントや Telegram に保存されたメッセージは削除されません。</string>
+    <string name="settings_data_erase_confirm">切断して削除</string>
+    <string name="settings_data_erase_failed">すべてのローカルデータを削除できませんでした：%1$s</string>
 </resources>

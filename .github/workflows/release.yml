@@ -7,7 +7,7 @@ name: Release APK
 #   - workflow_dispatch         → builds APK, uploads as artifact only (test runs)
 #
 # TDLib native libs are vendored under app/src/main/jniLibs and tracked in git,
-# so this workflow only runs assembleRelease; it does not rebuild TDLib.
+# so this workflow only runs assembleGithubRelease; it does not rebuild TDLib.
 # Use the build-tdlib.yml workflow when upgrading TDLib.
 
 on:
@@ -70,13 +70,13 @@ jobs:
           sentry.dsn=$SENTRY_DSN
           EOF
 
-      - name: Gradle assembleRelease
-        run: ./gradlew --no-daemon assembleRelease
+      - name: Gradle assembleGithubRelease
+        run: ./gradlew --no-daemon assembleGithubRelease
 
       - name: Locate APK
         id: apk
         run: |
-          APK_SRC="app/build/outputs/apk/release/app-release.apk"
+          APK_SRC="app/build/outputs/apk/github/release/app-github-release.apk"
           if [ ! -f "$APK_SRC" ]; then
             echo "::error::APK not found at $APK_SRC"
             ls -R app/build/outputs/apk/ || true
