@@ -49,6 +49,15 @@ class SyntheticReviewDataSeeder @Inject constructor(
         fun primaryConversation(now: Long = System.currentTimeMillis()): Conversation =
             syntheticConversations(now).first()
 
+        fun playbackMessage(now: Long = System.currentTimeMillis()): Message =
+            syntheticMessages(now).first().copy(
+                summary = null,
+                textContent = "This synthetic Autogram message demonstrates foreground media playback. " +
+                    "Audio continues while the app is in the background so hands-free messages remain audible " +
+                    "while driving. The user can pause or stop playback at any time from Autogram or the " +
+                    "vehicle media controls. No private Telegram account or external message is used."
+            )
+
         private fun syntheticConversations(now: Long): List<Conversation> = listOf(
             Conversation(
                 id = PRIMARY_CONVERSATION_ID,

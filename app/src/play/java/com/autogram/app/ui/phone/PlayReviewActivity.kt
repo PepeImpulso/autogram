@@ -23,6 +23,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,12 +35,14 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.lifecycleScope
+import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.infrastructure.platform.IncomingMessageNotifier
 import com.autogram.app.infrastructure.review.PlayReviewModeStore
 import com.autogram.app.service.MtprotoReceiverService
 import com.autogram.app.ui.theme.AutogramTheme
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -49,6 +52,7 @@ import javax.inject.Inject
 class PlayReviewActivity : BaseLocaleActivity() {
     @Inject lateinit var dataSeeder: SyntheticReviewDataSeeder
     @Inject lateinit var notifier: IncomingMessageNotifier
+    @Inject lateinit var playReply: PlayReplyUseCase
     @Inject lateinit var reviewModeStore: PlayReviewModeStore
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -63,6 +67,7 @@ class PlayReviewActivity : BaseLocaleActivity() {
     private fun render() {
         setContent {
             AutogramTheme {
+                val playbackStatus by playReply.playbackStatus.collectAsState()
                 var pendingPermissionAction by remember {
                     mutableStateOf<ReviewPermissionAction?>(null)
                 }
@@ -73,12 +78,18 @@ class PlayReviewActivity : BaseLocaleActivity() {
                         when (pendingPermissionAction) {
                             ReviewPermissionAction.POST_MESSAGE -> postDemoNotification()
                             ReviewPermissionAction.START_RECEIVER -> setReceiverRunning(true)
+                            ReviewPermissionAction.PLAY_MEDIA -> playDemoMedia()
                             null -> Unit
                         }
                     }
                     pendingPermissionAction = null
                 }
                 PlayReviewDemo(
+                    playbackStatus = when (playbackStatus) {
+                        is PlayReplyUseCase.PlaybackStatus.Playing -> "Playing synthetic TTS message"
+                        is PlayReplyUseCase.PlaybackStatus.Paused -> "Paused"
+                        else -> "Stopped"
+                    },
                     onPostNotification = {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                             ContextCompat.checkSelfPermission(
@@ -106,10 +117,25 @@ class PlayReviewActivity : BaseLocaleActivity() {
                         }
                     },
                     onStopReceiver = { setReceiverRunning(false) },
+                    onPlayMedia = {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                            ContextCompat.checkSelfPermission(
+                                this,
+                                Manifest.permission.POST_NOTIFICATIONS
+                        ) != PackageManager.PERMISSION_GRANTED
+                        ) {
+                            pendingPermissionAction = ReviewPermissionAction.PLAY_MEDIA
+                            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        } else {
+                            playDemoMedia()
+                        }
+                    },
+                    onStopMedia = { playReply.stopAll() },
                     onOpenShortcuts = {
                         startActivity(Intent(this, ManagePinnedActivity::class.java))
                     },
                     onExit = {
+                        playReply.stopAll()
                         setReceiverRunning(false)
                         reviewModeStore.deactivate()
                         startActivity(
@@ -138,16 +164,27 @@ class PlayReviewActivity : BaseLocaleActivity() {
         }
         if (start) ContextCompat.startForegroundService(this, intent) else startService(intent)
     }
+
+    private fun playDemoMedia() {
+        setReceiverRunning(true)
+        lifecycleScope.launch {
+            delay(250)
+            playReply.playTextManually(SyntheticReviewDataSeeder.playbackMessage())
+        }
+    }
 }
 
 private enum class ReviewScreen { HOME, HISTORY, STATS, SETTINGS, RULES, TOOLS }
-private enum class ReviewPermissionAction { POST_MESSAGE, START_RECEIVER }
+private enum class ReviewPermissionAction { POST_MESSAGE, START_RECEIVER, PLAY_MEDIA }
 
 @Composable
 private fun PlayReviewDemo(
+    playbackStatus: String,
     onPostNotification: () -> Unit,
     onStartReceiver: () -> Unit,
     onStopReceiver: () -> Unit,
+    onPlayMedia: () -> Unit,
+    onStopMedia: () -> Unit,
     onOpenShortcuts: () -> Unit,
     onExit: () -> Unit
 ) {
@@ -206,6 +243,9 @@ private fun PlayReviewDemo(
                     onPostNotification = onPostNotification,
                     onStartReceiver = onStartReceiver,
                     onStopReceiver = onStopReceiver,
+                    onPlayMedia = onPlayMedia,
+                    onStopMedia = onStopMedia,
+                    playbackStatus = playbackStatus,
                     onOpenShortcuts = onOpenShortcuts,
                     onExit = onExit
                 )
@@ -224,6 +264,9 @@ private fun ReviewToolsScreen(
     onPostNotification: () -> Unit,
     onStartReceiver: () -> Unit,
     onStopReceiver: () -> Unit,
+    onPlayMedia: () -> Unit,
+    onStopMedia: () -> Unit,
+    playbackStatus: String,
     onOpenShortcuts: () -> Unit,
     onExit: () -> Unit
 ) {
@@ -249,6 +292,17 @@ private fun ReviewToolsScreen(
         OutlinedButton(onClick = onStopReceiver, modifier = Modifier.fillMaxWidth()) {
             Text("Stop foreground receiver demo")
         }
+        Button(onClick = onPlayMedia, modifier = Modifier.fillMaxWidth()) {
+            Text("Play foreground media demo")
+        }
+        OutlinedButton(onClick = onStopMedia, modifier = Modifier.fillMaxWidth()) {
+            Text("Stop media playback")
+        }
+        Text(
+            "Media playback: $playbackStatus",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold
+        )
         Button(onClick = onPostNotification, modifier = Modifier.fillMaxWidth()) {
             Text("Post Android Auto message notification")
         }

@@ -111,14 +111,14 @@ class MtprotoReceiverService : Service() {
                         android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
                 )
             } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                // API 29–33: dataSync is the right umbrella type for the
-                // MTProto loop here; mediaPlayback is also valid since Q so
-                // include it for the same audio-routing reason.
+                // API 29–33 only require explicit types for location, camera,
+                // and microphone. Use the declared mediaPlayback type here;
+                // specialUse was introduced in API 34 and cannot be passed to
+                // older platform versions.
                 startForeground(
                     NOTIFICATION_ID,
                     notification,
-                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or
-                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
                 )
             } else {
                 startForeground(NOTIFICATION_ID, notification)

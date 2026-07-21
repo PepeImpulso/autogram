@@ -60,6 +60,7 @@ fi
 
 for forbidden in \
     REQUEST_INSTALL_PACKAGES \
+    FOREGROUND_SERVICE_DATA_SYNC \
     AutogramCarAppService \
     minCarApiLevel \
     StoreScreenshotActivity \
@@ -68,6 +69,16 @@ for forbidden in \
     io.sentry; do
     if grep -q "$forbidden" "$MERGED_MANIFEST"; then
         echo "ERROR: forbidden Play manifest entry found: $forbidden" >&2
+        exit 1
+    fi
+done
+
+for required in \
+    FOREGROUND_SERVICE_SPECIAL_USE \
+    FOREGROUND_SERVICE_MEDIA_PLAYBACK \
+    'foregroundServiceType="specialUse|mediaPlayback"'; do
+    if ! grep -q "$required" "$MERGED_MANIFEST"; then
+        echo "ERROR: required Play foreground-service declaration is missing: $required" >&2
         exit 1
     fi
 done
