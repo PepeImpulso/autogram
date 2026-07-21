@@ -22,6 +22,7 @@ import com.autogram.app.domain.usecase.TranscribeVoiceUseCase
 import com.autogram.app.infrastructure.platform.CallStateMonitor
 import com.autogram.app.infrastructure.platform.IncomingMessageNotifier
 import com.autogram.app.infrastructure.privacy.AcceptableUseConsentStore
+import com.autogram.app.infrastructure.review.PlayReviewModeStore
 import com.autogram.app.infrastructure.telegram.mtproto.AuthState
 import com.autogram.app.infrastructure.telegram.mtproto.TdLibClient
 import com.autogram.app.ui.phone.MainActivity
@@ -73,6 +74,7 @@ class MtprotoReceiverService : Service() {
     @Inject lateinit var summarizeMessageUseCase: SummarizeMessageUseCase
     @Inject lateinit var settingsRepository: SettingsRepository
     @Inject lateinit var acceptableUseConsentStore: AcceptableUseConsentStore
+    @Inject lateinit var playReviewModeStore: PlayReviewModeStore
 
     private var scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var supervisorJob: Job? = null
@@ -137,7 +139,7 @@ class MtprotoReceiverService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (!acceptableUseConsentStore.isAccepted()) {
+        if (!acceptableUseConsentStore.isAccepted() && !playReviewModeStore.isActive()) {
             Timber.i("MtprotoReceiverService stopped until messaging terms are accepted")
             stopSelf()
             return START_NOT_STICKY
@@ -175,6 +177,10 @@ class MtprotoReceiverService : Service() {
     private fun startSupervisor() {
         if (supervisorJob?.isActive == true) return
         supervisorJob = scope.launch {
+            if (playReviewModeStore.isActive()) {
+                updateNotification("Review demo: listening to 3 synthetic shortcuts")
+                return@launch
+            }
             tdLibClient.ensureStarted()
             tdLibClient.authState.first { it is AuthState.Ready }
 

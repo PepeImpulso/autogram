@@ -374,6 +374,7 @@ internal fun MainScreen(
     onOpenPendingQueue: () -> Unit,
     onManagePinned: () -> Unit,
     onManageQuickReplies: () -> Unit,
+    messagingActionsEnabled: Boolean = true,
     viewModel: MainViewModel = hiltViewModel(),
     updateViewModel: UpdateViewModel = hiltViewModel()
 ) {
@@ -523,7 +524,7 @@ internal fun MainScreen(
                 SuggestionChipsRow(
                     suggestions = suggestions,
                     onSuggestionTap = { text ->
-                        viewModel.sendQuickReply(text, primary?.id)
+                        if (messagingActionsEnabled) viewModel.sendQuickReply(text, primary?.id)
                     },
                     onDismiss = { viewModel.dismissSuggestions() }
                 )
@@ -537,18 +538,22 @@ internal fun MainScreen(
                         sendStatus is SendVoiceMtprotoUseCase.SendStatus.Recording,
                     isPlayingThis = playingConversationId == primary.id,
                     pendingCount = if (showPendingBadges) (pendingCounts[primary.id] ?: 0) else 0,
-                    hasPermission = hasMicPermission,
+                    hasPermission = hasMicPermission || !messagingActionsEnabled,
                     quickReplies = quickReplies,
                     quickReplyFilter = quickReplyFilter,
                     showQuickReplyFilters = showQuickReplyFilters,
                     showQuickReplyShortcuts = showQuickReplyShortcuts,
                     circleSize = primaryCircleSize,
                     onFilterChange = viewModel::setQuickReplyFilter,
-                    onRequestPermission = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
-                    onStart = { viewModel.startRecording(primary.id) },
-                    onSend = { viewModel.stopAndSend() },
-                    onCancel = { viewModel.cancelRecording() },
-                    onQuickReply = { viewModel.sendQuickReplyShortcut(it, primary.id) },
+                    onRequestPermission = {
+                        if (messagingActionsEnabled) permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    },
+                    onStart = { if (messagingActionsEnabled) viewModel.startRecording(primary.id) },
+                    onSend = { if (messagingActionsEnabled) viewModel.stopAndSend() },
+                    onCancel = { if (messagingActionsEnabled) viewModel.cancelRecording() },
+                    onQuickReply = {
+                        if (messagingActionsEnabled) viewModel.sendQuickReplyShortcut(it, primary.id)
+                    },
                     onOpenHistory = { onOpenHistoryFor(primary.id) }
                 )
             } else {
@@ -567,11 +572,13 @@ internal fun MainScreen(
                 playingConversationId = playingConversationId,
                 sendStatus = sendStatus,
                 pendingCounts = if (showPendingBadges) pendingCounts else emptyMap(),
-                hasPermission = hasMicPermission,
-                onRequestPermission = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
-                onStart = { viewModel.startRecording(it.id) },
-                onSend = { viewModel.stopAndSend() },
-                onCancel = { viewModel.cancelRecording() },
+                hasPermission = hasMicPermission || !messagingActionsEnabled,
+                onRequestPermission = {
+                    if (messagingActionsEnabled) permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                },
+                onStart = { if (messagingActionsEnabled) viewModel.startRecording(it.id) },
+                onSend = { if (messagingActionsEnabled) viewModel.stopAndSend() },
+                onCancel = { if (messagingActionsEnabled) viewModel.cancelRecording() },
                 onOpenHistoryFor = onOpenHistoryFor
             )
         }

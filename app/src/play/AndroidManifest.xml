@@ -7,4 +7,11 @@
         android:name="android.permission.REQUEST_INSTALL_PACKAGES"
         tools:node="remove" />
 
+    <application>
+        <activity
+            android:name=".ui.phone.PlayReviewActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+    </application>
+
 </manifest>

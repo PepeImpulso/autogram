@@ -74,6 +74,9 @@ android {
             buildConfigField("boolean", "ENABLE_AUTOMATIC_CRASH_REPORTING", "true")
             buildConfigField("boolean", "ENABLE_SENTRY_SCREENSHOTS", "true")
             buildConfigField("boolean", "ALLOW_CLEARTEXT_LLM_ENDPOINT", "true")
+            buildConfigField("boolean", "ENABLE_PLAY_REVIEW_DEMO", "false")
+            buildConfigField("String", "PLAY_REVIEW_PHONE", "\"\"")
+            buildConfigField("String", "PLAY_REVIEW_ACTIVITY", "\"\"")
         }
         create("play") {
             dimension = "distribution"
@@ -82,6 +85,13 @@ android {
             buildConfigField("boolean", "ENABLE_AUTOMATIC_CRASH_REPORTING", "false")
             buildConfigField("boolean", "ENABLE_SENTRY_SCREENSHOTS", "false")
             buildConfigField("boolean", "ALLOW_CLEARTEXT_LLM_ENDPOINT", "false")
+            buildConfigField("boolean", "ENABLE_PLAY_REVIEW_DEMO", "true")
+            buildConfigField("String", "PLAY_REVIEW_PHONE", "\"+99900001250\"")
+            buildConfigField(
+                "String",
+                "PLAY_REVIEW_ACTIVITY",
+                "\"com.autogram.app.ui.phone.PlayReviewActivity\""
+            )
         }
     }
 

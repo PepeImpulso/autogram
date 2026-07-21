@@ -89,6 +89,11 @@ if ! grep -q 'name="notification"' "$AUTO_DESCRIPTOR"; then
     echo "ERROR: Android Auto notification capability is missing." >&2
     exit 1
 fi
+
+if ! grep -q 'PlayReviewActivity' "$MERGED_MANIFEST"; then
+    echo "ERROR: reusable Google Play review activity is missing." >&2
+    exit 1
+fi
 for forbidden in 'name="template"' 'name="media"'; do
     if grep -q "$forbidden" "$AUTO_DESCRIPTOR"; then
         echo "ERROR: production-ineligible Android Auto capability found: $forbidden" >&2
