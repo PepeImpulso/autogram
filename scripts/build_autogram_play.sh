@@ -52,8 +52,9 @@ fi
 
 MERGED_MANIFEST="app/build/intermediates/merged_manifests/playRelease/processPlayReleaseManifest/AndroidManifest.xml"
 AUTO_DESCRIPTOR="app/build/intermediates/packaged_res/playRelease/packagePlayReleaseResources/xml/automotive_app_desc.xml"
-if [[ ! -f "$MERGED_MANIFEST" || ! -f "$AUTO_DESCRIPTOR" ]]; then
-    echo "ERROR: Play manifest verification inputs were not generated." >&2
+R8_MAPPING="app/build/outputs/mapping/playRelease/mapping.txt"
+if [[ ! -f "$MERGED_MANIFEST" || ! -f "$AUTO_DESCRIPTOR" || ! -f "$R8_MAPPING" ]]; then
+    echo "ERROR: Play bundle verification inputs were not generated." >&2
     exit 1
 fi
 
@@ -73,6 +74,14 @@ done
 
 if jar tf "$AAB" | grep -qi sentry; then
     echo "ERROR: Sentry artifact found in the Play bundle." >&2
+    exit 1
+fi
+
+# Hilt constructs the updater dependency graph even though self-update UI is
+# disabled in Play. Retrofit needs this reflected interface to survive R8.
+if ! grep -q 'GitHubApi -> com.autogram.app.infrastructure.github.GitHubApi:' "$R8_MAPPING" ||
+   ! grep -q 'listReleases.* -> listReleases' "$R8_MAPPING"; then
+    echo "ERROR: Retrofit updater interface was removed or renamed by R8." >&2
     exit 1
 fi
 
