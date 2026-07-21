@@ -27,6 +27,7 @@
     <string name="notification_incoming_voice_body">Nouveau message vocal</string>
     <string name="notification_action_listen">Écouter</string>
     <string name="notification_action_reply">Répondre</string>
+    <string name="notification_action_mark_read">Marquer comme lu</string>
     <string name="notification_action_reply_hint">Tapez une réponse…</string>
     <string name="notification_polling_text">À l\'écoute des messages…</string>
     <string name="notification_channel_pending_replies">Réponses en attente</string>

@@ -5,20 +5,23 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.RemoteInput
+import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.domain.usecase.SendVoiceMtprotoUseCase
+import com.autogram.app.infrastructure.telegram.mtproto.TdLibSender
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import org.drinkless.tdlib.TdApi
 import timber.log.Timber
 import javax.inject.Inject
 
 /**
- * Handles the "Listen" and "Reply" actions exposed on the incoming-message
- * notifications ([IncomingMessageNotifier]).
+ * Handles the actions exposed on incoming-message notifications
+ * ([IncomingMessageNotifier]).
  *
  * - ACTION_LISTEN: starts manual playback of the stored message. Works for
  *   voice (MediaPlayer) and text (TTS) alike — the use case dispatches by
@@ -26,6 +29,8 @@ import javax.inject.Inject
  * - ACTION_REPLY: reads the RemoteInput text and sends it via the existing
  *   quick-reply path. Dismisses the notification on success so the user
  *   doesn't see stale suggestions.
+ * - ACTION_MARK_AS_READ: marks the Telegram message as viewed when identifiers
+ *   are available, then dismisses the notification.
  *
  * Broadcast receivers run on the main thread with only a ~10 s budget before
  * Android kills them. We use goAsync() so the coroutine has time to hit
@@ -35,8 +40,10 @@ import javax.inject.Inject
 class NotificationActionReceiver : BroadcastReceiver() {
 
     @Inject lateinit var messageRepository: MessageRepository
+    @Inject lateinit var conversationRepository: ConversationRepository
     @Inject lateinit var playReplyUseCase: PlayReplyUseCase
     @Inject lateinit var sendVoiceMtprotoUseCase: SendVoiceMtprotoUseCase
+    @Inject lateinit var tdLibSender: TdLibSender
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -49,6 +56,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
                 when (action) {
                     ACTION_LISTEN -> handleListen(intent)
                     ACTION_REPLY -> handleReply(context, intent, notificationId)
+                    ACTION_MARK_AS_READ -> handleMarkAsRead(context, intent, notificationId)
                     else -> Timber.w("NotificationActionReceiver: unknown action $action")
                 }
             } catch (t: Throwable) {
@@ -85,9 +93,30 @@ class NotificationActionReceiver : BroadcastReceiver() {
         }
     }
 
+    private suspend fun handleMarkAsRead(context: Context, intent: Intent, notificationId: Int) {
+        val messageId = intent.getStringExtra(EXTRA_MESSAGE_ID)
+        val conversationId = intent.getStringExtra(EXTRA_CONVERSATION_ID)
+        val message = messageId?.let { messageRepository.getById(it) }
+        val conversation = conversationId?.let { conversationRepository.getById(it) }
+        val chatId = conversation?.targetChatId?.toLongOrNull()
+        val telegramMessageId = message?.telegramMessageId
+
+        if (chatId != null && telegramMessageId != null) {
+            runCatching {
+                tdLibSender.send(
+                    TdApi.ViewMessages(chatId, longArrayOf(telegramMessageId), null, true)
+                )
+            }.onFailure { Timber.w(it, "Failed to mark Telegram message as read") }
+        }
+        if (notificationId > 0) {
+            NotificationManagerCompat.from(context).cancel(notificationId)
+        }
+    }
+
     companion object {
         const val ACTION_LISTEN = "com.autogram.app.action.LISTEN"
         const val ACTION_REPLY = "com.autogram.app.action.REPLY"
+        const val ACTION_MARK_AS_READ = "com.autogram.app.action.MARK_AS_READ"
         const val EXTRA_MESSAGE_ID = "com.autogram.app.extra.MESSAGE_ID"
         const val EXTRA_CONVERSATION_ID = "com.autogram.app.extra.CONVERSATION_ID"
         const val EXTRA_NOTIFICATION_ID = "com.autogram.app.extra.NOTIFICATION_ID"

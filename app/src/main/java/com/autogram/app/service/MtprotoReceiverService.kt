@@ -261,9 +261,9 @@ class MtprotoReceiverService : Service() {
             runCatching { cleanupPriorPlayedAudio(target.id, keepMessageId = message.id) }
                 .onFailure { Timber.w(it, "Deferred autoDelete cleanup failed") }
         }
-        // Surface a phone notification with Listen/Reply actions. Android Auto
-        // may consume the CarAppExtender path best-effort, but the app descriptor
-        // stays template-only so AA opens Autogram's NAVIGATION surface.
+        // Surface a phone notification with listen, reply, and mark-as-read
+        // actions. The Play flavor uses this production-eligible Android Auto
+        // path; the GitHub flavor also exposes the richer template UI.
         incomingMessageNotifier.postVoiceReceived(
             conversation = target,
             timestampMs = message.createdAt,

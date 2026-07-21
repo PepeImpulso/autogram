@@ -27,6 +27,7 @@
     <string name="notification_incoming_voice_body">新しい音声メッセージ</string>
     <string name="notification_action_listen">聞く</string>
     <string name="notification_action_reply">返信</string>
+    <string name="notification_action_mark_read">既読にする</string>
     <string name="notification_action_reply_hint">返信を入力…</string>
     <string name="notification_polling_text">メッセージを受信待機中…</string>
     <string name="notification_channel_pending_replies">保留中の返信</string>

@@ -27,6 +27,7 @@
     <string name="notification_incoming_voice_body">新语音消息</string>
     <string name="notification_action_listen">收听</string>
     <string name="notification_action_reply">回复</string>
+    <string name="notification_action_mark_read">标为已读</string>
     <string name="notification_action_reply_hint">输入回复…</string>
     <string name="notification_polling_text">正在监听消息…</string>
     <string name="notification_channel_pending_replies">待播放回复</string>

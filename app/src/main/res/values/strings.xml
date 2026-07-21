@@ -28,6 +28,7 @@
     <string name="notification_incoming_voice_body">New voice message</string>
     <string name="notification_action_listen">Listen</string>
     <string name="notification_action_reply">Reply</string>
+    <string name="notification_action_mark_read">Mark as read</string>
     <string name="notification_action_reply_hint">Type a reply…</string>
     <string name="notification_polling_text">Listening for messages…</string>
     <string name="notification_channel_pending_replies">Pending replies</string>

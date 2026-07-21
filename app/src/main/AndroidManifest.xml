@@ -164,14 +164,6 @@
         <meta-data
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
-        <!-- Templated messaging uses ConversationItem, available from Car API 7. -->
-        <meta-data
-            android:name="androidx.car.app.minCarApiLevel"
-            android:value="7" />
-        <meta-data
-            android:name="androidx.car.app.theme"
-            android:resource="@style/Theme.Autogram.Car" />
-
         <!-- Issue #63 Phase 1b (v1.23.0-rc.4) — VoiceInteractionService
              chain so Samsung's long-press-home / side-key assistant
              gesture actually routes to Autogram. ACTION_ASSIST alone
@@ -213,21 +205,6 @@
             android:label="@string/app_name">
             <intent-filter>
                 <action android:name="android.media.browse.MediaBrowserService" />
-            </intent-filter>
-        </service>
-
-        <!-- Android Auto: official templated messaging experience.
-             Google documents MESSAGING + template + notification as the
-             supported path for chat apps; using NAVIGATION/IOT to draw a
-             custom surface is too fragile across Gearhead versions. -->
-        <service
-            android:name=".ui.auto.AutogramCarAppService"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher"
-            android:label="@string/app_name">
-            <intent-filter>
-                <action android:name="androidx.car.app.CarAppService" />
-                <category android:name="androidx.car.app.category.MESSAGING" />
             </intent-filter>
         </service>
 

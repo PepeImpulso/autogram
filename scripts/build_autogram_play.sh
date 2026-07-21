@@ -50,8 +50,34 @@ if [[ ! -f "$AAB" ]]; then
     exit 1
 fi
 
+MERGED_MANIFEST="app/build/intermediates/merged_manifests/playRelease/processPlayReleaseManifest/AndroidManifest.xml"
+AUTO_DESCRIPTOR="app/build/intermediates/packaged_res/playRelease/packagePlayReleaseResources/xml/automotive_app_desc.xml"
+if [[ ! -f "$MERGED_MANIFEST" || ! -f "$AUTO_DESCRIPTOR" ]]; then
+    echo "ERROR: Play manifest verification inputs were not generated." >&2
+    exit 1
+fi
+
+for forbidden in REQUEST_INSTALL_PACKAGES AutogramCarAppService minCarApiLevel StoreScreenshotActivity; do
+    if grep -q "$forbidden" "$MERGED_MANIFEST"; then
+        echo "ERROR: forbidden Play manifest entry found: $forbidden" >&2
+        exit 1
+    fi
+done
+
+if ! grep -q 'name="notification"' "$AUTO_DESCRIPTOR"; then
+    echo "ERROR: Android Auto notification capability is missing." >&2
+    exit 1
+fi
+for forbidden in 'name="template"' 'name="media"'; do
+    if grep -q "$forbidden" "$AUTO_DESCRIPTOR"; then
+        echo "ERROR: production-ineligible Android Auto capability found: $forbidden" >&2
+        exit 1
+    fi
+done
+
 VERSION=$(grep -E '^\s*versionName' app/build.gradle.kts | head -1 | sed -E 's/.*"(.+)".*/\1/')
 echo
 echo "[build] Google Play bundle ready"
 echo "  version : $VERSION"
 echo "  bundle  : $AAB"
+echo "  Android Auto: notification messaging only"

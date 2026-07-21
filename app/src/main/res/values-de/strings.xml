@@ -27,6 +27,7 @@
     <string name="notification_incoming_voice_body">Neue Sprachnachricht</string>
     <string name="notification_action_listen">Anhören</string>
     <string name="notification_action_reply">Antworten</string>
+    <string name="notification_action_mark_read">Als gelesen markieren</string>
     <string name="notification_action_reply_hint">Antwort eingeben…</string>
     <string name="notification_polling_text">Höre auf Nachrichten…</string>
     <string name="notification_channel_pending_replies">Ausstehende Antworten</string>
