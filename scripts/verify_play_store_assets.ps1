@@ -65,7 +65,8 @@ $screenshots = @(
     '01-home.png',
     '02-history.png',
     '03-voice-onboarding.png',
-    '04-privacy-settings.png'
+    '04-privacy-settings.png',
+    '05-messaging-rules.png'
 )
 foreach ($name in $screenshots) {
     $relativePath = Join-Path $assets "phone-screenshots/en-US/$name"

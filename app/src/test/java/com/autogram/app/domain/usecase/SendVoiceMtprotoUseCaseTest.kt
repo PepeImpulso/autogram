@@ -15,6 +15,7 @@ import com.autogram.app.infrastructure.audio.EmptyMessageFilter
 import com.autogram.app.infrastructure.audio.HapticCues
 import com.autogram.app.infrastructure.audio.RecordingSounds
 import com.autogram.app.infrastructure.platform.ConnectivityObserver
+import com.autogram.app.infrastructure.privacy.AcceptableUseConsentStore
 import com.autogram.app.infrastructure.telegram.mtproto.AuthState
 import com.autogram.app.infrastructure.telegram.mtproto.TdLibSender
 import io.mockk.coEvery
@@ -55,6 +56,7 @@ class SendVoiceMtprotoUseCaseTest {
     private lateinit var connectivity: ConnectivityObserver
     private lateinit var settingsRepo: SettingsRepository
     private lateinit var audioPlayer: AudioPlayer
+    private lateinit var acceptableUseConsentStore: AcceptableUseConsentStore
     private lateinit var authStateFlow: MutableStateFlow<AuthState>
     private lateinit var useCase: SendVoiceMtprotoUseCase
 
@@ -78,10 +80,12 @@ class SendVoiceMtprotoUseCaseTest {
         connectivity = mockk(relaxed = true)
         settingsRepo = mockk(relaxed = true)
         audioPlayer = mockk(relaxed = true)
+        acceptableUseConsentStore = mockk(relaxed = true)
         authStateFlow = MutableStateFlow(AuthState.Ready)
 
         every { tdLib.authState } returns authStateFlow
         every { connectivity.isOnline() } returns true
+        every { acceptableUseConsentStore.isAccepted() } returns true
         coEvery { conversationRepo.getActive() } returns sampleTarget
         coEvery { conversationRepo.getById("c1") } returns sampleTarget
         coEvery { settingsRepo.get() } returns AppSettings()
@@ -98,11 +102,22 @@ class SendVoiceMtprotoUseCaseTest {
             hapticCues = hapticCues,
             connectivityObserver = connectivity,
             settingsRepository = settingsRepo,
-            audioPlayer = audioPlayer
+            audioPlayer = audioPlayer,
+            acceptableUseConsentStore = acceptableUseConsentStore
         )
     }
 
     // --- sendQuickReply happy path ---------------------------------------
+
+    @Test fun `sendQuickReply requires accepted messaging terms`() = runTest {
+        every { acceptableUseConsentStore.isAccepted() } returns false
+
+        val result = useCase.sendQuickReply("hola", null)
+
+        assertTrue(result.isFailure)
+        coVerify(exactly = 0) { tdLib.send<TdApi.Object>(any()) }
+        coVerify(exactly = 0) { messageRepo.insert(any()) }
+    }
 
     @Test fun `sendQuickReply success persists outgoing as SENT and updates lastRepliedAt`() = runTest {
         val tdMessage = TdApi.Message().apply { id = 42L }

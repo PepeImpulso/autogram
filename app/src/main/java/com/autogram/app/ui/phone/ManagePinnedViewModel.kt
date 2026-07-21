@@ -8,6 +8,8 @@ import com.autogram.app.domain.model.CircleFolder
 import com.autogram.app.domain.model.Conversation
 import com.autogram.app.domain.repository.CircleFolderRepository
 import com.autogram.app.domain.repository.ConversationRepository
+import com.autogram.app.infrastructure.telegram.mtproto.TelegramModerationAction
+import com.autogram.app.infrastructure.telegram.mtproto.TelegramModerationService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
@@ -24,8 +26,18 @@ import javax.inject.Inject
 class ManagePinnedViewModel @Inject constructor(
     application: Application,
     private val conversationRepository: ConversationRepository,
-    private val folderRepository: CircleFolderRepository
+    private val folderRepository: CircleFolderRepository,
+    private val moderationService: TelegramModerationService
 ) : AndroidViewModel(application) {
+
+    sealed interface BlockState {
+        data object Blocking : BlockState
+        data object Completed : BlockState
+        data class Failed(val message: String) : BlockState
+    }
+
+    private val _blockState = kotlinx.coroutines.flow.MutableStateFlow<BlockState?>(null)
+    val blockState: StateFlow<BlockState?> = _blockState
 
     val pinned: StateFlow<List<Conversation>> =
         conversationRepository.observePinned()
@@ -93,6 +105,25 @@ class ManagePinnedViewModel @Inject constructor(
             conv.photoLocalPath?.let { runCatching { File(it).delete() } }
             conversationRepository.delete(id)
         }
+    }
+
+    fun block(conversation: Conversation) {
+        val chatId = conversation.targetChatId.toLongOrNull() ?: return
+        _blockState.value = BlockState.Blocking
+        viewModelScope.launch {
+            _blockState.value = when (val result = moderationService.blockChat(chatId)) {
+                TelegramModerationAction.Completed -> {
+                    conversation.photoLocalPath?.let { runCatching { File(it).delete() } }
+                    conversationRepository.delete(conversation.id)
+                    BlockState.Completed
+                }
+                is TelegramModerationAction.Failed -> BlockState.Failed(result.message)
+            }
+        }
+    }
+
+    fun dismissBlockResult() {
+        _blockState.value = null
     }
 
     fun setPhoto(id: String, source: Uri) {

@@ -48,6 +48,7 @@ try {
         "history" = "02-history.png"
         "onboarding_record" = "03-voice-onboarding.png"
         "settings_privacy" = "04-privacy-settings.png"
+        "terms" = "05-messaging-rules.png"
     }
 
     foreach ($entry in $captures.GetEnumerator()) {

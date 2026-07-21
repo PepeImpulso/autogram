@@ -53,6 +53,11 @@ android {
             "PRIVACY_POLICY_URL",
             "\"https://www.impulsotecnologico.com/legal/privacidad-autogram\""
         )
+        buildConfigField(
+            "String",
+            "ACCEPTABLE_USE_URL",
+            "\"https://www.impulsotecnologico.com/legal/terminos-autogram\""
+        )
 
         // Restrict native libs to architectures we actually ship.
         // arm64-v8a: all modern phones. x86_64: Android emulators on Intel.

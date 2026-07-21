@@ -24,10 +24,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -99,7 +101,8 @@ internal fun MessageRow(
      * playback to the chosen position. Defaults to a no-op so older
      * call sites still compile.
      */
-    onSeek: (Int) -> Unit = {}
+    onSeek: (Int) -> Unit = {},
+    onReport: (() -> Unit)? = null
 ) {
     val isOutgoing = message.direction == MessageDirection.OUTGOING
     val hasAudio = !message.audioFilePath.isNullOrBlank()
@@ -196,6 +199,19 @@ internal fun MessageRow(
                                 stringResource(R.string.playback_pause_cd)
                             else stringResource(R.string.playback_play_cd),
                             modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                if (onReport != null) {
+                    IconButton(
+                        onClick = onReport,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.Flag,
+                            contentDescription = stringResource(R.string.moderation_report_action),
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(19.dp)
                         )
                     }
                 }

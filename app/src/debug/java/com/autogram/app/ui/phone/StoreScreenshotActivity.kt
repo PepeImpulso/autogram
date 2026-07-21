@@ -2,6 +2,9 @@ package com.autogram.app.ui.phone
 
 import android.os.Bundle
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Surface
+import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.lifecycleScope
 import com.autogram.app.domain.model.AppSettings
@@ -63,6 +66,9 @@ class StoreScreenshotActivity : BaseLocaleActivity() {
                         onChooseTarget = {},
                         initialStep = 1
                     )
+                    SCREEN_TERMS -> Surface(modifier = Modifier.fillMaxSize()) {
+                        AcceptableUseScreen(onAccept = {}, onExit = {})
+                    }
                     else -> MainScreen(
                         onOpenSettings = {},
                         onOpenHistory = {},
@@ -135,6 +141,7 @@ class StoreScreenshotActivity : BaseLocaleActivity() {
                 direction = MessageDirection.INCOMING,
                 state = MessageState.PLAYED,
                 textContent = "I am leaving now and should arrive around 18:30. Shall I pick up anything on the way?",
+                telegramMessageId = 7_001,
                 createdAt = now - 600_000,
                 playedAt = now - 590_000,
                 summary = "Alex is arriving around 18:30 and asks whether anything is needed.",
@@ -155,6 +162,7 @@ class StoreScreenshotActivity : BaseLocaleActivity() {
                 direction = MessageDirection.INCOMING,
                 state = MessageState.RECEIVED,
                 textContent = "Dinner is ready at eight. Everyone can make it.",
+                telegramMessageId = 7_003,
                 createdAt = now - 180_000
             ),
             Message(
@@ -163,6 +171,7 @@ class StoreScreenshotActivity : BaseLocaleActivity() {
                 direction = MessageDirection.INCOMING,
                 state = MessageState.PLAYED,
                 textContent = "The launch checklist is complete and the final review is scheduled for tomorrow morning.",
+                telegramMessageId = 7_004,
                 createdAt = now - 300_000,
                 playedAt = now - 290_000,
                 transcription = "The launch checklist is complete and the final review is scheduled for tomorrow morning.",
@@ -177,5 +186,6 @@ class StoreScreenshotActivity : BaseLocaleActivity() {
         const val SCREEN_HISTORY: String = "history"
         const val SCREEN_SETTINGS_PRIVACY: String = "settings_privacy"
         const val SCREEN_ONBOARDING_RECORD: String = "onboarding_record"
+        const val SCREEN_TERMS: String = "terms"
     }
 }

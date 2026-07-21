@@ -84,6 +84,11 @@
             android:screenOrientation="portrait" />
 
         <activity
+            android:name=".ui.phone.AcceptableUseActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <activity
             android:name=".ui.phone.TargetPickerActivity"
             android:exported="false"
             android:label="@string/target_picker_title"

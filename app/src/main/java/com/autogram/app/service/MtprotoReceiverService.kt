@@ -21,6 +21,7 @@ import com.autogram.app.domain.usecase.SummarizeMessageUseCase
 import com.autogram.app.domain.usecase.TranscribeVoiceUseCase
 import com.autogram.app.infrastructure.platform.CallStateMonitor
 import com.autogram.app.infrastructure.platform.IncomingMessageNotifier
+import com.autogram.app.infrastructure.privacy.AcceptableUseConsentStore
 import com.autogram.app.infrastructure.telegram.mtproto.AuthState
 import com.autogram.app.infrastructure.telegram.mtproto.TdLibClient
 import com.autogram.app.ui.phone.MainActivity
@@ -71,6 +72,7 @@ class MtprotoReceiverService : Service() {
     @Inject lateinit var transcribeVoiceUseCase: TranscribeVoiceUseCase
     @Inject lateinit var summarizeMessageUseCase: SummarizeMessageUseCase
     @Inject lateinit var settingsRepository: SettingsRepository
+    @Inject lateinit var acceptableUseConsentStore: AcceptableUseConsentStore
 
     private var scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var supervisorJob: Job? = null
@@ -135,6 +137,11 @@ class MtprotoReceiverService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (!acceptableUseConsentStore.isAccepted()) {
+            Timber.i("MtprotoReceiverService stopped until messaging terms are accepted")
+            stopSelf()
+            return START_NOT_STICKY
+        }
         when (intent?.action) {
             ACTION_STOP -> {
                 stopSupervisor()

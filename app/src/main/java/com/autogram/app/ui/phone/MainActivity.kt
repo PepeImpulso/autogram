@@ -71,6 +71,7 @@ import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.domain.usecase.SendVoiceMtprotoUseCase
 import com.autogram.app.infrastructure.platform.BiometricGate
 import com.autogram.app.infrastructure.platform.CallStateMonitor
+import com.autogram.app.infrastructure.privacy.AcceptableUseConsentStore
 import com.autogram.app.infrastructure.telegram.mtproto.AuthState
 import com.autogram.app.infrastructure.telegram.mtproto.TdLibClient
 import com.autogram.app.service.MtprotoReceiverService
@@ -88,6 +89,7 @@ class MainActivity : BaseLocaleActivity() {
     @Inject lateinit var settingsRepository: SettingsRepository
     @Inject lateinit var tdLibClient: TdLibClient
     @Inject lateinit var callStateMonitor: CallStateMonitor
+    @Inject lateinit var acceptableUseConsentStore: AcceptableUseConsentStore
     @Inject lateinit var incomingMessageNotifier:
         com.autogram.app.infrastructure.platform.IncomingMessageNotifier
 
@@ -159,6 +161,10 @@ class MainActivity : BaseLocaleActivity() {
             // false and get the wizard once.
             if (!settings.onboardingCompleted) {
                 startActivity(Intent(this@MainActivity, OnboardingActivity::class.java))
+                return@launch
+            }
+            if (!acceptableUseConsentStore.isAccepted()) {
+                startActivity(Intent(this@MainActivity, AcceptableUseActivity::class.java))
                 return@launch
             }
             startMtprotoReceiverService()
@@ -301,6 +307,11 @@ class MainActivity : BaseLocaleActivity() {
                 false
             )
         ) return
+        if (!acceptableUseConsentStore.isAccepted()) {
+            intent.removeExtra(com.autogram.app.tiles.RecordVoiceTileService.EXTRA_AUTO_RECORD)
+            intent.removeExtra(com.autogram.app.tiles.RecordVoiceTileService.EXTRA_AUTO_RECORD_TOKEN)
+            return
+        }
         val token = intent.getStringExtra(com.autogram.app.tiles.RecordVoiceTileService.EXTRA_AUTO_RECORD_TOKEN)
         if (intent.action != com.autogram.app.tiles.RecordVoiceTileService.ACTION_AUTO_RECORD ||
             !consumeAutoRecordToken(token)

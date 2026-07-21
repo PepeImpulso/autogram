@@ -613,6 +613,19 @@ fun SettingsScreen(
                 )
                 SettingsDivider()
                 NavigationRow(
+                    label = stringResource(R.string.settings_terms),
+                    supporting = stringResource(R.string.settings_terms_sub),
+                    onClick = {
+                        context.startActivity(
+                            android.content.Intent(
+                                android.content.Intent.ACTION_VIEW,
+                                android.net.Uri.parse(BuildConfig.ACCEPTABLE_USE_URL)
+                            )
+                        )
+                    }
+                )
+                SettingsDivider()
+                NavigationRow(
                     label = stringResource(R.string.settings_data_erase),
                     supporting = stringResource(R.string.settings_data_erase_sub),
                     onClick = { showEraseLocalDataDialog = true }

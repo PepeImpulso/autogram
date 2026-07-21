@@ -14,6 +14,7 @@ import com.autogram.app.infrastructure.audio.EmptyMessageFilter
 import com.autogram.app.infrastructure.audio.HapticCues
 import com.autogram.app.infrastructure.audio.RecordingSounds
 import com.autogram.app.infrastructure.platform.ConnectivityObserver
+import com.autogram.app.infrastructure.privacy.AcceptableUseConsentStore
 import com.autogram.app.infrastructure.retry.RetryWorker
 import com.autogram.app.infrastructure.telegram.mtproto.AuthState
 import com.autogram.app.infrastructure.telegram.mtproto.TdLibSender
@@ -46,7 +47,8 @@ class SendVoiceMtprotoUseCase @Inject constructor(
     private val hapticCues: HapticCues,
     private val connectivityObserver: ConnectivityObserver,
     private val settingsRepository: SettingsRepository,
-    private val audioPlayer: AudioPlayer
+    private val audioPlayer: AudioPlayer,
+    private val acceptableUseConsentStore: AcceptableUseConsentStore
 ) {
 
     sealed class SendStatus {
@@ -84,6 +86,7 @@ class SendVoiceMtprotoUseCase @Inject constructor(
     @Volatile private var previewDurationMs: Long = 0L
 
     suspend fun startRecording(targetConversationId: String? = null): Result<Unit> {
+        requireAcceptedTerms()?.let { return Result.failure(it) }
         if (audioRecorder.isRecording()) {
             return Result.failure(IllegalStateException("Ya hay una grabación en curso"))
         }
@@ -321,6 +324,7 @@ class SendVoiceMtprotoUseCase @Inject constructor(
         audioDurationMs: Long,
         targetConversationId: String? = null
     ): Result<Long> {
+        requireAcceptedTerms()?.let { return Result.failure(it) }
         val file = java.io.File(audioFilePath)
         if (!file.exists() || file.length() == 0L) {
             _status.value = SendStatus.Error("Audio del atajo no encontrado")
@@ -392,6 +396,7 @@ class SendVoiceMtprotoUseCase @Inject constructor(
     }
 
     suspend fun sendQuickReply(text: String, targetConversationId: String? = null): Result<Long> {
+        requireAcceptedTerms()?.let { return Result.failure(it) }
         val target = resolveTarget(targetConversationId)
         if (target == null) {
             _status.value = SendStatus.Error("Configura un destino en Ajustes")
@@ -476,11 +481,16 @@ class SendVoiceMtprotoUseCase @Inject constructor(
      * same target + file.
      */
     suspend fun confirmPreview(): Result<Long> {
+        requireAcceptedTerms()?.let { return Result.failure(it) }
         val result = confirmPreviewInner()
         playReplyUseCase.clearUserRecordingGate()
         playReplyUseCase.drainPendingIfAutoPlay()
         return result
     }
+
+    private fun requireAcceptedTerms(): IllegalStateException? =
+        if (acceptableUseConsentStore.isAccepted()) null
+        else IllegalStateException("Messaging terms must be accepted before sending")
 
     private suspend fun confirmPreviewInner(): Result<Long> {
         val audioFile = previewFile ?: return Result.failure(IllegalStateException("No preview"))
