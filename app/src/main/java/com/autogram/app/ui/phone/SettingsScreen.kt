@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import com.autogram.app.BuildConfig
 import com.autogram.app.R
 import com.autogram.app.infrastructure.audio.PlaybackSpeed
+import com.autogram.app.infrastructure.platform.DistributionCrashReporter
 import kotlinx.coroutines.launch
 
 // Must match ExportImportUseCase.MAX_BACKUP_BYTES so the pre-read guard
@@ -684,8 +685,7 @@ private fun BugReportRow() {
     val context = LocalContext.current
     var sentAtMs by remember { mutableStateOf(0L) }
     val justSent = sentAtMs != 0L && System.currentTimeMillis() - sentAtMs < 3000
-    val hasSentry = com.autogram.app.BuildConfig.SENTRY_DSN.isNotBlank() &&
-        com.autogram.app.BuildConfig.ENABLE_AUTOMATIC_CRASH_REPORTING
+    val hasSentry = DistributionCrashReporter.isConfigured
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -694,35 +694,17 @@ private fun BugReportRow() {
                     ?.fileLoggingTree
                 val logFile = runCatching { tree?.materialiseExportFile() }.getOrNull()
                 if (hasSentry) {
-                    runCatching {
-                        io.sentry.Sentry.withScope { scope ->
-                            scope.setTag("manual_report", "true")
-                            scope.setTag(
-                                "app_version",
-                                com.autogram.app.BuildConfig.VERSION_NAME
-                            )
-                            if (logFile != null && logFile.exists()) {
-                                scope.addAttachment(
-                                    io.sentry.Attachment(
-                                        logFile.absolutePath,
-                                        "autogram.log",
-                                        "text/plain"
-                                    )
-                                )
-                            }
-                            io.sentry.Sentry.captureMessage(
-                                "Manual bug report from user",
-                                io.sentry.SentryLevel.INFO
-                            )
+                    DistributionCrashReporter.captureManualReport(logFile)
+                        .onSuccess {
+                            sentAtMs = System.currentTimeMillis()
                         }
-                        sentAtMs = System.currentTimeMillis()
-                    }.onFailure {
-                        android.widget.Toast.makeText(
-                            context,
-                            it.message ?: context.getString(R.string.settings_bug_report_failed),
-                            android.widget.Toast.LENGTH_LONG
-                        ).show()
-                    }
+                        .onFailure {
+                            android.widget.Toast.makeText(
+                                context,
+                                it.message ?: context.getString(R.string.settings_bug_report_failed),
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        }
                 } else {
                     // Sentry disabled — share the log file via the system
                     // chooser instead. Same payload, manual delivery.

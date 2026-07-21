@@ -57,12 +57,24 @@ if [[ ! -f "$MERGED_MANIFEST" || ! -f "$AUTO_DESCRIPTOR" ]]; then
     exit 1
 fi
 
-for forbidden in REQUEST_INSTALL_PACKAGES AutogramCarAppService minCarApiLevel StoreScreenshotActivity; do
+for forbidden in \
+    REQUEST_INSTALL_PACKAGES \
+    AutogramCarAppService \
+    minCarApiLevel \
+    StoreScreenshotActivity \
+    SentryInitProvider \
+    SentryPerformanceProvider \
+    io.sentry; do
     if grep -q "$forbidden" "$MERGED_MANIFEST"; then
         echo "ERROR: forbidden Play manifest entry found: $forbidden" >&2
         exit 1
     fi
 done
+
+if jar tf "$AAB" | grep -qi sentry; then
+    echo "ERROR: Sentry artifact found in the Play bundle." >&2
+    exit 1
+fi
 
 if ! grep -q 'name="notification"' "$AUTO_DESCRIPTOR"; then
     echo "ERROR: Android Auto notification capability is missing." >&2
@@ -81,3 +93,4 @@ echo "[build] Google Play bundle ready"
 echo "  version : $VERSION"
 echo "  bundle  : $AAB"
 echo "  Android Auto: notification messaging only"
+echo "  crash reporting: no Sentry artifacts"

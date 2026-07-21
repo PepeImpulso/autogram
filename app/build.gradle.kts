@@ -77,6 +77,7 @@ android {
         }
         create("play") {
             dimension = "distribution"
+            buildConfigField("String", "SENTRY_DSN", "\"\"")
             buildConfigField("boolean", "ENABLE_SELF_UPDATE", "false")
             buildConfigField("boolean", "ENABLE_AUTOMATIC_CRASH_REPORTING", "false")
             buildConfigField("boolean", "ENABLE_SENTRY_SCREENSHOTS", "false")
@@ -188,9 +189,10 @@ dependencies {
     // Logging
     implementation(libs.timber)
 
-    // Crash reporting (Sentry). No-op at runtime when SENTRY_DSN is empty.
-    implementation(libs.sentry.android)
-    implementation(libs.sentry.timber)
+    // Crash reporting is packaged only in the standalone GitHub flavor. The
+    // Play bundle contains no Sentry code or native libraries.
+    "githubImplementation"(libs.sentry.android)
+    "githubImplementation"(libs.sentry.timber)
 
     // Testing
     testImplementation(libs.junit)
