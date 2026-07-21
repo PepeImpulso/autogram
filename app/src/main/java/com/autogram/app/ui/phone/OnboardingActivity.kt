@@ -68,12 +68,13 @@ class OnboardingActivity : BaseLocaleActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun OnboardingScreen(
+internal fun OnboardingScreen(
     activeTargetFlow: Flow<com.autogram.app.domain.model.Conversation?>,
     onFinish: () -> Unit,
-    onChooseTarget: () -> Unit
+    onChooseTarget: () -> Unit,
+    initialStep: Int = 0
 ) {
-    var step by remember { mutableIntStateOf(0) }
+    var step by remember { mutableIntStateOf(initialStep.coerceIn(0, 3)) }
     val steps = 4
 
     // Auto-advance from the "choose target" step (2) to "shortcuts" (3) as

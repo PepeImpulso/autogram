@@ -355,7 +355,7 @@ class MainActivity : BaseLocaleActivity() {
 }
 
 @Composable
-private fun MainScreen(
+internal fun MainScreen(
     onOpenSettings: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenHistoryFor: (conversationId: String) -> Unit,
