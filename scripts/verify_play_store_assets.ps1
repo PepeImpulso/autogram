@@ -61,16 +61,26 @@ finally {
 
 Test-ImageAsset (Join-Path $assets 'feature-graphic.png') 1024 500 15MB 'Format24bppRgb'
 
-$screenshots = @(
-    '01-home.png',
-    '02-history.png',
-    '03-voice-onboarding.png',
-    '04-privacy-settings.png',
-    '05-messaging-rules.png'
-)
-foreach ($name in $screenshots) {
-    $relativePath = Join-Path $assets "phone-screenshots/en-US/$name"
-    Test-ImageAsset $relativePath 1080 1920 8MB 'Format24bppRgb'
+# Phone screenshots are device captures, so their exact height varies with the
+# handset. Enforce Play's actual constraints instead of one hard-coded size.
+$screenshotDir = Join-Path $RepositoryRoot "$assets/phone-screenshots/en-US"
+$screenshots = Get-ChildItem -LiteralPath $screenshotDir -Filter '*.png' | Sort-Object Name
+Assert-Condition ($screenshots.Count -ge 2 -and $screenshots.Count -le 8) 'Play accepts between 2 and 8 phone screenshots'
+
+foreach ($screenshot in $screenshots) {
+    Assert-Condition ($screenshot.Length -le 8MB) "$($screenshot.Name) exceeds 8 MB"
+
+    $image = [System.Drawing.Bitmap]::FromFile($screenshot.FullName)
+    try {
+        $shortSide = [math]::Min($image.Width, $image.Height)
+        $longSide = [math]::Max($image.Width, $image.Height)
+        Assert-Condition ($shortSide -ge 320 -and $longSide -le 3840) "$($screenshot.Name) must keep every side between 320 and 3840 px"
+        Assert-Condition (($longSide / $shortSide) -le 2.0) "$($screenshot.Name) exceeds Play's 2:1 aspect-ratio limit"
+        Assert-Condition ($image.PixelFormat.ToString() -eq 'Format24bppRgb') "$($screenshot.Name) must use Format24bppRgb"
+    }
+    finally {
+        $image.Dispose()
+    }
 }
 
 $metadataRoot = Join-Path $RepositoryRoot 'docs/play-store/metadata'

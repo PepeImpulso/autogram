@@ -39,7 +39,9 @@ try {
     Invoke-Adb -Arguments @("shell", "settings", "put", "system", "system_locales", "en-US")
     Invoke-Adb -Arguments @("install", "-r", "app\build\outputs\apk\play\debug\app-play-debug.apk")
 
-    $outputDir = Join-Path $repoRoot "docs\play-store\assets\phone-screenshots\en-US"
+    # The uploaded en-US set comes from a real handset, so keep the synthetic
+    # emulator captures in their own folder instead of overwriting it.
+    $outputDir = Join-Path $repoRoot "docs\play-store\assets\phone-screenshots\synthetic"
     New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
     $component = "com.autogram.app/.ui.phone.StoreScreenshotActivity"
 
