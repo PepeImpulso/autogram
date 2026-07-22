@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.hilt.work.HiltWorker
 import androidx.work.*
 import com.autogram.app.domain.usecase.OutboxRetryUseCase
+import com.autogram.app.infrastructure.privacy.AcceptableUseConsentStore
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import timber.log.Timber
@@ -27,10 +28,12 @@ import java.util.concurrent.TimeUnit
 class RetryWorker @AssistedInject constructor(
     @Assisted context: Context,
     @Assisted workerParams: WorkerParameters,
-    private val outboxRetryUseCase: OutboxRetryUseCase
+    private val outboxRetryUseCase: OutboxRetryUseCase,
+    private val acceptableUseConsentStore: AcceptableUseConsentStore
 ) : CoroutineWorker(context, workerParams) {
 
     override suspend fun doWork(): Result {
+        if (!acceptableUseConsentStore.isAccepted()) return Result.success()
         return when (outboxRetryUseCase.runOnce()) {
             OutboxRetryUseCase.Outcome.SUCCESS -> Result.success()
             OutboxRetryUseCase.Outcome.RETRY -> Result.retry()

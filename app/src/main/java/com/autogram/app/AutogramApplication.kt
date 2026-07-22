@@ -9,14 +9,12 @@ import androidx.work.Configuration
 import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.infrastructure.audio.TtsPlayer
+import com.autogram.app.infrastructure.platform.DistributionCrashReporter
+import com.autogram.app.infrastructure.platform.FileLoggingTree
 import com.autogram.app.infrastructure.platform.LocaleHelper
 import com.autogram.app.infrastructure.platform.PendingReplyNotifier
 import com.autogram.app.infrastructure.retry.RetentionCleanupWorker
-import com.autogram.app.infrastructure.platform.FileLoggingTree
 import com.autogram.app.infrastructure.retry.RetryWorker
-import io.sentry.SentryLevel
-import io.sentry.android.core.SentryAndroid
-import io.sentry.android.timber.SentryTimberIntegration
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -58,37 +56,8 @@ class AutogramApplication : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
-        // Crash reporting via Sentry. If SENTRY_DSN is empty (dev box without
-        // the key in local.properties) we skip init and fall back to Log.e.
-        val dsn = BuildConfig.SENTRY_DSN
-        if (dsn.isNotBlank()) {
-            SentryAndroid.init(this) { options ->
-                options.dsn = dsn
-                options.environment = if (BuildConfig.DEBUG) "debug" else "release"
-                options.release = "autogram@${BuildConfig.VERSION_NAME}+${BuildConfig.VERSION_CODE}"
-                // Ship Timber.e/.w straight into Sentry; e = exception, w = breadcrumb.
-                options.addIntegration(
-                    SentryTimberIntegration(
-                        minEventLevel = SentryLevel.ERROR,
-                        minBreadcrumbLevel = SentryLevel.INFO
-                    )
-                )
-                // Attach screenshots/ANR context to crashes in release builds.
-                options.isAttachScreenshot = !BuildConfig.DEBUG
-                options.isAnrEnabled = true
-                // PII scrubbing: the default integration sends user identifiers
-                // (device id, locale) which we don't need. Also opt out of
-                // automatically capturing the phone number / chat id that can
-                // leak into TDLib error messages.
-                options.isSendDefaultPii = false
-                options.beforeSend = io.sentry.SentryOptions.BeforeSendCallback { event, _ ->
-                    scrubSentryEvent(event); event
-                }
-                options.beforeBreadcrumb = io.sentry.SentryOptions.BeforeBreadcrumbCallback { crumb, _ ->
-                    crumb.message = crumb.message?.let { scrubPii(it) }
-                    crumb
-                }
-            }
+        val crashReportingEnabled = DistributionCrashReporter.initialize(this)
+        if (crashReportingEnabled) {
             Timber.plant(Timber.DebugTree().takeIf { BuildConfig.DEBUG } ?: ReleaseTree())
         } else if (BuildConfig.DEBUG) {
             Timber.plant(Timber.DebugTree())
@@ -100,7 +69,10 @@ class AutogramApplication : Application(), Configuration.Provider {
         // button in Settings without needing a dev build.
         fileLoggingTree = FileLoggingTree(this)
         Timber.plant(fileLoggingTree!!)
-        Timber.d("Autogram initialized (sentry=${dsn.isNotBlank()})")
+        Timber.d(
+            "Autogram initialized " +
+                "(crashReporting=$crashReportingEnabled)"
+        )
 
         // Apply saved UI language before any activity inflates its layout.
         // Reading from the DB is suspend so we launch a coroutine — activities
@@ -190,31 +162,5 @@ class AutogramApplication : Application(), Configuration.Provider {
         internal fun scrubPii(s: String): String =
             s.replace(LONG_ID_RE, "[id]").replace(PHONE_RE, "[phone]")
 
-        internal fun scrubSentryEvent(event: io.sentry.SentryEvent) {
-            event.message?.let { m ->
-                m.message = m.message?.let { scrubPii(it) }
-                m.formatted = m.formatted?.let { scrubPii(it) }
-            }
-            // Exception messages frequently contain TDLib error strings like
-            // "CHAT_NOT_FOUND for 1234567890" — the numeric chat id would
-            // otherwise sail past the earlier .message-only scrub and land
-            // in Sentry unredacted. Scrub every attached exception's
-            // `value` (visible text) so PII never escapes the device.
-            event.exceptions?.forEach { ex ->
-                ex.value = ex.value?.let { scrubPii(it) }
-            }
-            // Breadcrumbs reach Sentry through `beforeBreadcrumb` already, but
-            // an event may also carry its own `event.breadcrumbs` list — scrub
-            // the `data` map entries (string values only) for good measure.
-            event.breadcrumbs?.forEach { bc ->
-                bc.message = bc.message?.let { scrubPii(it) }
-                bc.data.forEach { (k, v) ->
-                    if (v is String) bc.setData(k, scrubPii(v))
-                }
-            }
-            // Drop anything user-identifiable that leaks in through integrations.
-            event.user = null
-            event.request = null
-        }
     }
 }

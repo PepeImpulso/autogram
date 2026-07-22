@@ -71,6 +71,7 @@ import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.domain.usecase.SendVoiceMtprotoUseCase
 import com.autogram.app.infrastructure.platform.BiometricGate
 import com.autogram.app.infrastructure.platform.CallStateMonitor
+import com.autogram.app.infrastructure.privacy.AcceptableUseConsentStore
 import com.autogram.app.infrastructure.telegram.mtproto.AuthState
 import com.autogram.app.infrastructure.telegram.mtproto.TdLibClient
 import com.autogram.app.service.MtprotoReceiverService
@@ -88,6 +89,7 @@ class MainActivity : BaseLocaleActivity() {
     @Inject lateinit var settingsRepository: SettingsRepository
     @Inject lateinit var tdLibClient: TdLibClient
     @Inject lateinit var callStateMonitor: CallStateMonitor
+    @Inject lateinit var acceptableUseConsentStore: AcceptableUseConsentStore
     @Inject lateinit var incomingMessageNotifier:
         com.autogram.app.infrastructure.platform.IncomingMessageNotifier
 
@@ -159,6 +161,10 @@ class MainActivity : BaseLocaleActivity() {
             // false and get the wizard once.
             if (!settings.onboardingCompleted) {
                 startActivity(Intent(this@MainActivity, OnboardingActivity::class.java))
+                return@launch
+            }
+            if (!acceptableUseConsentStore.isAccepted()) {
+                startActivity(Intent(this@MainActivity, AcceptableUseActivity::class.java))
                 return@launch
             }
             startMtprotoReceiverService()
@@ -301,6 +307,11 @@ class MainActivity : BaseLocaleActivity() {
                 false
             )
         ) return
+        if (!acceptableUseConsentStore.isAccepted()) {
+            intent.removeExtra(com.autogram.app.tiles.RecordVoiceTileService.EXTRA_AUTO_RECORD)
+            intent.removeExtra(com.autogram.app.tiles.RecordVoiceTileService.EXTRA_AUTO_RECORD_TOKEN)
+            return
+        }
         val token = intent.getStringExtra(com.autogram.app.tiles.RecordVoiceTileService.EXTRA_AUTO_RECORD_TOKEN)
         if (intent.action != com.autogram.app.tiles.RecordVoiceTileService.ACTION_AUTO_RECORD ||
             !consumeAutoRecordToken(token)
@@ -355,7 +366,7 @@ class MainActivity : BaseLocaleActivity() {
 }
 
 @Composable
-private fun MainScreen(
+internal fun MainScreen(
     onOpenSettings: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenHistoryFor: (conversationId: String) -> Unit,
@@ -363,6 +374,7 @@ private fun MainScreen(
     onOpenPendingQueue: () -> Unit,
     onManagePinned: () -> Unit,
     onManageQuickReplies: () -> Unit,
+    messagingActionsEnabled: Boolean = true,
     viewModel: MainViewModel = hiltViewModel(),
     updateViewModel: UpdateViewModel = hiltViewModel()
 ) {
@@ -387,15 +399,17 @@ private fun MainScreen(
     val showQuickReplyFilters by viewModel.showQuickReplyFilters.collectAsState()
     val showQuickReplyShortcuts by viewModel.showQuickReplyShortcuts.collectAsState()
 
-    LaunchedEffect(Unit) {
-        // Silent update check throttled: the ViewModel check() is cheap but we
-        // only bother once per 6 h across app launches.
-        val prefs = ctx.getSharedPreferences("autogram_updates", android.content.Context.MODE_PRIVATE)
-        val last = prefs.getLong("last_check_ms", 0)
-        val sixHours = 6L * 60 * 60 * 1000
-        if (System.currentTimeMillis() - last > sixHours) {
-            prefs.edit().putLong("last_check_ms", System.currentTimeMillis()).apply()
-            updateViewModel.check(userInitiated = false)
+    if (BuildConfig.ENABLE_SELF_UPDATE) {
+        LaunchedEffect(Unit) {
+            // Silent update check throttled: the ViewModel check() is cheap but we
+            // only bother once per 6 h across app launches.
+            val prefs = ctx.getSharedPreferences("autogram_updates", android.content.Context.MODE_PRIVATE)
+            val last = prefs.getLong("last_check_ms", 0)
+            val sixHours = 6L * 60 * 60 * 1000
+            if (System.currentTimeMillis() - last > sixHours) {
+                prefs.edit().putLong("last_check_ms", System.currentTimeMillis()).apply()
+                updateViewModel.check(userInitiated = false)
+            }
         }
     }
 
@@ -510,7 +524,7 @@ private fun MainScreen(
                 SuggestionChipsRow(
                     suggestions = suggestions,
                     onSuggestionTap = { text ->
-                        viewModel.sendQuickReply(text, primary?.id)
+                        if (messagingActionsEnabled) viewModel.sendQuickReply(text, primary?.id)
                     },
                     onDismiss = { viewModel.dismissSuggestions() }
                 )
@@ -524,18 +538,22 @@ private fun MainScreen(
                         sendStatus is SendVoiceMtprotoUseCase.SendStatus.Recording,
                     isPlayingThis = playingConversationId == primary.id,
                     pendingCount = if (showPendingBadges) (pendingCounts[primary.id] ?: 0) else 0,
-                    hasPermission = hasMicPermission,
+                    hasPermission = hasMicPermission || !messagingActionsEnabled,
                     quickReplies = quickReplies,
                     quickReplyFilter = quickReplyFilter,
                     showQuickReplyFilters = showQuickReplyFilters,
                     showQuickReplyShortcuts = showQuickReplyShortcuts,
                     circleSize = primaryCircleSize,
                     onFilterChange = viewModel::setQuickReplyFilter,
-                    onRequestPermission = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
-                    onStart = { viewModel.startRecording(primary.id) },
-                    onSend = { viewModel.stopAndSend() },
-                    onCancel = { viewModel.cancelRecording() },
-                    onQuickReply = { viewModel.sendQuickReplyShortcut(it, primary.id) },
+                    onRequestPermission = {
+                        if (messagingActionsEnabled) permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    },
+                    onStart = { if (messagingActionsEnabled) viewModel.startRecording(primary.id) },
+                    onSend = { if (messagingActionsEnabled) viewModel.stopAndSend() },
+                    onCancel = { if (messagingActionsEnabled) viewModel.cancelRecording() },
+                    onQuickReply = {
+                        if (messagingActionsEnabled) viewModel.sendQuickReplyShortcut(it, primary.id)
+                    },
                     onOpenHistory = { onOpenHistoryFor(primary.id) }
                 )
             } else {
@@ -554,11 +572,13 @@ private fun MainScreen(
                 playingConversationId = playingConversationId,
                 sendStatus = sendStatus,
                 pendingCounts = if (showPendingBadges) pendingCounts else emptyMap(),
-                hasPermission = hasMicPermission,
-                onRequestPermission = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
-                onStart = { viewModel.startRecording(it.id) },
-                onSend = { viewModel.stopAndSend() },
-                onCancel = { viewModel.cancelRecording() },
+                hasPermission = hasMicPermission || !messagingActionsEnabled,
+                onRequestPermission = {
+                    if (messagingActionsEnabled) permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                },
+                onStart = { if (messagingActionsEnabled) viewModel.startRecording(it.id) },
+                onSend = { if (messagingActionsEnabled) viewModel.stopAndSend() },
+                onCancel = { if (messagingActionsEnabled) viewModel.cancelRecording() },
                 onOpenHistoryFor = onOpenHistoryFor
             )
         }
@@ -569,7 +589,7 @@ private fun MainScreen(
     // "Open Settings" shortcut so the user can retry from the full Updates
     // screen if auto-install fails (e.g. the install-packages permission
     // prompt was denied).
-    when (val s = updateState) {
+    if (BuildConfig.ENABLE_SELF_UPDATE) when (val s = updateState) {
         is UpdateViewModel.State.Available -> {
             UpdateDialog(
                 state = s,

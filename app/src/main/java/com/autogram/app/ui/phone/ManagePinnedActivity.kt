@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOff
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.HideImage
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MoreVert
@@ -133,8 +134,10 @@ private fun ManagePinnedScreen(
 ) {
     val pinned by viewModel.pinned.collectAsState()
     val folders by viewModel.folders.collectAsState()
+    val blockState by viewModel.blockState.collectAsState()
     var showAddFolderDialog by remember { mutableStateOf(false) }
     var folderPendingDelete by remember { mutableStateOf<CircleFolder?>(null) }
+    var blockTarget by remember { mutableStateOf<Conversation?>(null) }
 
     // Target we are about to set a photo for (lifted out of the list item so
     // the photo picker's callback can still reach it after the item recomposes).
@@ -231,6 +234,7 @@ private fun ManagePinnedScreen(
                     },
                     onClearPhoto = { viewModel.clearPhoto(conv.id) },
                     onRemove = { viewModel.remove(conv.id) },
+                    onBlock = { blockTarget = conv },
                     onMoveUp = { viewModel.moveUp(conv.id) },
                     onMoveDown = { viewModel.moveDown(conv.id) },
                     onShowOnHomeChange = { viewModel.setShowOnHome(conv.id, it) },
@@ -272,6 +276,44 @@ private fun ManagePinnedScreen(
         )
     }
 
+    blockTarget?.let { conversation ->
+        AlertDialog(
+            onDismissRequest = { blockTarget = null },
+            icon = { Icon(Icons.Filled.Block, null) },
+            title = { Text(stringResource(R.string.moderation_block_title)) },
+            text = { Text(stringResource(R.string.moderation_block_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    blockTarget = null
+                    viewModel.block(conversation)
+                }) { Text(stringResource(R.string.moderation_block_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { blockTarget = null }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            }
+        )
+    }
+
+    when (val state = blockState) {
+        null -> Unit
+        ManagePinnedViewModel.BlockState.Blocking -> AlertDialog(
+            onDismissRequest = {},
+            title = { Text(stringResource(R.string.moderation_block_progress)) },
+            text = { androidx.compose.material3.CircularProgressIndicator() },
+            confirmButton = {}
+        )
+        ManagePinnedViewModel.BlockState.Completed -> ModerationResultDialog(
+            message = stringResource(R.string.moderation_block_success),
+            onDismiss = viewModel::dismissBlockResult
+        )
+        is ManagePinnedViewModel.BlockState.Failed -> ModerationResultDialog(
+            message = stringResource(R.string.moderation_block_failed, state.message),
+            onDismiss = viewModel::dismissBlockResult
+        )
+    }
+
     zoomPath?.let { path ->
         ZoomablePhotoDialog(path = path, onDismiss = { zoomPath = null })
     }
@@ -288,6 +330,7 @@ private fun PinnedRow(
     onPickPhoto: () -> Unit,
     onClearPhoto: () -> Unit,
     onRemove: () -> Unit,
+    onBlock: () -> Unit,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
     onShowOnHomeChange: (Boolean) -> Unit,
@@ -443,6 +486,18 @@ private fun PinnedRow(
                     DropdownMenuItem(
                         text = {
                             Text(
+                                stringResource(R.string.moderation_block_action),
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        },
+                        onClick = { menuOpen = false; onBlock() },
+                        leadingIcon = {
+                            Icon(Icons.Filled.Block, null, tint = MaterialTheme.colorScheme.error)
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = {
+                            Text(
                                 if (hasPhoto) stringResource(R.string.pinned_clear_photo)
                                 else stringResource(R.string.pinned_set_photo)
                             )
@@ -512,6 +567,18 @@ private fun PinnedRow(
             }
         }
     }
+}
+
+@Composable
+private fun ModerationResultDialog(message: String, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.moderation_block_action)) },
+        text = { Text(message) },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) }
+        }
+    )
 }
 
 /**

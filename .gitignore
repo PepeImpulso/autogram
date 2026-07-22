@@ -21,6 +21,7 @@ build/
 
 # Local configuration file
 local.properties
+.claude/
 
 # Android Studio
 .idea/

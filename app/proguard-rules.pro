@@ -2,6 +2,7 @@
 
 # Retrofit / Gson — used by the GitHub auto-update client.
 -keepattributes Signature, Exceptions, *Annotation*
+-keep interface com.autogram.app.infrastructure.github.GitHubApi { *; }
 -keep class com.autogram.app.infrastructure.github.GitHubRelease { *; }
 -keep class com.autogram.app.infrastructure.github.GitHubAsset { *; }
 -keepclassmembers,allowobfuscation interface * {

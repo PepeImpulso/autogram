@@ -132,8 +132,16 @@ private fun HistoryTabContent(viewModel: HistoryViewModel) {
     val playback by viewModel.playbackStatus.collectAsState()
     val pinned by viewModel.pinned.collectAsState()
     val contactFilter by viewModel.contactFilter.collectAsState()
+    val reportState by viewModel.reportState.collectAsState()
     val conversationsById = remember(pinned) { pinned.associateBy { it.id } }
     var clearConfirmOpen by remember { mutableStateOf(false) }
+
+    TelegramReportDialogs(
+        state = reportState,
+        onChoose = viewModel::chooseReportOption,
+        onSubmitDetails = viewModel::submitReportDetails,
+        onDismiss = viewModel::dismissReport
+    )
 
     if (clearConfirmOpen) {
         AlertDialog(
@@ -206,7 +214,13 @@ private fun HistoryTabContent(viewModel: HistoryViewModel) {
                         onResume = viewModel::onResumeClicked,
                         positionMsProvider = { viewModel.currentPositionMs() },
                         durationMsProvider = { viewModel.durationMs() },
-                        onSeek = viewModel::seekTo
+                        onSeek = viewModel::seekTo,
+                        onReport = if (
+                            message.direction == com.autogram.app.domain.model.MessageDirection.INCOMING &&
+                            message.telegramMessageId != null
+                        ) {
+                            { viewModel.reportMessage(message) }
+                        } else null
                     )
                 }
                 item { Spacer(Modifier.height(8.dp)) }

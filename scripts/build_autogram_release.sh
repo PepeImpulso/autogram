@@ -6,7 +6,7 @@
 #   - the .jks file referenced by keystore.properties → storeFile
 #   - <repo>/local.properties      (gitignored; sdk.dir + telegram.apiId + telegram.apiHash)
 #
-# Output: app/build/outputs/apk/release/app-release.apk
+# Output: app/build/outputs/apk/github/release/app-github-release.apk
 # The script also copies it to /c/tmp/autogram-<version>.apk (git-bash path) or $TMP for convenience.
 #
 # If you only need to cut a release without having the keystore locally, push a `vX.Y.Z` tag to
@@ -56,9 +56,9 @@ export PATH="$JAVA_HOME/bin:$PATH"
 # --- Build -----------------------------------------------------------------
 echo "[build] JAVA_HOME=$JAVA_HOME"
 echo "[build] versionName=$(grep -E '^\s*versionName' app/build.gradle.kts | head -1 | sed -E 's/.*"(.+)".*/\1/')"
-./gradlew --no-daemon :app:assembleRelease
+./gradlew --no-daemon :app:assembleGithubRelease
 
-APK="app/build/outputs/apk/release/app-release.apk"
+APK="app/build/outputs/apk/github/release/app-github-release.apk"
 if [[ ! -f "$APK" ]]; then
     echo "ERROR: build succeeded but APK not found at $APK" >&2
     exit 1

@@ -15,6 +15,7 @@ import com.autogram.app.infrastructure.audio.PlaybackSpeed
 import com.autogram.app.infrastructure.audio.PlaybackDiagnostics
 import com.autogram.app.infrastructure.audio.TtsPlayer
 import com.autogram.app.infrastructure.platform.LocaleHelper
+import com.autogram.app.infrastructure.privacy.LocalDataEraser
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -33,7 +34,8 @@ class SettingsViewModel @Inject constructor(
     // (covers both AudioPlayer + TtsPlayer) instead of AudioPlayer-only.
     private val audioPlayer: AudioPlayer,
     private val ttsPlayer: TtsPlayer,
-    private val playbackDiagnostics: PlaybackDiagnostics
+    private val playbackDiagnostics: PlaybackDiagnostics,
+    private val localDataEraser: LocalDataEraser
 ) : AndroidViewModel(application) {
 
     sealed class BackupEvent {
@@ -48,6 +50,14 @@ class SettingsViewModel @Inject constructor(
 
     private val _backupEvents = MutableSharedFlow<BackupEvent>(extraBufferCapacity = 4)
     val backupEvents: SharedFlow<BackupEvent> = _backupEvents
+
+    sealed class DataEraseEvent {
+        object Success : DataEraseEvent()
+        data class Failed(val message: String) : DataEraseEvent()
+    }
+
+    private val _dataEraseEvents = MutableSharedFlow<DataEraseEvent>(extraBufferCapacity = 1)
+    val dataEraseEvents: SharedFlow<DataEraseEvent> = _dataEraseEvents
 
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -98,6 +108,20 @@ class SettingsViewModel @Inject constructor(
 
     fun updateRetentionDays(days: Int) {
         _uiState.value = _uiState.value.copy(retentionDays = days)
+    }
+
+    fun eraseLocalData() {
+        viewModelScope.launch {
+            localDataEraser.erase().fold(
+                onSuccess = { _dataEraseEvents.emit(DataEraseEvent.Success) },
+                onFailure = { error ->
+                    Timber.e(error, "Local data erasure failed")
+                    _dataEraseEvents.emit(
+                        DataEraseEvent.Failed(error.message ?: "unknown error")
+                    )
+                }
+            )
+        }
     }
 
     fun updateAutoPlay(enabled: Boolean) {

@@ -9,16 +9,10 @@
          to read connected audio device info so playback can target BT / car. -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <!-- MtprotoReceiverService uses specialUse because "dataSync" on
-         Android 14+ has a 6-hour budget that Google is enforcing
-         progressively; our receiver is a continuous MTProto long-poll
-         and doesn't fit any of the 10 standard subtypes. specialUse
-         requires declaring a sub-type property on the service tag. -->
+    <!-- MtprotoReceiverService uses specialUse because its continuous
+         MTProto long-poll doesn't fit a standard foreground-service type.
+         specialUse requires declaring a sub-type property on the service. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <!-- Kept for back-compat with older Android 10-13 where the type
-         is parsed but doesn't enforce a budget. Newer targets use
-         SPECIAL_USE above. -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- v1.22.1 — needed for the MediaBrowserServiceCompat that
          surfaces Autogram in Android Auto's media tab. The media
          browser service binds Auto's media controller; it doesn't
@@ -81,6 +75,11 @@
             android:name=".ui.phone.SettingsActivity"
             android:exported="false"
             android:label="@string/settings_title"
+            android:screenOrientation="portrait" />
+
+        <activity
+            android:name=".ui.phone.AcceptableUseActivity"
+            android:exported="false"
             android:screenOrientation="portrait" />
 
         <activity
@@ -164,14 +163,6 @@
         <meta-data
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
-        <!-- Templated messaging uses ConversationItem, available from Car API 7. -->
-        <meta-data
-            android:name="androidx.car.app.minCarApiLevel"
-            android:value="7" />
-        <meta-data
-            android:name="androidx.car.app.theme"
-            android:resource="@style/Theme.Autogram.Car" />
-
         <!-- Issue #63 Phase 1b (v1.23.0-rc.4) — VoiceInteractionService
              chain so Samsung's long-press-home / side-key assistant
              gesture actually routes to Autogram. ACTION_ASSIST alone
@@ -216,26 +207,9 @@
             </intent-filter>
         </service>
 
-        <!-- Android Auto: official templated messaging experience.
-             Google documents MESSAGING + template + notification as the
-             supported path for chat apps; using NAVIGATION/IOT to draw a
-             custom surface is too fragile across Gearhead versions. -->
-        <service
-            android:name=".ui.auto.AutogramCarAppService"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher"
-            android:label="@string/app_name">
-            <intent-filter>
-                <action android:name="androidx.car.app.CarAppService" />
-                <category android:name="androidx.car.app.category.MESSAGING" />
-            </intent-filter>
-        </service>
-
-        <!-- Foreground Service for MTProto receive loop. specialUse
-             because Android 14+ reclaims dataSync-typed services on
-             a 6-hour budget; our receiver keeps a TDLib long-poll
-             open for the lifetime of the session, which doesn't map
-             to any of the 10 pre-baked FGS subtypes.
+        <!-- Foreground Service for MTProto receive loop. specialUse covers
+             the continuous TDLib long-poll, which doesn't map to a standard
+             subtype and must remain available for the user's active session.
              v1.24.0 — adds mediaPlayback so the audio path Autogram
              triggers from this service (PlayReplyUseCase → AudioPlayer /
              TtsPlayer) is treated as legitimate media playback by
@@ -245,7 +219,7 @@
         <service
             android:name=".service.MtprotoReceiverService"
             android:exported="false"
-            android:foregroundServiceType="dataSync|specialUse|mediaPlayback">
+            android:foregroundServiceType="specialUse|mediaPlayback">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="MtprotoReceiverService continuously maintains a TDLib MTProto session for Autogram so incoming voice messages can be received, notified to Android Auto, and played aloud without requiring the user to keep the app open on the phone." />
@@ -306,20 +280,6 @@
                 android:name="autoStoreLocales"
                 android:value="true" />
         </service>
-
-        <!-- Disable Sentry's auto-init ContentProvider. It runs before
-             Application.onCreate, reads DSN from manifest meta-data, and
-             crashes the process if the DSN string is literally empty.
-             We init Sentry manually in AutogramApplication so we can
-             gracefully skip when SENTRY_DSN is absent (dev builds). -->
-        <provider
-            android:name="io.sentry.android.core.SentryInitProvider"
-            android:authorities="${applicationId}.SentryInitProvider"
-            tools:node="remove" />
-        <provider
-            android:name="io.sentry.android.core.SentryPerformanceProvider"
-            android:authorities="${applicationId}.SentryPerformanceProvider"
-            tools:node="remove" />
 
         <!-- Disable default WorkManager init: we provide Configuration.Provider in AutogramApplication for Hilt -->
         <provider

@@ -34,25 +34,64 @@ val sentryDsn: String = localProperties.getProperty("sentry.dsn", "")
 
 android {
     namespace = "com.autogram.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.autogram.app"
         minSdk = 29
-        targetSdk = 35
-        versionCode = 135
-        versionName = "1.24.17"
+        targetSdk = 36
+        versionCode = 136
+        versionName = "1.25.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("int", "TELEGRAM_API_ID", telegramApiId)
         buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")
         buildConfigField("String", "SENTRY_DSN", "\"$sentryDsn\"")
+        buildConfigField(
+            "String",
+            "PRIVACY_POLICY_URL",
+            "\"https://www.impulsotecnologico.com/legal/privacidad-autogram\""
+        )
+        buildConfigField(
+            "String",
+            "ACCEPTABLE_USE_URL",
+            "\"https://www.impulsotecnologico.com/legal/terminos-autogram\""
+        )
 
         // Restrict native libs to architectures we actually ship.
         // arm64-v8a: all modern phones. x86_64: Android emulators on Intel.
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
+        }
+    }
+
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("github") {
+            dimension = "distribution"
+            buildConfigField("boolean", "ENABLE_SELF_UPDATE", "true")
+            buildConfigField("boolean", "ENABLE_AUTOMATIC_CRASH_REPORTING", "true")
+            buildConfigField("boolean", "ENABLE_SENTRY_SCREENSHOTS", "true")
+            buildConfigField("boolean", "ALLOW_CLEARTEXT_LLM_ENDPOINT", "true")
+            buildConfigField("boolean", "ENABLE_PLAY_REVIEW_DEMO", "false")
+            buildConfigField("String", "PLAY_REVIEW_PHONE", "\"\"")
+            buildConfigField("String", "PLAY_REVIEW_ACTIVITY", "\"\"")
+        }
+        create("play") {
+            dimension = "distribution"
+            buildConfigField("String", "SENTRY_DSN", "\"\"")
+            buildConfigField("boolean", "ENABLE_SELF_UPDATE", "false")
+            buildConfigField("boolean", "ENABLE_AUTOMATIC_CRASH_REPORTING", "false")
+            buildConfigField("boolean", "ENABLE_SENTRY_SCREENSHOTS", "false")
+            buildConfigField("boolean", "ALLOW_CLEARTEXT_LLM_ENDPOINT", "false")
+            buildConfigField("boolean", "ENABLE_PLAY_REVIEW_DEMO", "true")
+            buildConfigField("String", "PLAY_REVIEW_PHONE", "\"+99900001250\"")
+            buildConfigField(
+                "String",
+                "PLAY_REVIEW_ACTIVITY",
+                "\"com.autogram.app.ui.phone.PlayReviewActivity\""
+            )
         }
     }
 
@@ -160,9 +199,10 @@ dependencies {
     // Logging
     implementation(libs.timber)
 
-    // Crash reporting (Sentry). No-op at runtime when SENTRY_DSN is empty.
-    implementation(libs.sentry.android)
-    implementation(libs.sentry.timber)
+    // Crash reporting is packaged only in the standalone GitHub flavor. The
+    // Play bundle contains no Sentry code or native libraries.
+    "githubImplementation"(libs.sentry.android)
+    "githubImplementation"(libs.sentry.timber)
 
     // Testing
     testImplementation(libs.junit)

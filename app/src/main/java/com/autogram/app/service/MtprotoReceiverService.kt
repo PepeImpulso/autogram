@@ -21,6 +21,8 @@ import com.autogram.app.domain.usecase.SummarizeMessageUseCase
 import com.autogram.app.domain.usecase.TranscribeVoiceUseCase
 import com.autogram.app.infrastructure.platform.CallStateMonitor
 import com.autogram.app.infrastructure.platform.IncomingMessageNotifier
+import com.autogram.app.infrastructure.privacy.AcceptableUseConsentStore
+import com.autogram.app.infrastructure.review.PlayReviewModeStore
 import com.autogram.app.infrastructure.telegram.mtproto.AuthState
 import com.autogram.app.infrastructure.telegram.mtproto.TdLibClient
 import com.autogram.app.ui.phone.MainActivity
@@ -71,6 +73,8 @@ class MtprotoReceiverService : Service() {
     @Inject lateinit var transcribeVoiceUseCase: TranscribeVoiceUseCase
     @Inject lateinit var summarizeMessageUseCase: SummarizeMessageUseCase
     @Inject lateinit var settingsRepository: SettingsRepository
+    @Inject lateinit var acceptableUseConsentStore: AcceptableUseConsentStore
+    @Inject lateinit var playReviewModeStore: PlayReviewModeStore
 
     private var scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var supervisorJob: Job? = null
@@ -107,14 +111,14 @@ class MtprotoReceiverService : Service() {
                         android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
                 )
             } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                // API 29–33: dataSync is the right umbrella type for the
-                // MTProto loop here; mediaPlayback is also valid since Q so
-                // include it for the same audio-routing reason.
+                // API 29–33 only require explicit types for location, camera,
+                // and microphone. Use the declared mediaPlayback type here;
+                // specialUse was introduced in API 34 and cannot be passed to
+                // older platform versions.
                 startForeground(
                     NOTIFICATION_ID,
                     notification,
-                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or
-                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
                 )
             } else {
                 startForeground(NOTIFICATION_ID, notification)
@@ -135,6 +139,11 @@ class MtprotoReceiverService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (!acceptableUseConsentStore.isAccepted() && !playReviewModeStore.isActive()) {
+            Timber.i("MtprotoReceiverService stopped until messaging terms are accepted")
+            stopSelf()
+            return START_NOT_STICKY
+        }
         when (intent?.action) {
             ACTION_STOP -> {
                 stopSupervisor()
@@ -168,6 +177,10 @@ class MtprotoReceiverService : Service() {
     private fun startSupervisor() {
         if (supervisorJob?.isActive == true) return
         supervisorJob = scope.launch {
+            if (playReviewModeStore.isActive()) {
+                updateNotification("Review demo: listening to 3 synthetic shortcuts")
+                return@launch
+            }
             tdLibClient.ensureStarted()
             tdLibClient.authState.first { it is AuthState.Ready }
 
@@ -261,9 +274,9 @@ class MtprotoReceiverService : Service() {
             runCatching { cleanupPriorPlayedAudio(target.id, keepMessageId = message.id) }
                 .onFailure { Timber.w(it, "Deferred autoDelete cleanup failed") }
         }
-        // Surface a phone notification with Listen/Reply actions. Android Auto
-        // may consume the CarAppExtender path best-effort, but the app descriptor
-        // stays template-only so AA opens Autogram's NAVIGATION surface.
+        // Surface a phone notification with listen, reply, and mark-as-read
+        // actions. The Play flavor uses this production-eligible Android Auto
+        // path; the GitHub flavor also exposes the richer template UI.
         incomingMessageNotifier.postVoiceReceived(
             conversation = target,
             timestampMs = message.createdAt,

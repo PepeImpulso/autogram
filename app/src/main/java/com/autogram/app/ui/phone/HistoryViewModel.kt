@@ -9,6 +9,7 @@ import com.autogram.app.domain.model.Message
 import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.domain.usecase.PlayReplyUseCase
+import com.autogram.app.infrastructure.telegram.mtproto.TelegramModerationService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -37,8 +38,12 @@ class HistoryViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val messageRepository: MessageRepository,
     private val conversationRepository: ConversationRepository,
-    private val playReplyUseCase: PlayReplyUseCase
+    private val playReplyUseCase: PlayReplyUseCase,
+    moderationService: TelegramModerationService
 ) : AndroidViewModel(application) {
+
+    private val reportFlow = TelegramReportFlow(moderationService, viewModelScope)
+    val reportState = reportFlow.state
 
     /** Selected contact filter — `null` means "all contacts". */
     private val _contactFilter = MutableStateFlow<String?>(null)
@@ -127,6 +132,23 @@ class HistoryViewModel @Inject constructor(
     fun currentPositionMs(): Int? = playReplyUseCase.currentPositionMs()
     fun durationMs(): Int? = playReplyUseCase.durationMs()
     fun seekTo(positionMs: Int) = playReplyUseCase.seekTo(positionMs)
+
+    fun reportMessage(message: Message) {
+        if (message.direction != com.autogram.app.domain.model.MessageDirection.INCOMING) return
+        val telegramMessageId = message.telegramMessageId ?: return
+        viewModelScope.launch {
+            val conversation = conversationRepository.getById(message.conversationId) ?: return@launch
+            val chatId = conversation.targetChatId.toLongOrNull() ?: return@launch
+            reportFlow.start(chatId, longArrayOf(telegramMessageId))
+        }
+    }
+
+    fun chooseReportOption(option: com.autogram.app.infrastructure.telegram.mtproto.TelegramReportOption) =
+        reportFlow.choose(option)
+
+    fun submitReportDetails(details: String) = reportFlow.submitDetails(details)
+
+    fun dismissReport() = reportFlow.dismiss()
 
     /**
      * Wipe every message in the currently-filtered conversation. Disabled

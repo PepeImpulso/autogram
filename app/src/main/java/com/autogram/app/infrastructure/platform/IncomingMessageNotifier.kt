@@ -27,11 +27,10 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Posts an incoming-voice notification with MessagingStyle + CarAppExtender.
- * The extender is kept as a best-effort path for hosts that consume it, but
- * Autogram's Android Auto descriptor intentionally declares only `template`
- * so the launcher opens our NAVIGATION surface instead of AA's empty
- * messaging inbox.
+ * Posts an incoming-message notification with the reply and mark-as-read
+ * actions required by Android Auto. The Google Play flavor declares the
+ * production-eligible notification capability; the GitHub flavor also keeps
+ * Autogram's richer templated surface.
  *
  * The notification ID is the absolute-value hash of the conversation id, so
  * each circle keeps its own notification row (tap to open Autogram; Android
@@ -213,6 +212,7 @@ class IncomingMessageNotifier @Inject constructor(
 
         val listenAction = messageId?.let { buildListenAction(it, notificationId) }
         val replyAction = buildReplyAction(conversation.id, notificationId)
+        val markReadAction = buildMarkReadAction(conversation.id, messageId, notificationId)
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(IconCompat.createWithResource(context, R.mipmap.ic_launcher))
@@ -226,11 +226,9 @@ class IncomingMessageNotifier @Inject constructor(
             .apply {
                 listenAction?.let { addAction(it) }
                 addAction(replyAction)
+                addInvisibleAction(markReadAction)
             }
-            // Best-effort car extension: do not add `uses name="notification"`
-            // to automotive_app_desc.xml unless Autogram grows a separate real
-            // templated-messaging surface; doing so makes some AA hosts launch
-            // the built-in empty messaging inbox instead of our home screen.
+            // Keep the legacy car extension for older Android Auto hosts.
             .extend(
                 CarAppExtender.Builder()
                     .setContentTitle(senderName)
@@ -242,6 +240,9 @@ class IncomingMessageNotifier @Inject constructor(
                         }
                         replyAction.actionIntent?.let { pi ->
                             addAction(replyAction.icon, replyAction.title, pi)
+                        }
+                        markReadAction.actionIntent?.let { pi ->
+                            addAction(markReadAction.icon, markReadAction.title, pi)
                         }
                     }
                     .build()
@@ -303,6 +304,33 @@ class IncomingMessageNotifier @Inject constructor(
             .addRemoteInput(remoteInput)
             .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY)
             .setAllowGeneratedReplies(true)
+            .setShowsUserInterface(false)
+            .build()
+    }
+
+    private fun buildMarkReadAction(
+        conversationId: String,
+        messageId: String?,
+        notificationId: Int
+    ): NotificationCompat.Action {
+        val intent = Intent(context, NotificationActionReceiver::class.java).apply {
+            action = NotificationActionReceiver.ACTION_MARK_AS_READ
+            putExtra(NotificationActionReceiver.EXTRA_CONVERSATION_ID, conversationId)
+            messageId?.let { putExtra(NotificationActionReceiver.EXTRA_MESSAGE_ID, it) }
+            putExtra(NotificationActionReceiver.EXTRA_NOTIFICATION_ID, notificationId)
+        }
+        val pi = PendingIntent.getBroadcast(
+            context,
+            (conversationId.hashCode() xor "mark-read".hashCode()),
+            intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        return NotificationCompat.Action.Builder(
+            IconCompat.createWithResource(context, android.R.drawable.ic_menu_view),
+            context.getString(R.string.notification_action_mark_read),
+            pi
+        )
+            .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_MARK_AS_READ)
             .setShowsUserInterface(false)
             .build()
     }
