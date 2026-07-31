@@ -11,6 +11,7 @@ import android.speech.tts.Voice
 import androidx.appcompat.app.AppCompatDelegate
 import com.autogram.app.domain.model.AudioFocusMode
 import com.autogram.app.domain.repository.SettingsRepository
+import com.autogram.app.infrastructure.platform.CarConnectionMonitor
 import dagger.hilt.android.qualifiers.ApplicationContext
 import timber.log.Timber
 import java.util.Locale
@@ -34,7 +35,8 @@ import kotlin.coroutines.suspendCoroutine
 class TtsPlayer @Inject constructor(
     @ApplicationContext private val context: Context,
     private val settingsRepository: SettingsRepository,
-    private val diagnostics: PlaybackDiagnostics
+    private val diagnostics: PlaybackDiagnostics,
+    private val carConnectionMonitor: CarConnectionMonitor
 ) {
     @Volatile private var engine: TextToSpeech? = null
     @Volatile private var initialized = false
@@ -126,7 +128,16 @@ class TtsPlayer @Inject constructor(
         // the default USAGE_MEDIA path gets silently muted by AA's media
         // arbiter. Default is the legacy USAGE_MEDIA + CONTENT_TYPE_SPEECH
         // pairing.
-        val ttsAttrs = if (settings.ttsAsNavigationPrompt) {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val outputTypes = runCatching {
+            audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).map { it.type }
+        }.getOrDefault(emptyList())
+        val useNavigationUsage = AudioPlayer.shouldUseNavigationUsage(
+            requestedNavigationUsage = settings.ttsAsNavigationPrompt,
+            carConnectionType = carConnectionMonitor.currentType(),
+            outputTypes = outputTypes
+        )
+        val ttsAttrs = if (useNavigationUsage) {
             AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)

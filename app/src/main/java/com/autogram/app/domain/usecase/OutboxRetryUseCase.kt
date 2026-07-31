@@ -13,6 +13,8 @@ import timber.log.Timber
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Drains the outbox: messages stuck in QUEUED_OFFLINE / FAILED that haven't
@@ -31,6 +33,7 @@ class OutboxRetryUseCase @Inject constructor(
     private val conversationRepository: ConversationRepository,
     private val settingsRepository: SettingsRepository
 ) {
+    private val drainMutex = Mutex()
 
     /**
      * Result the caller (worker) maps to its own Result enum. Kept distinct
@@ -38,7 +41,7 @@ class OutboxRetryUseCase @Inject constructor(
      */
     enum class Outcome { SUCCESS, RETRY }
 
-    suspend fun runOnce(): Outcome {
+    suspend fun runOnce(): Outcome = drainMutex.withLock {
         return try {
             // Un-stuck any rows left in SENDING by a previous worker
             // that was cancelled mid-drain (e.g. via

@@ -1,5 +1,6 @@
 package com.autogram.app.service
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -17,6 +18,7 @@ import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.domain.usecase.PlayReplyUseCase
+import com.autogram.app.domain.usecase.OutboxRetryUseCase
 import com.autogram.app.domain.usecase.SummarizeMessageUseCase
 import com.autogram.app.domain.usecase.TranscribeVoiceUseCase
 import com.autogram.app.infrastructure.platform.CallStateMonitor
@@ -68,6 +70,7 @@ class MtprotoReceiverService : Service() {
     @Inject lateinit var messageRepository: MessageRepository
     @Inject lateinit var conversationRepository: ConversationRepository
     @Inject lateinit var playReplyUseCase: PlayReplyUseCase
+    @Inject lateinit var outboxRetryUseCase: OutboxRetryUseCase
     @Inject lateinit var callStateMonitor: CallStateMonitor
     @Inject lateinit var incomingMessageNotifier: IncomingMessageNotifier
     @Inject lateinit var transcribeVoiceUseCase: TranscribeVoiceUseCase
@@ -85,6 +88,10 @@ class MtprotoReceiverService : Service() {
     // spawn a fresh one that the already-run onDestroy never cleans up.
     @Volatile private var destroyed = false
 
+    // The merged manifest declares specialUse|mediaPlayback on this service.
+    // Lint does not resolve the combined flavor manifest for these guarded
+    // API-level branches and reports all three calls as missing a type.
+    @SuppressLint("ForegroundServiceType")
     override fun onCreate() {
         super.onCreate()
         destroyed = false
@@ -183,6 +190,18 @@ class MtprotoReceiverService : Service() {
             }
             tdLibClient.ensureStarted()
             tdLibClient.authState.first { it is AuthState.Ready }
+            // WorkManager can run before TDLib finishes authenticating and
+            // enter exponential backoff even though connectivity is already
+            // available. Drain immediately on the Ready transition instead
+            // of leaving queued messages behind until that stale timer fires.
+            // OutboxRetryUseCase serializes this with any worker already in
+            // flight, so the same message cannot be sent twice.
+            when (outboxRetryUseCase.runOnce()) {
+                OutboxRetryUseCase.Outcome.SUCCESS ->
+                    Timber.i("Outbox drain after TDLib Ready completed")
+                OutboxRetryUseCase.Outcome.RETRY ->
+                    Timber.w("Outbox drain after TDLib Ready needs another retry")
+            }
 
             conversationRepository.observePinned()
                 .distinctUntilChanged { old, new ->

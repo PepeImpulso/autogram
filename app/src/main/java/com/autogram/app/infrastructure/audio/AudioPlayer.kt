@@ -89,7 +89,8 @@ class AudioPlayer @Inject constructor(
             val carConnectionType = carConnectionMonitor.currentType()
             val effectiveNavigationUsage = shouldUseNavigationUsage(
                 requestedNavigationUsage = useNavigationUsage,
-                carConnectionType = carConnectionType
+                carConnectionType = carConnectionType,
+                outputTypes = outputSnapshot.map { it.type }
             )
             val playbackAttributes = buildPlaybackAttributes(effectiveNavigationUsage)
             Timber.d(
@@ -502,8 +503,11 @@ class AudioPlayer @Inject constructor(
 
         internal fun shouldUseNavigationUsage(
             requestedNavigationUsage: Boolean,
-            carConnectionType: Int
-        ): Boolean = requestedNavigationUsage || isConnectedCarConnectionType(carConnectionType)
+            carConnectionType: Int,
+            outputTypes: List<Int> = emptyList()
+        ): Boolean = requestedNavigationUsage ||
+            isConnectedCarConnectionType(carConnectionType) ||
+            outputTypes.any(::isProjectedCarOutputType)
 
         private fun firstByPriority(types: List<Int>, priority: List<Int>): Int? =
             priority.firstOrNull { it in types }

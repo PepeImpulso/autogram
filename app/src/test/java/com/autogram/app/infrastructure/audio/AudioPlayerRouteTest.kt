@@ -95,6 +95,19 @@ class AudioPlayerRouteTest {
         )
     }
 
+    @Test fun `projected output promotes playback when beta host connection state is stale`() {
+        assertTrue(
+            AudioPlayer.shouldUseNavigationUsage(
+                requestedNavigationUsage = false,
+                carConnectionType = CarConnection.CONNECTION_TYPE_NOT_CONNECTED,
+                outputTypes = listOf(
+                    AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
+                    AudioDeviceInfo.TYPE_BUS
+                )
+            )
+        )
+    }
+
     @Test fun `disconnected phone preserves requested navigation usage`() {
         assertTrue(
             AudioPlayer.shouldUseNavigationUsage(
