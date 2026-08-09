@@ -442,6 +442,30 @@ private sealed class EditorTarget {
     data object KindPicker : EditorTarget()
 }
 
+/**
+ * Converts the LazyColumn indices emitted by the reorderable library into
+ * shortcut-list indices. The visibility card occupies index 0, so using the
+ * raw indices against [items] can address index N in a list whose last valid
+ * index is N - 1. Invalid transient targets (for example the footer spacer)
+ * are clamped or ignored instead of crashing the activity mid-drag.
+ */
+internal fun <T> reorderShortcutItems(
+    items: List<T>,
+    fromLazyIndex: Int,
+    toLazyIndex: Int
+): List<T> {
+    if (items.isEmpty()) return items
+    val from = fromLazyIndex - SHORTCUT_LIST_HEADER_COUNT
+    if (from !in items.indices) return items
+    val to = (toLazyIndex - SHORTCUT_LIST_HEADER_COUNT).coerceIn(items.indices)
+    if (from == to) return items
+    return items.toMutableList().apply {
+        add(to, removeAt(from))
+    }
+}
+
+private const val SHORTCUT_LIST_HEADER_COUNT = 1
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun QuickRepliesScreen(
@@ -498,7 +522,11 @@ private fun QuickRepliesScreen(
         val lazyListState = androidx.compose.foundation.lazy.rememberLazyListState()
         val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
             val current = draftOrder ?: replies
-            draftOrder = current.toMutableList().apply { add(to.index, removeAt(from.index)) }
+            draftOrder = reorderShortcutItems(
+                items = current,
+                fromLazyIndex = from.index,
+                toLazyIndex = to.index
+            )
         }
 
         LazyColumn(
