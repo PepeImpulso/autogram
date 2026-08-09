@@ -1003,7 +1003,16 @@ private fun QuickReplyTextEditor(
                     onValueChange = { text = it },
                     label = { Text(stringResource(R.string.quick_replies_text)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 96.dp)
+                    // Keep the destination picker and dialog actions visible
+                    // even when a shortcut contains a long prompt. Material's
+                    // text field scrolls its contents internally once maxLines
+                    // is reached, so editing remains comfortable without the
+                    // field consuming the whole dialog.
+                    minLines = 4,
+                    maxLines = 7,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 128.dp, max = 220.dp)
                 )
                 SendToPicker(
                     pinned = pinned,
