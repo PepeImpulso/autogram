@@ -49,7 +49,7 @@ class CarConnectionMonitor @Inject constructor(
         } else {
             queryProjectionType()
         }
-        val resolved = queried ?: lastKnownType ?: CarConnection.CONNECTION_TYPE_NOT_CONNECTED
+        val resolved = resolveConnectionType(queried, lastKnownType)
         updateType(resolved)
         return resolved
     }
@@ -86,21 +86,27 @@ class CarConnectionMonitor @Inject constructor(
                 null
             )?.use { cursor ->
                 val idx = cursor.getColumnIndex(CarConnection.CAR_CONNECTION_STATE)
-                if (idx < 0 || !cursor.moveToFirst()) {
-                    CarConnection.CONNECTION_TYPE_NOT_CONNECTED
-                } else {
-                    cursor.getInt(idx)
-                }
+                // An empty/malformed provider response means "unknown", not
+                // "disconnected". Gearhead can briefly return an empty cursor
+                // while an Android Auto beta host reconnects; preserving the
+                // LiveData cache prevents that blip from selecting a muted BT
+                // A2DP route during an otherwise active projection session.
+                if (idx < 0 || !cursor.moveToFirst()) null else cursor.getInt(idx)
             }
         }.onFailure {
             Timber.d(it, "CarConnection provider query failed")
         }.getOrNull()
     }
 
-    private companion object {
-        private val PROJECTION_HOST_URI: Uri = Uri.Builder()
-            .scheme("content")
-            .authority("androidx.car.app.connection")
-            .build()
+    companion object {
+        private val PROJECTION_HOST_URI: Uri by lazy {
+            Uri.Builder()
+                .scheme("content")
+                .authority("androidx.car.app.connection")
+                .build()
+        }
+
+        internal fun resolveConnectionType(queried: Int?, cached: Int?): Int =
+            queried ?: cached ?: CarConnection.CONNECTION_TYPE_NOT_CONNECTED
     }
 }

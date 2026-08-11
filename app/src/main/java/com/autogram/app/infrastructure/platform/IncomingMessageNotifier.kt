@@ -67,6 +67,11 @@ class IncomingMessageNotifier @Inject constructor(
             ).apply {
                 description = context.getString(R.string.notification_channel_incoming_voice_desc)
                 setShowBadge(desiredShowBadge)
+                // Autogram owns reply playback itself. A notification chime
+                // posted milliseconds before TTS/MediaPlayer starts can take
+                // audio focus from that playback, especially in Android Auto.
+                setSound(null, null)
+                enableVibration(false)
             }
         )
     }
@@ -221,6 +226,8 @@ class IncomingMessageNotifier @Inject constructor(
             .setStyle(messagingStyle)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setSilent(true)
+            .setOnlyAlertOnce(true)
             .setAutoCancel(true)
             .setContentIntent(openAppIntent)
             .apply {

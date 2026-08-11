@@ -18,8 +18,10 @@ import java.util.Locale
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 /**
  * Thin wrapper over Android's TextToSpeech engine.
@@ -41,30 +43,37 @@ class TtsPlayer @Inject constructor(
     @Volatile private var engine: TextToSpeech? = null
     @Volatile private var initialized = false
 
+    /** Serializes engine construction so concurrent first utterances share one instance. */
+    private val engineInitMutex = Mutex()
+    private val speechStartMutex = Mutex()
+    private val engineStateLock = Any()
+    private val speechStateLock = Any()
+    private val engineCommandLock = Any()
+    private val focusStateLock = Any()
+    private var engineGeneration: Long = 0L
+    private var speechControlGeneration: Long = 0L
+    private val pendingStartsByGeneration = mutableMapOf<Long, Int>()
+
     // v1.24.1 — TTS audio focus. Mirrors AudioPlayer.requestAudioFocus
     // shape. Per-utterance acquire/release so a long idle gap between
     // queued messages doesn't strand focus held by us. Without this,
     // AA's audio policy treats USAGE_MEDIA TTS from a background app as
     // unauthenticated and silently drops it — root cause of Pepe's
     // "real incoming messages never play" symptom on Seat Ateca.
-    @Volatile private var audioFocusRequest: AudioFocusRequest? = null
+    private data class FocusHandle(
+        val token: String,
+        val request: AudioFocusRequest
+    )
 
-    // Tracks the callback for the utterance currently in flight. Android
-    // TTS does NOT invoke onDone when the engine is `stop()`ed — it
-    // silently drops the utterance. Without this bookkeeping, calling
-    // stop() between successive speak() calls (which we do to flush the
-    // queue) would lose the onDone callback forever. The pending queue
-    // in PlayReplyUseCase relies on that callback to fire playNext,
-    // so a lost callback = queue stuck forever.
-    @Volatile private var pendingOnDone: (() -> Unit)? = null
-    // Utterance id the pending callback is tied to. TTS engine's
-    // OnUtteranceProgressListener delivers onDone/onError for each
-    // utterance on its own binder thread, which can race a subsequent
-    // speak() that already replaced pendingOnDone — we'd fire the new
-    // utterance's callback on the old utterance's listener event.
-    // Matching `id` against the one we handed to `tts.speak()` shuts
-    // that race cleanly.
-    @Volatile private var pendingUtteranceId: String? = null
+    private data class ActiveSpeech(
+        val token: String,
+        val remainingUtteranceIds: MutableSet<String>,
+        val onDone: () -> Unit,
+        val onError: ((Throwable) -> Unit)?
+    )
+
+    @Volatile private var audioFocusHandle: FocusHandle? = null
+    @Volatile private var activeSpeech: ActiveSpeech? = null
 
     /**
      * Reads [text] aloud. By default picks the voice for the UI locale, but
@@ -77,174 +86,209 @@ class TtsPlayer @Inject constructor(
         text: String,
         locale: Locale? = null,
         onDone: () -> Unit = {},
-        speed: Float? = null
+        speed: Float? = null,
+        onError: ((Throwable) -> Unit)? = null
     ) {
         if (text.isBlank()) {
             onDone()
             return
         }
-        val tts = ensureEngine() ?: run {
-            Timber.w("TtsPlayer: engine unavailable")
-            onDone()
-            return
-        }
-        val settings = settingsRepository.get()
-        val requested = locale ?: currentLocaleOrDefault()
-        // Android's TextToSpeech silently falls back to the engine default
-        // (usually English) when you set a language whose voice data isn't
-        // installed — `setLanguage` returns LANG_MISSING_DATA /
-        // LANG_NOT_SUPPORTED but we used to throw that value away. Check
-        // availability first and swap in a fallback the engine can
-        // actually speak, or we read Spanish text with an English voice.
-        val effectiveLocale = resolveSupportedLocale(tts, requested)
-        // setLanguage() is necessary but not sufficient: many engines
-        // (notably Google TTS) keep the previously-selected Voice even when
-        // setLanguage returns COUNTRY_AVAILABLE — so a Spanish locale can
-        // still come out in an English voice if that's what was loaded
-        // last. Picking the actual Voice explicitly is the only reliable
-        // way to switch the voice that gets synthesised. We still call
-        // setLanguage as a fallback for engines that ignore setVoice or
-        // when no concrete Voice can be found.
-        runCatching { tts.language = effectiveLocale }
-        val pickedVoice = pickInstalledVoice(tts, effectiveLocale)
-        if (pickedVoice != null) {
-            val accepted = runCatching { tts.voice = pickedVoice }.isSuccess
-            Timber.i(
-                "TtsPlayer: voice=${pickedVoice.name} locale=${pickedVoice.locale} " +
-                    "quality=${pickedVoice.quality} accepted=$accepted (requested=$requested)"
-            )
-        } else {
-            Timber.w(
-                "TtsPlayer: no installed Voice found for $effectiveLocale " +
-                    "(requested=$requested). Falling back to whatever the " +
-                    "engine has loaded — likely English."
-            )
-        }
+        val startGeneration = beginPendingStart()
+        try {
+            speechStartMutex.withLock {
+                if (!isStartGenerationCurrent(startGeneration)) return@withLock
+                val token = UUID.randomUUID().toString()
+                val maxInputLength = runCatching { TextToSpeech.getMaxSpeechInputLength() }
+                    .getOrDefault(DEFAULT_MAX_SPEECH_INPUT_LENGTH)
+                    .coerceAtLeast(1)
+                val chunks = chunkText(text, maxInputLength)
+                val utteranceIds = chunks.indices.map { index -> "$token:$index" }
 
-        // v1.24.0 — when [AppSettings.ttsAsNavigationPrompt] is on, request the
-        // same audio path Google Maps directions use (USAGE_ASSISTANCE_
-        // NAVIGATION_GUIDANCE). On most Android Auto setups that path speaks
-        // over music and routes reliably to the car speakers — useful when
-        // the default USAGE_MEDIA path gets silently muted by AA's media
-        // arbiter. Default is the legacy USAGE_MEDIA + CONTENT_TYPE_SPEECH
-        // pairing.
-        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        val outputTypes = runCatching {
-            audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).map { it.type }
-        }.getOrDefault(emptyList())
-        val useNavigationUsage = AudioPlayer.shouldUseNavigationUsage(
-            requestedNavigationUsage = settings.ttsAsNavigationPrompt,
-            carConnectionType = carConnectionMonitor.currentType(),
-            outputTypes = outputTypes
-        )
-        val ttsAttrs = if (useNavigationUsage) {
-            AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build()
-        } else {
-            AudioAttributes.Builder()
-                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .build()
-        }
-        tts.setAudioAttributes(ttsAttrs)
+                // A direct/manual caller may replace an active utterance. End the
+                // previous session exactly once before installing the replacement.
+                failActiveSpeech(
+                    TtsSynthesisException("TTS utterance replaced by a newer request"),
+                    stopEngine = true
+                )
+                val installed = synchronized(speechStateLock) {
+                    if (startGeneration != speechControlGeneration) {
+                        false
+                    } else {
+                        activeSpeech = ActiveSpeech(
+                            token = token,
+                            remainingUtteranceIds = utteranceIds.toMutableSet(),
+                            onDone = onDone,
+                            onError = onError
+                        )
+                        true
+                    }
+                }
+                if (!installed) return@withLock
 
-        // v1.24.1 — request audio focus BEFORE handing the utterance to
-        // the engine. AudioPlayer has always done this for file playback;
-        // TTS had no symmetric call, so on AA the host's audio policy
-        // silently dropped USAGE_MEDIA TTS from background contexts. We
-        // play even on denial (consistent with AudioPlayer) so the queue
-        // doesn't freeze, but log the result + surface it via
-        // [PlaybackDiagnostics] so the user can see denial in Settings.
-        val focusGranted = requestAudioFocus(ttsAttrs, settings.audioFocusMode)
-        if (!focusGranted) {
-            Timber.w(
-                "TTS audio focus denied (likely AA / Maps active) — " +
-                    "speaking anyway with ducking"
-            )
-        } else {
-            Timber.d("TTS audio focus granted")
-        }
-        diagnostics.record(
-            source = PlaybackDiagnostics.Source.TTS_PLAYER,
-            focusGranted = focusGranted,
-            routedDeviceType = currentTtsRouteType(ttsAttrs),
-            focusMode = settings.audioFocusMode
-        )
+                val tts = ensureEngine() ?: run {
+                    failSpeech(
+                        token,
+                        TtsSynthesisException("TTS engine unavailable"),
+                        stopEngine = false
+                    )
+                    return@withLock
+                }
+                if (!isSpeechActive(token)) return@withLock
 
-        // Hard-stop anything currently queued/playing before we hand the
-        // new utterance to the engine. Combined with QUEUE_FLUSH below
-        // this means only one utterance is ever in flight — prevents
-        // the "two voices overlapping" bug where a late-arriving reply
-        // started speaking before the previous one finished.
-        //
-        // Android's TTS swallows onDone on explicit stop(), so the old
-        // pending callback has to be fired manually here — otherwise
-        // PlayReplyUseCase.playNext never runs and the queue freezes.
-        val previousOnDone = pendingOnDone
-        pendingOnDone = null
-        pendingUtteranceId = null
-        runCatching { tts.stop() }
-        previousOnDone?.invoke()
+                val settings = settingsRepository.get()
+                if (!isSpeechActive(token)) return@withLock
+                val requested = locale ?: currentLocaleOrDefault()
+                val effectiveLocale = resolveSupportedLocale(tts, requested)
+                runCatching { tts.language = effectiveLocale }
+                val pickedVoice = pickInstalledVoice(tts, effectiveLocale)
+                if (pickedVoice != null) {
+                    val accepted = runCatching { tts.voice = pickedVoice }.isSuccess
+                    Timber.i(
+                        "TtsPlayer: voice=${pickedVoice.name} locale=${pickedVoice.locale} " +
+                            "quality=${pickedVoice.quality} accepted=$accepted (requested=$requested)"
+                    )
+                } else {
+                    Timber.w(
+                        "TtsPlayer: no installed Voice found for $effectiveLocale " +
+                            "(requested=$requested). Falling back to the loaded engine voice."
+                    )
+                }
 
-        // setSpeechRate AFTER stop() so the rate isn't dropped by engines
-        // that reset state on stop. The rate set here applies to the next
-        // utterance queued via speak(QUEUE_FLUSH) immediately below.
-        tts.setSpeechRate(PlaybackSpeed.coerce(speed ?: settings.playbackSpeed))
+                val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                val outputTypes = runCatching {
+                    audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).map { it.type }
+                }.getOrDefault(emptyList())
+                val useNavigationUsage = AudioPlayer.shouldUseNavigationUsage(
+                    requestedNavigationUsage = settings.ttsAsNavigationPrompt,
+                    carConnectionType = carConnectionMonitor.currentType(),
+                    outputTypes = outputTypes
+                )
+                val ttsAttrs = if (useNavigationUsage) {
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                } else {
+                    AudioAttributes.Builder()
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .build()
+                }
+                tts.setAudioAttributes(ttsAttrs)
+                if (!isSpeechActive(token)) return@withLock
 
-        val utteranceId = UUID.randomUUID().toString()
-        pendingOnDone = onDone
-        pendingUtteranceId = utteranceId
-        tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(id: String?) {}
-            override fun onDone(id: String?) = fireIfMatches(id)
-            @Deprecated("Deprecated in API 21", ReplaceWith(""))
-            override fun onError(id: String?) = fireIfMatches(id)
-            override fun onError(id: String?, errorCode: Int) = fireIfMatches(id)
+                val focusGranted = requestAudioFocus(
+                    token = token,
+                    attributes = ttsAttrs,
+                    focusMode = settings.audioFocusMode
+                )
+                diagnostics.record(
+                    source = PlaybackDiagnostics.Source.TTS_PLAYER,
+                    focusGranted = focusGranted,
+                    routedDeviceType = currentTtsRouteType(ttsAttrs),
+                    focusMode = settings.audioFocusMode
+                )
+                if (!focusGranted) {
+                    Timber.w("TTS audio focus denied; synthesis was not started")
+                    failSpeech(
+                        token,
+                        AudioFocusDeniedException("TTS"),
+                        stopEngine = false
+                    )
+                    return@withLock
+                }
+                if (!isSpeechActive(token)) {
+                    abandonAudioFocus(token)
+                    return@withLock
+                }
 
-            private fun fireIfMatches(id: String?) {
-                // Listener events for a stopped utterance may arrive
-                // AFTER the next speak() has replaced pendingOnDone.
-                // Only fire if the event belongs to the utterance we
-                // currently track — otherwise the new utterance's
-                // callback would be invoked at the old utterance's
-                // stop event, chaining playNext() too early.
-                if (id == null || id != pendingUtteranceId) return
-                val cb = pendingOnDone
-                pendingOnDone = null
-                pendingUtteranceId = null
-                // v1.24.1 — release focus before invoking onDone so the
-                // next queued utterance starts cleanly without us holding
-                // stale focus from the previous one.
-                abandonAudioFocus()
-                cb?.invoke()
+                tts.setSpeechRate(PlaybackSpeed.coerce(speed ?: settings.playbackSpeed))
+                val progressListener = object : UtteranceProgressListener() {
+                    override fun onStart(id: String?) = Unit
+
+                    override fun onDone(id: String?) {
+                        if (id != null) completeChunk(token, id)
+                    }
+
+                    @Deprecated("Deprecated in API 21", ReplaceWith(""))
+                    override fun onError(id: String?) {
+                        if (id != null && isUtteranceActive(token, id)) {
+                            failSpeech(
+                                token,
+                                TtsSynthesisException("TTS engine failed utterance $id"),
+                                stopEngine = true
+                            )
+                        }
+                    }
+
+                    override fun onError(id: String?, errorCode: Int) {
+                        if (id != null && isUtteranceActive(token, id)) {
+                            failSpeech(
+                                token,
+                                TtsSynthesisException(
+                                    "TTS engine failed utterance $id (error=$errorCode)"
+                                ),
+                                stopEngine = true
+                            )
+                        }
+                    }
+                }
+                val listenerResult = runCatching {
+                    tts.setOnUtteranceProgressListener(progressListener)
+                }
+                if (listenerResult.isFailure || listenerResult.getOrNull() != TextToSpeech.SUCCESS) {
+                    failSpeech(
+                        token,
+                        TtsSynthesisException(
+                            "TTS engine rejected its progress listener " +
+                                "(result=${listenerResult.getOrNull()})",
+                            listenerResult.exceptionOrNull()
+                        ),
+                        stopEngine = true
+                    )
+                    return@withLock
+                }
+
+                for ((index, chunk) in chunks.withIndex()) {
+                    val queueMode = if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+                    val utteranceId = utteranceIds[index]
+                    val result: Result<Int>? = synchronized(engineCommandLock) {
+                        if (!isSpeechActive(token)) {
+                            null
+                        } else {
+                            runCatching {
+                                tts.speak(chunk, queueMode, null, utteranceId)
+                            }
+                        }
+                    }
+                    if (result == null) return@withLock
+                    val returnCode = result.getOrNull()
+                    if (result.isFailure || returnCode != TextToSpeech.SUCCESS) {
+                        val cause = result.exceptionOrNull()
+                        Timber.w(cause, "TtsPlayer.speak rejected chunk ${index + 1}/${chunks.size}")
+                        failSpeech(
+                            token,
+                            TtsSynthesisException(
+                                "TTS engine rejected chunk ${index + 1}/${chunks.size} " +
+                                    "(result=$returnCode)",
+                                cause
+                            ),
+                            stopEngine = true
+                        )
+                        return@withLock
+                    }
+                }
             }
-        })
-        runCatching {
-            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
-        }.onFailure {
-            Timber.w(it, "TtsPlayer.speak failed")
-            val cb = pendingOnDone
-            pendingOnDone = null
-            pendingUtteranceId = null
-            abandonAudioFocus()
-            cb?.invoke()
+        } finally {
+            endPendingStart(startGeneration)
         }
     }
 
     fun stop() {
-        // Mirror the callback-reclaim dance from speak() so external
-        // callers (PlayReplyUseCase.stopAll, recording start) don't
-        // strand a pending onDone. If the utterance had already
-        // finished organically, pendingOnDone is already null and this
-        // is a no-op.
-        val previousOnDone = pendingOnDone
-        pendingOnDone = null
-        pendingUtteranceId = null
-        runCatching { engine?.stop() }
-        abandonAudioFocus()
-        previousOnDone?.invoke()
+        val speech = invalidateSpeechRequests()
+        stopEngineSafely()
+        abandonAudioFocus(speech?.token)
+        speech?.let(::deliverSuccess)
     }
 
     /**
@@ -255,30 +299,50 @@ class TtsPlayer @Inject constructor(
      * stop() but drops the pending onDone instead of invoking it.
      */
     fun cancel() {
-        pendingOnDone = null
-        pendingUtteranceId = null
-        runCatching { engine?.stop() }
-        abandonAudioFocus()
+        val speech = invalidateSpeechRequests()
+        stopEngineSafely()
+        abandonAudioFocus(speech?.token)
     }
 
-    /** True when the engine currently has an utterance in flight. */
-    fun isSpeaking(): Boolean = runCatching { engine?.isSpeaking == true }.getOrDefault(false)
+    /**
+     * True from the moment a request enters setup until its sole terminal
+     * callback. This closes TextToSpeech.isSpeaking's asynchronous start gap.
+     */
+    fun isSpeaking(): Boolean {
+        val tracked = synchronized(speechStateLock) {
+            activeSpeech != null ||
+                pendingStartsByGeneration.getOrDefault(speechControlGeneration, 0) > 0
+        }
+        return tracked || runCatching { engine?.isSpeaking == true }.getOrDefault(false)
+    }
 
     fun shutdown() {
-        runCatching { engine?.stop(); engine?.shutdown() }
+        val speech = invalidateSpeechRequests()
+        val engineToShutdown = synchronized(engineStateLock) {
+            engineGeneration += 1
+            initialized = false
+            engine.also { engine = null }
+        }
+        runCatching {
+            synchronized(engineCommandLock) {
+                engineToShutdown?.stop()
+                engineToShutdown?.shutdown()
+            }
+        }
         abandonAudioFocus()
-        engine = null
-        initialized = false
+        speech?.let {
+            deliverError(it, TtsSynthesisException("TTS engine shut down during speech"))
+        }
     }
 
     /**
      * v1.24.1 — symmetric with AudioPlayer.requestAudioFocus(). Mode is
      * read from [AppSettings.audioFocusMode] (cycled by the user from
-     * Settings → AA audio routing). Listener pauses TTS on AUDIOFOCUS_LOSS
-     * so an incoming phone call cuts us off cleanly; transient losses
-     * are ignored so navigation prompts don't chop a sentence in half.
+     * Settings → AA audio routing). Permanent and transient focus loss abort
+     * the utterance through its error callback; CAN_DUCK keeps speaking.
      */
     private fun requestAudioFocus(
+        token: String,
         attributes: AudioAttributes,
         focusMode: AudioFocusMode
     ): Boolean {
@@ -296,8 +360,17 @@ class TtsPlayer @Inject constructor(
                 .setAudioAttributes(attributes)
                 .setWillPauseWhenDucked(false)
                 .setOnAudioFocusChangeListener { focusChange ->
-                    if (focusChange == AudioManager.AUDIOFOCUS_LOSS) {
-                        cancel()
+                    when (focusChange) {
+                        AudioManager.AUDIOFOCUS_LOSS,
+                        AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> failSpeech(
+                            token,
+                            AudioFocusLostException("TTS", focusChange),
+                            stopEngine = true
+                        )
+                        // CAN_DUCK is intentionally allowed to continue. The
+                        // navigation path remains audible over the other owner.
+                        AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK,
+                        AudioManager.AUDIOFOCUS_GAIN -> Unit
                     }
                 }
                 .build()
@@ -305,18 +378,44 @@ class TtsPlayer @Inject constructor(
             Timber.w(e, "TTS AudioFocusRequest build failed; treating as denied")
             return false
         }
-        audioFocusRequest = request
-        return audioManager.requestAudioFocus(request) ==
-            AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        synchronized(focusStateLock) {
+            audioFocusHandle = FocusHandle(token, request)
+        }
+        val granted = runCatching {
+            audioManager.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        }.onFailure {
+            Timber.w(it, "TTS audio focus request failed; treating as denied")
+        }.getOrDefault(false)
+        if (!granted) {
+            abandonAudioFocus(token)
+            return false
+        }
+        val stillOwned = synchronized(focusStateLock) {
+            val current = audioFocusHandle
+            current?.token == token && current.request === request
+        }
+        if (!stillOwned) {
+            // Cancellation can abandon the handle between installing it and
+            // the platform returning GRANTED. Release the just-granted request
+            // directly because it is no longer reachable through our state.
+            runCatching { audioManager.abandonAudioFocusRequest(request) }
+            return false
+        }
+        return true
     }
 
-    private fun abandonAudioFocus() {
+    private fun abandonAudioFocus(token: String? = null) {
+        val handle = synchronized(focusStateLock) {
+            val current = audioFocusHandle ?: return
+            if (token != null && current.token != token) return
+            audioFocusHandle = null
+            current
+        }
         try {
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+            audioManager.abandonAudioFocusRequest(handle.request)
         } catch (_: Exception) {
         }
-        audioFocusRequest = null
     }
 
     /**
@@ -336,14 +435,141 @@ class TtsPlayer @Inject constructor(
         }.getOrNull()
     }
 
-    private suspend fun ensureEngine(): TextToSpeech? {
-        if (initialized) return engine
-        return suspendCoroutine { cont ->
-            val tts = TextToSpeech(context) { status ->
-                initialized = status == TextToSpeech.SUCCESS
-                cont.resume(if (initialized) engine else null)
+    private suspend fun ensureEngine(): TextToSpeech? = engineInitMutex.withLock {
+        synchronized(engineStateLock) {
+            if (initialized) return@withLock engine
+        }
+        val generation = synchronized(engineStateLock) { engineGeneration }
+        suspendCancellableCoroutine { continuation ->
+            var candidate: TextToSpeech? = null
+            try {
+                candidate = TextToSpeech(context) { status ->
+                    val ready = candidate
+                    val accepted = synchronized(engineStateLock) {
+                        if (status == TextToSpeech.SUCCESS &&
+                            ready != null &&
+                            generation == engineGeneration
+                        ) {
+                            engine = ready
+                            initialized = true
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    if (!accepted) runCatching { ready?.shutdown() }
+                    if (continuation.isActive) {
+                        continuation.resume(if (accepted) ready else null)
+                    }
+                }
+                continuation.invokeOnCancellation {
+                    val abandoned = candidate
+                    synchronized(engineStateLock) {
+                        if (generation == engineGeneration) engineGeneration += 1
+                        if (engine === abandoned) {
+                            engine = null
+                            initialized = false
+                        }
+                    }
+                    runCatching { abandoned?.shutdown() }
+                }
+            } catch (error: Throwable) {
+                Timber.w(error, "TTS engine construction failed")
+                if (continuation.isActive) continuation.resume(null)
             }
-            engine = tts
+        }
+    }
+
+    private fun beginPendingStart(): Long = synchronized(speechStateLock) {
+        val generation = speechControlGeneration
+        pendingStartsByGeneration[generation] =
+            pendingStartsByGeneration.getOrDefault(generation, 0) + 1
+        generation
+    }
+
+    private fun endPendingStart(generation: Long) {
+        synchronized(speechStateLock) {
+            val remaining = pendingStartsByGeneration.getOrDefault(generation, 0) - 1
+            if (remaining > 0) pendingStartsByGeneration[generation] = remaining
+            else pendingStartsByGeneration.remove(generation)
+        }
+    }
+
+    private fun isStartGenerationCurrent(generation: Long): Boolean =
+        synchronized(speechStateLock) { generation == speechControlGeneration }
+
+    private fun isSpeechActive(token: String): Boolean = synchronized(speechStateLock) {
+        activeSpeech?.token == token
+    }
+
+    private fun isUtteranceActive(token: String, utteranceId: String): Boolean =
+        synchronized(speechStateLock) {
+            val speech = activeSpeech
+            speech?.token == token && utteranceId in speech.remainingUtteranceIds
+        }
+
+    private fun completeChunk(token: String, utteranceId: String) {
+        val completed = synchronized(speechStateLock) {
+            val speech = activeSpeech ?: return
+            if (speech.token != token) return
+            if (!speech.remainingUtteranceIds.remove(utteranceId)) return
+            if (speech.remainingUtteranceIds.isNotEmpty()) return
+            activeSpeech = null
+            speech
+        }
+        abandonAudioFocus(token)
+        deliverSuccess(completed)
+    }
+
+    private fun failActiveSpeech(error: Throwable, stopEngine: Boolean) {
+        val speech = detachActiveSpeech() ?: return
+        if (stopEngine) stopEngineSafely()
+        abandonAudioFocus(speech.token)
+        deliverError(speech, error)
+    }
+
+    private fun failSpeech(token: String, error: Throwable, stopEngine: Boolean) {
+        val speech = detachActiveSpeech(token) ?: return
+        if (stopEngine) stopEngineSafely()
+        abandonAudioFocus(token)
+        deliverError(speech, error)
+    }
+
+    private fun detachActiveSpeech(token: String? = null): ActiveSpeech? =
+        synchronized(speechStateLock) {
+            val speech = activeSpeech ?: return@synchronized null
+            if (token != null && speech.token != token) return@synchronized null
+            activeSpeech = null
+            speech
+        }
+
+    /** Cancel active speech and any request still waiting to enter setup. */
+    private fun invalidateSpeechRequests(): ActiveSpeech? = synchronized(speechStateLock) {
+        speechControlGeneration += 1
+        pendingStartsByGeneration.clear()
+        activeSpeech.also { activeSpeech = null }
+    }
+
+    private fun stopEngineSafely() {
+        synchronized(engineCommandLock) {
+            runCatching { engine?.stop() }
+        }
+    }
+
+    private fun deliverSuccess(speech: ActiveSpeech) {
+        runCatching { speech.onDone() }
+            .onFailure { Timber.w(it, "TTS completion callback failed") }
+    }
+
+    private fun deliverError(speech: ActiveSpeech, error: Throwable) {
+        val callback = speech.onError
+        if (callback != null) {
+            runCatching { callback(error) }
+                .onFailure { Timber.w(it, "TTS error callback failed") }
+        } else {
+            // Existing callers only supplied onDone. Preserve their queue-
+            // advancement behavior until they opt into the richer error API.
+            deliverSuccess(speech)
         }
     }
 
@@ -434,6 +660,39 @@ class TtsPlayer @Inject constructor(
     }
 
     companion object {
+        private const val DEFAULT_MAX_SPEECH_INPUT_LENGTH = 4_000
+
+        /**
+         * Split long replies within Android's per-utterance limit. Prefer a
+         * sentence ending in the latter half of the window, then whitespace,
+         * and only hard-split when a single token exceeds the platform limit.
+         */
+        internal fun chunkText(text: String, maxLength: Int): List<String> {
+            require(maxLength > 0) { "maxLength must be positive" }
+            var remaining = text.trim()
+            if (remaining.isEmpty()) return emptyList()
+            val chunks = mutableListOf<String>()
+            while (remaining.length > maxLength) {
+                val minimumNaturalBreak = (maxLength / 2).coerceAtLeast(1)
+                val sentenceCut = (maxLength - 1 downTo minimumNaturalBreak - 1)
+                    .firstOrNull { index ->
+                        remaining[index] in SENTENCE_ENDINGS &&
+                            (index == remaining.lastIndex || remaining[index + 1].isWhitespace())
+                    }
+                    ?.plus(1)
+                val whitespaceCut = (maxLength - 1 downTo 1)
+                    .firstOrNull { remaining[it].isWhitespace() }
+                val cut = sentenceCut ?: whitespaceCut ?: maxLength
+                val chunk = remaining.substring(0, cut).trim()
+                if (chunk.isNotEmpty()) chunks += chunk
+                remaining = remaining.substring(cut).trimStart()
+            }
+            if (remaining.isNotEmpty()) chunks += remaining
+            return chunks
+        }
+
+        private val SENTENCE_ENDINGS = setOf('.', '!', '?', ';', ':', '\n')
+
         /**
          * Cheap content-based locale detection. The priority ladder is:
          *   1. **CJK scripts** — unambiguous, pick immediately.

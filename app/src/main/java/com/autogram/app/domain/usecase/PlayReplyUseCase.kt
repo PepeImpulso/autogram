@@ -6,6 +6,8 @@ import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.infrastructure.audio.AudioPlayer
 import com.autogram.app.infrastructure.audio.AudioRecorder
+import com.autogram.app.infrastructure.audio.AudioFocusDeniedException
+import com.autogram.app.infrastructure.audio.AudioFocusLostException
 import com.autogram.app.infrastructure.audio.TtsPlayer
 import com.autogram.app.infrastructure.persistence.dao.PendingPlaybackDao
 import com.autogram.app.infrastructure.persistence.entity.PendingPlaybackEntity
@@ -13,7 +15,6 @@ import com.autogram.app.infrastructure.platform.PendingReplyNotifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
@@ -62,7 +63,7 @@ class PlayReplyUseCase @Inject constructor(
         mediaPlayback.setListener(object : com.autogram.app.service.AutogramMediaPlaybackController.Listener {
             override fun onPlay() {
                 playbackScope.launch {
-                    if (audioPlayer.isPlaying() || ttsPlayer.isSpeaking()) {
+                    if (isPlaybackActive()) {
                         // Already playing — treat the tap as resume after a paused-by-OS state.
                         resume()
                     } else if (pendingCount() > 0) {
@@ -74,11 +75,8 @@ class PlayReplyUseCase @Inject constructor(
                 }
             }
             // v1.22.3 — every callback dispatches through playbackScope so
-            // none runs on the MediaSession binder thread. pause() and
-            // stopAll() touch the audioPlayer + the playbackScope itself
-            // (stopAll cancels and recreates it); doing that synchronously
-            // on the binder thread races with in-flight DB writes from
-            // earlier completion callbacks and risks ANR-ing the car UI.
+            // none runs on the MediaSession binder thread. Doing playback and
+            // database work synchronously there risks ANR-ing the car UI.
             override fun onPause() { playbackScope.launch { pause() } }
             override fun onStop() { playbackScope.launch { stopAll() } }
             override fun onSkipToNext() { playbackScope.launch { skipNext() } }
@@ -166,20 +164,79 @@ class PlayReplyUseCase @Inject constructor(
     // concurrent playVoiceMessage() calls can't both see isPlaying==false
     // and race to start MediaPlayer twice, dropping the first message.
     private val playbackStartLock = Mutex()
+    // Only one queue drain may select + start an item at a time. The start
+    // mutex alone is insufficient because queued calls intentionally bypass
+    // the user-facing busy gate.
+    private val queueDrainLock = Mutex()
+    private val playbackSessionLock = Any()
+    private data class PlaybackSession(val token: Long, val messageId: String)
+    private var nextPlaybackSessionToken: Long = 0L
+    private var currentPlaybackSession: PlaybackSession? = null
     @Volatile private var currentPlayingId: String? = null
     // Guards the small gap between "user tapped record" and the recorder
     // backend reporting isRecording=true. Without this latch, an incoming
     // reply can begin playback in that startup window and talk over the
     // outgoing voice note the user is trying to record.
     @Volatile private var userRecordingGateActive: Boolean = false
-    // Dedicated scope for MediaPlayer callbacks (instead of runBlocking) —
-    // recreated after stopAll() so cancelled work doesn't leak into future
-    // playbacks. `@Volatile` because MediaPlayer callbacks fire on the
-    // player's internal thread, while stopAll runs on the main / caller
-    // thread: without the visibility fence a callback launching via
-    // `playbackScope.launch { ... }` could observe a cancelled-but-not-yet
-    // -replaced scope and silently drop the DB state update.
-    @Volatile private var playbackScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    // Stable scope for engine callbacks. Playback sessions, not scope
+    // cancellation, suppress late callbacks; cancelling this scope could also
+    // cancel the only durable requeue after Pause/Stop.
+    private val playbackScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    /** Includes TTS requests accepted by the engine but not audible yet. */
+    private fun isPlaybackActive(): Boolean =
+        currentPlayingId != null || audioPlayer.isPlaying() || ttsPlayer.isSpeaking()
+
+    private fun beginPlaybackSession(messageId: String): Long = synchronized(playbackSessionLock) {
+        val token = ++nextPlaybackSessionToken
+        currentPlaybackSession = PlaybackSession(token, messageId)
+        currentPlayingId = messageId
+        token
+    }
+
+    /**
+     * Atomically claims the terminal transition for one playback. A late
+     * callback from a replaced engine generation cannot claim a newer session.
+     */
+    private fun claimPlaybackSession(token: Long, messageId: String): Boolean =
+        synchronized(playbackSessionLock) {
+            val current = currentPlaybackSession
+            if (current?.token != token || current.messageId != messageId) {
+                false
+            } else {
+                currentPlaybackSession = null
+                currentPlayingId = null
+                true
+            }
+        }
+
+    /** Invalidates the active callback token before an explicit engine stop. */
+    private fun invalidatePlaybackSession(expectedMessageId: String? = null): String? =
+        synchronized(playbackSessionLock) {
+            val current = currentPlaybackSession
+            if (expectedMessageId != null && current?.messageId != expectedMessageId) {
+                return@synchronized null
+            }
+            // Advance even when the active session was already claimed by its
+            // callback. This invalidates that callback's later queue-drain or
+            // MediaSession side effects while its database finalization runs.
+            nextPlaybackSessionToken++
+            currentPlaybackSession = null
+            currentPlayingId = null
+            current?.messageId
+        }
+
+    private fun isCurrentPlaybackSession(token: Long, messageId: String): Boolean =
+        synchronized(playbackSessionLock) {
+            val current = currentPlaybackSession
+            current?.token == token && current.messageId == messageId
+        }
+
+    private fun isPlaybackTransitionCurrent(token: Long): Boolean =
+        synchronized(playbackSessionLock) { nextPlaybackSessionToken == token }
+
+    private fun playbackSessionSnapshot(): PlaybackSession? =
+        synchronized(playbackSessionLock) { currentPlaybackSession }
 
     sealed class PlaybackStatus {
         object Idle : PlaybackStatus()
@@ -245,7 +302,7 @@ class PlayReplyUseCase @Inject constructor(
             // enqueuePending so the Pending Queue tab list (Room-backed)
             // reflects the deferred messages instead of showing empty while
             // the count badge says >0.
-            if (respectUserGates && (audioPlayer.isPlaying() || ttsPlayer.isSpeaking())) {
+            if (respectUserGates && isPlaybackActive()) {
                 Timber.i(
                     "playVoiceMessage ${message.id} → enqueue " +
                     "(audio=${audioPlayer.isPlaying()} tts=${ttsPlayer.isSpeaking()})"
@@ -267,6 +324,7 @@ class PlayReplyUseCase @Inject constructor(
                         audioFilePath = null,
                         errorMessage = "Audio file missing"
                     ))
+                    pendingPlaybackDao.deleteByMessageId(message.id)
                 }
                 if (!respectUserGates) {
                     playbackScope.launch { playNext() }
@@ -274,10 +332,11 @@ class PlayReplyUseCase @Inject constructor(
                 return
             }
 
-            currentPlayingId = message.id
+            val sessionToken = beginPlaybackSession(message.id)
             messageRepository.update(message.copy(state = MessageState.PLAYING))
+            if (!isCurrentPlaybackSession(sessionToken, message.id)) return@withLock
             _playbackStatus.value = PlaybackStatus.Playing(message.id)
-            markMediaSessionPlaying(message)
+            markMediaSessionPlaying(message, sessionToken)
 
             val result = audioPlayer.play(
                 audioFile,
@@ -285,51 +344,48 @@ class PlayReplyUseCase @Inject constructor(
                 focusMode = settings.audioFocusMode,
                 useNavigationUsage = settings.ttsAsNavigationPrompt
             ) { playResult ->
-            // Use a scoped coroutine (not runBlocking) so the MediaPlayer
-            // callback thread doesn't block on DB writes.
-            playbackScope.launch {
-                if (playResult.isSuccess) {
-                    // Keep audioFilePath + file intact after play. The user
-                    // must always be able to replay the last incoming voice
-                    // via the HeroHeader toggle, so we NO LONGER delete on
-                    // play-completion. Deferred cleanup lives in
-                    // MtprotoReceiverService.handleVoiceNote: when a NEW
-                    // incoming voice arrives on this conversation, the
-                    // previously-played file on the same conversation is
-                    // the one that gets deleted (if autoDeletePlayed is
-                    // on) — it's no longer "the last one". This preserves
-                    // the user's space-saving setting while guaranteeing
-                    // the latest message is always replayable.
-                    messageRepository.update(message.copy(
-                        state = MessageState.PLAYED,
-                        playedAt = System.currentTimeMillis()
-                    ))
-                    pushPlayedHistory(message)
-                } else {
-                    Timber.e(playResult.exceptionOrNull(), "Playback failed for ${message.id}")
-                    messageRepository.update(message.copy(
-                        state = MessageState.FAILED,
-                        errorMessage = playResult.exceptionOrNull()?.message
-                    ))
+                // Use a scoped coroutine (not runBlocking) so the MediaPlayer
+                // callback thread doesn't block on DB writes.
+                playbackScope.launch {
+                    if (!claimPlaybackSession(sessionToken, message.id)) {
+                        Timber.d("Ignoring stale audio callback for ${message.id}")
+                        return@launch
+                    }
+                    val mayAdvance = if (playResult.isSuccess) {
+                        markPlaybackCompleted(message)
+                        true
+                    } else {
+                        handlePlaybackFailure(
+                            message,
+                            playResult.exceptionOrNull() ?: IllegalStateException("Unknown playback failure")
+                        )
+                    }
+                    if (mayAdvance && isPlaybackTransitionCurrent(sessionToken)) playNext()
+                    else if (!mayAdvance &&
+                        isPlaybackTransitionCurrent(sessionToken) &&
+                        !isPlaybackActive()
+                    ) {
+                        mediaPlayback.markStopped()
+                    }
                 }
-                currentPlayingId = null
-                playNext()
             }
-        }
 
             if (result.isFailure) {
-                Timber.e(result.exceptionOrNull(), "Playback failed for ${message.id}")
-                messageRepository.update(message.copy(
-                    state = MessageState.FAILED,
-                    errorMessage = result.exceptionOrNull()?.message
-                ))
-                currentPlayingId = null
+                if (!claimPlaybackSession(sessionToken, message.id)) return@withLock
+                val mayAdvance = handlePlaybackFailure(
+                    message,
+                    result.exceptionOrNull() ?: IllegalStateException("Unknown playback failure")
+                )
                 // Dispatch playNext outside this withLock block — it
                 // re-enters playVoiceMessage / playTextMessage which
                 // try to acquire the same mutex. kotlinx.coroutines
                 // Mutex is NOT reentrant, so calling playNext from
                 // inside withLock would deadlock the coroutine.
-                playbackScope.launch { playNext() }
+                if (mayAdvance) playbackScope.launch {
+                    if (isPlaybackTransitionCurrent(sessionToken)) playNext()
+                } else if (isPlaybackTransitionCurrent(sessionToken) && !isPlaybackActive()) {
+                    mediaPlayback.markStopped()
+                }
             }
         } // end playbackStartLock.withLock
     }
@@ -341,13 +397,12 @@ class PlayReplyUseCase @Inject constructor(
      * over instead of being queued behind pending replies.
      */
     suspend fun playManually(message: Message) {
+        interruptForReplacement(message.id)
         val audioPath = message.audioFilePath
         if (audioPath.isNullOrBlank()) {
             playTextManually(message)
             return
         }
-        if (audioPlayer.isPlaying()) audioPlayer.stop()
-        ttsPlayer.stop()
         val audioFile = File(audioPath)
         if (!audioFile.exists()) {
             Timber.w("playManually: missing audio for ${message.id}")
@@ -363,11 +418,13 @@ class PlayReplyUseCase @Inject constructor(
             playTextManually(message.copy(audioFilePath = null))
             return
         }
-        currentPlayingId = message.id
+        val sessionToken = beginPlaybackSession(message.id)
         messageRepository.update(message.copy(state = MessageState.PLAYING))
+        if (!isCurrentPlaybackSession(sessionToken, message.id)) return
         _playbackStatus.value = PlaybackStatus.Playing(message.id)
-        markMediaSessionPlaying(message)
+        markMediaSessionPlaying(message, sessionToken)
         val manualSettings = settingsRepository.get()
+        if (!isCurrentPlaybackSession(sessionToken, message.id)) return
         val result = audioPlayer.play(
             audioFile,
             speed = manualSettings.playbackSpeed,
@@ -375,31 +432,34 @@ class PlayReplyUseCase @Inject constructor(
             useNavigationUsage = manualSettings.ttsAsNavigationPrompt
         ) { playResult ->
             playbackScope.launch {
-                if (playResult.isSuccess) {
-                    messageRepository.update(message.copy(
-                        state = MessageState.PLAYED,
-                        playedAt = System.currentTimeMillis()
-                    ))
-                    pushPlayedHistory(message)
-                } else {
-                    messageRepository.update(message.copy(
-                        state = MessageState.FAILED,
-                        errorMessage = playResult.exceptionOrNull()?.message
-                    ))
+                if (!claimPlaybackSession(sessionToken, message.id)) {
+                    Timber.d("Ignoring stale manual audio callback for ${message.id}")
+                    return@launch
                 }
-                currentPlayingId = null
-                _playbackStatus.value = PlaybackStatus.Idle
-                mediaPlayback.markStopped()
+                if (playResult.isSuccess) {
+                    markPlaybackCompleted(message)
+                } else {
+                    handlePlaybackFailure(
+                        message,
+                        playResult.exceptionOrNull() ?: IllegalStateException("Unknown playback failure")
+                    )
+                }
+                if (isPlaybackTransitionCurrent(sessionToken) && !isPlaybackActive()) {
+                    if (pendingCount() == 0) _playbackStatus.value = PlaybackStatus.Idle
+                    mediaPlayback.markStopped()
+                }
             }
         }
         if (result.isFailure) {
-            messageRepository.update(message.copy(
-                state = MessageState.FAILED,
-                errorMessage = result.exceptionOrNull()?.message
-            ))
-            currentPlayingId = null
-            _playbackStatus.value = PlaybackStatus.Idle
-            mediaPlayback.markStopped()
+            if (!claimPlaybackSession(sessionToken, message.id)) return
+            handlePlaybackFailure(
+                message,
+                result.exceptionOrNull() ?: IllegalStateException("Unknown playback failure")
+            )
+            if (isPlaybackTransitionCurrent(sessionToken) && !isPlaybackActive()) {
+                if (pendingCount() == 0) _playbackStatus.value = PlaybackStatus.Idle
+                mediaPlayback.markStopped()
+            }
         }
     }
 
@@ -413,31 +473,48 @@ class PlayReplyUseCase @Inject constructor(
             ?: message.transcription?.takeIf { it.isNotBlank() }
             ?: message.textContent?.takeIf { it.isNotBlank() }
             ?: return
-        if (audioPlayer.isPlaying()) audioPlayer.stop()
-        ttsPlayer.stop()
+        interruptForReplacement(message.id)
         val settings = settingsRepository.get()
-        currentPlayingId = message.id
+        val sessionToken = beginPlaybackSession(message.id)
         messageRepository.update(message.copy(state = MessageState.PLAYING))
+        if (!isCurrentPlaybackSession(sessionToken, message.id)) return
         _playbackStatus.value = PlaybackStatus.Playing(message.id)
-        markMediaSessionPlaying(message)
+        markMediaSessionPlaying(message, sessionToken)
         val uiLocale = if (settings.languageTag.isNotBlank())
             java.util.Locale.forLanguageTag(settings.languageTag)
         else java.util.Locale.getDefault()
         val detected = TtsPlayer.detectLocale(text, uiLocale)
+        if (!isCurrentPlaybackSession(sessionToken, message.id)) return
         ttsPlayer.speak(
             text,
             locale = detected,
             speed = settings.playbackSpeed,
             onDone = {
                 playbackScope.launch {
-                    messageRepository.update(message.copy(
-                        state = MessageState.PLAYED,
-                        playedAt = System.currentTimeMillis()
-                    ))
-                    pushPlayedHistory(message)
-                    currentPlayingId = null
-                    _playbackStatus.value = PlaybackStatus.Idle
-                    mediaPlayback.markStopped()
+                    if (!claimPlaybackSession(sessionToken, message.id)) {
+                        Timber.d("Ignoring stale manual TTS completion for ${message.id}")
+                        return@launch
+                    }
+                    markPlaybackCompleted(message)
+                    if (isPlaybackTransitionCurrent(sessionToken) && !isPlaybackActive()) {
+                        _playbackStatus.value = PlaybackStatus.Idle
+                        mediaPlayback.markStopped()
+                    }
+                }
+            },
+            onError = { error ->
+                playbackScope.launch {
+                    if (!claimPlaybackSession(sessionToken, message.id)) {
+                        Timber.d("Ignoring stale manual TTS error for ${message.id}")
+                        return@launch
+                    }
+                    handlePlaybackFailure(message, error)
+                    if (isPlaybackTransitionCurrent(sessionToken) && !isPlaybackActive()) {
+                        if (pendingCount() == 0) {
+                            _playbackStatus.value = PlaybackStatus.Idle
+                        }
+                        mediaPlayback.markStopped()
+                    }
                 }
             }
         )
@@ -519,7 +596,7 @@ class PlayReplyUseCase @Inject constructor(
         // QUEUE_FLUSH internally, which makes this safe even if the
         // engine is genuinely lingering.
         playbackStartLock.withLock {
-            if (respectUserGates && (audioPlayer.isPlaying() || ttsPlayer.isSpeaking())) {
+            if (respectUserGates && isPlaybackActive()) {
                 Timber.i(
                     "playSummaryOrTranscription ${message.id} → enqueue " +
                     "(audio=${audioPlayer.isPlaying()} tts=${ttsPlayer.isSpeaking()})"
@@ -527,10 +604,11 @@ class PlayReplyUseCase @Inject constructor(
                 enqueuePending(message, PendingReason.PLAYBACK_BUSY)
                 return@withLock
             }
-            currentPlayingId = message.id
+            val sessionToken = beginPlaybackSession(message.id)
             messageRepository.update(message.copy(state = MessageState.PLAYING))
+            if (!isCurrentPlaybackSession(sessionToken, message.id)) return@withLock
             _playbackStatus.value = PlaybackStatus.Playing(message.id)
-            markMediaSessionPlaying(message)
+            markMediaSessionPlaying(message, sessionToken)
             val uiLocale = if (settings.languageTag.isNotBlank())
                 java.util.Locale.forLanguageTag(settings.languageTag)
             else java.util.Locale.getDefault()
@@ -543,14 +621,28 @@ class PlayReplyUseCase @Inject constructor(
                 speed = settings.playbackSpeed,
                 onDone = {
                     playbackScope.launch {
-                        messageRepository.update(message.copy(
-                            state = MessageState.PLAYED,
-                            playedAt = System.currentTimeMillis()
-                        ))
-                        pushPlayedHistory(message)
-                        currentPlayingId = null
-                        _playbackStatus.value = PlaybackStatus.Idle
-                        playNext()
+                        if (!claimPlaybackSession(sessionToken, message.id)) {
+                            Timber.d("Ignoring stale summary completion for ${message.id}")
+                            return@launch
+                        }
+                        markPlaybackCompleted(message)
+                        if (isPlaybackTransitionCurrent(sessionToken)) playNext()
+                    }
+                },
+                onError = { error ->
+                    playbackScope.launch {
+                        if (!claimPlaybackSession(sessionToken, message.id)) {
+                            Timber.d("Ignoring stale summary error for ${message.id}")
+                            return@launch
+                        }
+                        val mayAdvance = handlePlaybackFailure(message, error)
+                        if (mayAdvance && isPlaybackTransitionCurrent(sessionToken)) playNext()
+                        else if (!mayAdvance &&
+                            isPlaybackTransitionCurrent(sessionToken) &&
+                            !isPlaybackActive()
+                        ) {
+                            mediaPlayback.markStopped()
+                        }
                     }
                 }
             )
@@ -604,7 +696,7 @@ class PlayReplyUseCase @Inject constructor(
         // check is gated on respectUserGates — same isSpeaking-race
         // story.
         playbackStartLock.withLock {
-            if (respectUserGates && (audioPlayer.isPlaying() || ttsPlayer.isSpeaking())) {
+            if (respectUserGates && isPlaybackActive()) {
                 Timber.i(
                     "playTextMessage ${message.id} → enqueue " +
                     "(audio=${audioPlayer.isPlaying()} tts=${ttsPlayer.isSpeaking()})"
@@ -612,10 +704,11 @@ class PlayReplyUseCase @Inject constructor(
                 enqueuePending(message, PendingReason.PLAYBACK_BUSY)
                 return@withLock
             }
-            currentPlayingId = message.id
+            val sessionToken = beginPlaybackSession(message.id)
             messageRepository.update(message.copy(state = MessageState.PLAYING))
+            if (!isCurrentPlaybackSession(sessionToken, message.id)) return@withLock
             _playbackStatus.value = PlaybackStatus.Playing(message.id)
-            markMediaSessionPlaying(message)
+            markMediaSessionPlaying(message, sessionToken)
 
             // Detect locale from the text so a Spanish reply isn't read
             // by an English voice. Fallback = user's UI locale (from
@@ -631,13 +724,28 @@ class PlayReplyUseCase @Inject constructor(
                 speed = settings.playbackSpeed,
                 onDone = {
                     playbackScope.launch {
-                        messageRepository.update(message.copy(
-                            state = MessageState.PLAYED,
-                            playedAt = System.currentTimeMillis()
-                        ))
-                        pushPlayedHistory(message)
-                        currentPlayingId = null
-                        playNext()
+                        if (!claimPlaybackSession(sessionToken, message.id)) {
+                            Timber.d("Ignoring stale text completion for ${message.id}")
+                            return@launch
+                        }
+                        markPlaybackCompleted(message)
+                        if (isPlaybackTransitionCurrent(sessionToken)) playNext()
+                    }
+                },
+                onError = { error ->
+                    playbackScope.launch {
+                        if (!claimPlaybackSession(sessionToken, message.id)) {
+                            Timber.d("Ignoring stale text error for ${message.id}")
+                            return@launch
+                        }
+                        val mayAdvance = handlePlaybackFailure(message, error)
+                        if (mayAdvance && isPlaybackTransitionCurrent(sessionToken)) playNext()
+                        else if (!mayAdvance &&
+                            isPlaybackTransitionCurrent(sessionToken) &&
+                            !isPlaybackActive()
+                        ) {
+                            mediaPlayback.markStopped()
+                        }
                     }
                 }
             )
@@ -659,17 +767,15 @@ class PlayReplyUseCase @Inject constructor(
      * firing the pending onDone, so the autoplay-drain speak()
      * callbacks don't advance the queue under us — a "pause" tap
      * shouldn't auto-skip to the next message), null out the playing
-     * id, mark the row PLAYED so it leaves the NowPlaying panel, and
-     * flip the session to STOPPED. A re-tap on Play will restart a
-     * fresh utterance from the beginning, which is the only sensible
-     * "resume" semantic for TTS — Android's TextToSpeech engine has
-     * no genuine pause/resume.
+     * id, return the row to the durable pending queue, and flip the session
+     * to STOPPED. A re-tap on Play restarts a fresh utterance from the
+     * beginning, which is the only sensible "resume" semantic for TTS —
+     * Android's TextToSpeech engine has no genuine pause/resume.
      */
     fun pause() {
         if (ttsPlayer.isSpeaking()) {
-            val pausedId = currentPlayingId
+            val pausedId = invalidatePlaybackSession()
             ttsPlayer.cancel()
-            currentPlayingId = null
             _playbackStatus.value = PlaybackStatus.Idle
             mediaPlayback.markStopped()
             if (pausedId != null) {
@@ -677,10 +783,7 @@ class PlayReplyUseCase @Inject constructor(
                     runCatching {
                         val msg = messageRepository.getById(pausedId)
                             ?: return@launch
-                        messageRepository.update(msg.copy(
-                            state = MessageState.PLAYED,
-                            playedAt = System.currentTimeMillis()
-                        ))
+                        enqueuePending(msg, PendingReason.USER_PAUSED)
                     }
                 }
             }
@@ -736,12 +839,15 @@ class PlayReplyUseCase @Inject constructor(
      * pending-replies notification is kept in sync with the surviving count.
      */
     fun stopAll() {
+        // Always advance the transition generation. Completion may already
+        // have claimed/cleared the active session while its DB work is still
+        // running; Stop must still suppress that callback's later drain.
+        val interruptedId = invalidatePlaybackSession()
         audioPlayer.stop()
         // Also stop TTS — a summary/transcription TTS in flight when
         // the user starts recording would otherwise keep speaking into
         // the mic (audio contamination of the new recording).
-        ttsPlayer.stop()
-        currentPlayingId = null
+        ttsPlayer.cancel()
         val remaining = pendingCount()
         if (remaining > 0) {
             _playbackStatus.value = PlaybackStatus.PendingCount(remaining)
@@ -751,11 +857,12 @@ class PlayReplyUseCase @Inject constructor(
             pendingReplyNotifier.cancel()
         }
         mediaPlayback.markStopped()
-        // BUG-44 FIX: Cancel and recreate playback scope so MediaPlayer
-        // completion callbacks for the just-stopped playback don't fire
-        // DB updates against a "now playing" row that's no longer playing.
-        playbackScope.cancel()
-        playbackScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        if (interruptedId != null) {
+            playbackScope.launch {
+                val interrupted = messageRepository.getById(interruptedId) ?: return@launch
+                enqueuePending(interrupted, PendingReason.USER_PAUSED)
+            }
+        }
     }
 
     /**
@@ -771,6 +878,52 @@ class PlayReplyUseCase @Inject constructor(
         userRecordingGateActive = false
     }
 
+    private suspend fun markPlaybackCompleted(message: Message) {
+        messageRepository.update(message.copy(
+            state = MessageState.PLAYED,
+            playedAt = System.currentTimeMillis(),
+            errorMessage = null
+        ))
+        pendingPlaybackDao.deleteByMessageId(message.id)
+        pushPlayedHistory(message)
+    }
+
+    /** Stop a different current item without acknowledging unheard content. */
+    private suspend fun interruptForReplacement(replacementMessageId: String) {
+        val interruptedId = invalidatePlaybackSession()
+        if (interruptedId == null && !audioPlayer.isPlaying() && !ttsPlayer.isSpeaking()) return
+        audioPlayer.stop()
+        ttsPlayer.cancel()
+        if (interruptedId != null && interruptedId != replacementMessageId) {
+            messageRepository.getById(interruptedId)?.let {
+                enqueuePending(it, PendingReason.USER_PAUSED)
+            }
+        }
+    }
+
+    /**
+     * Finalize an engine failure. Focus interruptions remain pending because
+     * the engine running to completion does not mean the driver heard them.
+     * Other decoder/synthesis failures are terminal and let the queue advance.
+     *
+     * @return true when the next queued item may be started immediately.
+     */
+    private suspend fun handlePlaybackFailure(message: Message, error: Throwable): Boolean {
+        return if (error is AudioFocusDeniedException || error is AudioFocusLostException) {
+            Timber.w(error, "Playback interrupted for ${message.id}; returning it to pending")
+            enqueuePending(message, PendingReason.PLAYBACK_INTERRUPTED)
+            false
+        } else {
+            Timber.e(error, "Playback failed for ${message.id}")
+            messageRepository.update(message.copy(
+                state = MessageState.FAILED,
+                errorMessage = error.message
+            ))
+            pendingPlaybackDao.deleteByMessageId(message.id)
+            true
+        }
+    }
+
     /**
      * Encola un mensaje para reproducción diferida.
      */
@@ -780,16 +933,38 @@ class PlayReplyUseCase @Inject constructor(
             messageId = message.id,
             reason = reason
         )
-        messageRepository.update(message.copy(state = MessageState.PENDING_PLAYBACK))
-        synchronized(pendingQueue) { pendingQueue.add(message) }
-        // BUG-05: Persist to database
-        pendingPlaybackDao.insert(PendingPlaybackEntity(
-            id = playback.id,
-            messageId = playback.messageId,
-            enqueuedAt = playback.enqueuedAt,
-            reason = playback.reason,
-            playedAt = null
+        messageRepository.update(message.copy(
+            state = MessageState.PENDING_PLAYBACK,
+            errorMessage = null
         ))
+        val addedToMemory = synchronized(pendingQueue) {
+            if (pendingQueue.none { it.id == message.id }) {
+                pendingQueue.add(message)
+                true
+            } else {
+                false
+            }
+        }
+        // Keep persistence idempotent. Interrupted queued playback still has
+        // its original row because rows are now deleted only after success.
+        // When an in-flight item moves to the memory tail, refresh that row's
+        // timestamp/reason so a process restart restores the same order.
+        val existing = pendingPlaybackDao.getAll().firstOrNull { it.messageId == message.id }
+        if (existing == null) {
+            pendingPlaybackDao.insert(PendingPlaybackEntity(
+                id = playback.id,
+                messageId = playback.messageId,
+                enqueuedAt = playback.enqueuedAt,
+                reason = playback.reason,
+                playedAt = null
+            ))
+        } else if (addedToMemory) {
+            pendingPlaybackDao.insert(existing.copy(
+                enqueuedAt = playback.enqueuedAt,
+                reason = playback.reason,
+                playedAt = null
+            ))
+        }
         _playbackStatus.value = PlaybackStatus.PendingCount(pendingCount())
         pendingReplyNotifier.notifyPending(pendingCount())
         Timber.d("Message ${message.id} enqueued (reason=$reason, pending=${pendingCount()})")
@@ -799,26 +974,31 @@ class PlayReplyUseCase @Inject constructor(
      * BUG-05: Restore pending queue from database after service restart.
      */
     suspend fun restorePendingQueue() {
-        // v1.24.4 — clean up any message stuck in PLAYING / PAUSED state
-        // BEFORE the rest of restoration runs. These rows are leftover
-        // from a process that died mid-playback or a MediaPlayer that
-        // crashed without writing PLAYED / FAILED. Without this sweep
-        // observeNowPlaying() keeps returning a ghost row and the
-        // Now Playing panel renders forever — its play button is a
-        // no-op because there's no live MediaPlayer to resume.
+        // A process death cannot prove the driver heard the message. Restore
+        // stale PLAYING/PAUSED rows as pending instead of acknowledging them.
         runCatching {
+            val persistedIds = pendingPlaybackDao.getAll().map { it.messageId }.toMutableSet()
             val stale = messageRepository.getStaleNowPlaying()
-            val now = System.currentTimeMillis()
             for (message in stale) {
                 messageRepository.update(message.copy(
-                    state = MessageState.PLAYED,
-                    playedAt = message.playedAt ?: now
+                    state = MessageState.PENDING_PLAYBACK,
+                    playedAt = null,
+                    errorMessage = null
                 ))
+                if (persistedIds.add(message.id)) {
+                    pendingPlaybackDao.insert(PendingPlaybackEntity(
+                        id = UUID.randomUUID().toString(),
+                        messageId = message.id,
+                        enqueuedAt = message.createdAt,
+                        reason = PendingReason.PLAYBACK_INTERRUPTED,
+                        playedAt = null
+                    ))
+                }
             }
             if (stale.isNotEmpty()) {
-                Timber.i("Cleared ${stale.size} stale PLAYING/PAUSED message(s) at startup")
+                Timber.i("Restored ${stale.size} interrupted playback message(s) at startup")
             }
-        }.onFailure { Timber.w(it, "Stale-now-playing sweep failed") }
+        }.onFailure { Timber.w(it, "Interrupted-playback restore failed") }
 
         val entities = pendingPlaybackDao.getAll()
         for (entity in entities) {
@@ -846,38 +1026,35 @@ class PlayReplyUseCase @Inject constructor(
      * Reproduce el siguiente mensaje en cola.
      */
     private suspend fun playNext() {
-        val isEmpty: Boolean
-        val next: Message?
-        synchronized(pendingQueue) {
-            isEmpty = pendingQueue.isEmpty()
-            next = if (isEmpty) null else pendingQueue.removeAt(0)
-        }
-        // BUG-56 FIX: Notifier calls happen outside the synchronized block to
-        // avoid holding the queue lock during NotificationManager I/O.
-        if (isEmpty || next == null) {
-            _playbackStatus.value = PlaybackStatus.Idle
-            pendingReplyNotifier.cancel()
-            mediaPlayback.markStopped()
-            return
-        }
-        pendingReplyNotifier.notifyPending(pendingCount())
-        // BUG-57 FIX: Delete by messageId — pendingPlaybackDao.delete(id) was
-        // being called with Message.id but the DAO's id column stores the
-        // PendingPlaybackEntity.id (a separate UUID). Records were never deleted,
-        // so restorePendingQueue() on app restart would re-enqueue old messages.
-        playbackScope.launch {
-            try {
-                pendingPlaybackDao.deleteByMessageId(next.id)
-            } catch (e: Exception) {
-                // Don't swallow silently — if delete keeps failing the row
-                // gets re-enqueued on every app restart via restorePendingQueue().
-                Timber.w(e, "Failed to delete pending playback for ${next.id}")
+        queueDrainLock.withLock {
+            // A callback from an older item may arrive after a manual playback
+            // has started. Never let that callback pop or replace the new item.
+            if (isPlaybackActive()) {
+                Timber.d("Queue drain deferred because playback is active")
+                return@withLock
+            }
+            while (true) {
+                val next = synchronized(pendingQueue) {
+                    if (pendingQueue.isEmpty()) null else pendingQueue.removeAt(0)
+                }
+                // BUG-56 FIX: notifier calls happen outside the queue monitor.
+                if (next == null) {
+                    pendingReplyNotifier.cancel()
+                    // A manual playback can begin after the initial active
+                    // check while this coroutine is selecting the queue head.
+                    // Do not let an empty older drain stop its MediaSession.
+                    if (!isPlaybackActive()) {
+                        _playbackStatus.value = PlaybackStatus.Idle
+                        mediaPlayback.markStopped()
+                    }
+                    return@withLock
+                }
+                pendingReplyNotifier.notifyPending(pendingCount())
+                // Keep the persistent row until playback completes. Invalid
+                // rows are finalized and skipped inside playQueued.
+                if (playQueued(next)) return@withLock
             }
         }
-        // Text messages live in the same queue (see enqueuePending) but must
-        // be dispatched to the TTS path — playVoiceMessage would fail looking
-        // for an audio file that never existed.
-        playQueued(next)
     }
 
     /**
@@ -892,31 +1069,10 @@ class PlayReplyUseCase @Inject constructor(
      * playVoiceMessage gates on `audioPlayer.isPlaying()`.
      */
     suspend fun playAllPending() {
-        // v1.20.11 — if a one-off playback is already in flight (e.g. the
-        // user tapped Replay-last, then immediately tapped Play N pending),
-        // hard-stop it so the queue actually starts at message #1. Without
-        // this, the first queued message would hit
-        // `playVoiceMessage`'s isPlaying() gate and get re-enqueued at the
-        // BACK of the queue while its DAO row was already deleted —
-        // ghosted message after the next app restart.
-        if (audioPlayer.isPlaying() || ttsPlayer.isSpeaking()) {
-            audioPlayer.stop()
-            ttsPlayer.stop()
-            currentPlayingId = null
-        }
-        val first: Message? = synchronized(pendingQueue) {
-            if (pendingQueue.isEmpty()) null else pendingQueue.removeAt(0)
-        }
-        if (first == null) return
-        pendingReplyNotifier.notifyPending(pendingCount())
-        playbackScope.launch {
-            try {
-                pendingPlaybackDao.deleteByMessageId(first.id)
-            } catch (e: Exception) {
-                Timber.w(e, "Failed to delete pending playback for ${first.id}")
-            }
-        }
-        playQueued(first)
+        // Repeated taps and competing MediaSession callbacks converge here.
+        // If another item is already active, its terminal callback will drain
+        // the queue; cutting it off would lose its completion signal.
+        playNext()
     }
 
     /**
@@ -943,13 +1099,15 @@ class PlayReplyUseCase @Inject constructor(
      * "session shows STOPPED for 50ms" hole the suspend version was
      * trying to fix.
      */
-    private fun markMediaSessionPlaying(message: Message) {
+    private fun markMediaSessionPlaying(message: Message, sessionToken: Long) {
         mediaPlayback.markPlaying(message, conversation = null)
         playbackScope.launch {
             val convo = runCatching {
                 conversationRepository.getById(message.conversationId)
             }.getOrNull()
-            if (convo != null) mediaPlayback.updateMetadata(message, convo)
+            if (convo != null && isCurrentPlaybackSession(sessionToken, message.id)) {
+                mediaPlayback.updateMetadata(message, convo)
+            }
         }
     }
 
@@ -976,7 +1134,7 @@ class PlayReplyUseCase @Inject constructor(
         // start playing back over the new mic. The recorder guard at
         // the playVoiceMessage level already exists, but this defense
         // catches the drain path too.
-        if (isUserRecordingOrStarting() || audioPlayer.isPlaying() || ttsPlayer.isSpeaking()) return
+        if (isUserRecordingOrStarting() || isPlaybackActive()) return
         // v1.23.0-rc.6 — give the user a 2 s beat after the mic releases
         // before the queue starts auto-playing. Without this, the audio
         // of the first queued message steps on the user's own
@@ -989,7 +1147,7 @@ class PlayReplyUseCase @Inject constructor(
         delay(POST_RECORDING_DRAIN_DELAY_MS)
         if (pendingCount() == 0) return
         if (!settingsRepository.get().autoPlayReplies) return
-        if (isUserRecordingOrStarting() || audioPlayer.isPlaying() || ttsPlayer.isSpeaking()) return
+        if (isUserRecordingOrStarting() || isPlaybackActive()) return
         playAllPending()
     }
 
@@ -1000,9 +1158,11 @@ class PlayReplyUseCase @Inject constructor(
      * in the Pending Queue screen's Now Playing panel.
      */
     suspend fun skipNext() {
+        val skippedId = invalidatePlaybackSession()
         audioPlayer.stop()
-        ttsPlayer.stop()
-        currentPlayingId = null
+        ttsPlayer.cancel()
+        val skipped = skippedId?.let { messageRepository.getById(it) }
+        if (skipped != null) markPlaybackCompleted(skipped)
         playNext()
     }
 
@@ -1020,13 +1180,12 @@ class PlayReplyUseCase @Inject constructor(
                 _canSkipPrevious.value = playedHistory.isNotEmpty()
             }
         }
-        val currentId = currentPlayingId
+        val currentId = invalidatePlaybackSession()
+        audioPlayer.stop()
+        ttsPlayer.cancel()
         val currentMsg = currentId?.let {
             runCatching { messageRepository.getById(it) }.getOrNull()
         }
-        audioPlayer.stop()
-        ttsPlayer.cancel()
-        currentPlayingId = null
         synchronized(pendingQueue) {
             // Re-insert so the drain order becomes [previous, current, ...rest].
             if (currentMsg != null) pendingQueue.add(0, currentMsg)
@@ -1043,16 +1202,23 @@ class PlayReplyUseCase @Inject constructor(
      * Queue tab so the user can clear a backlog without hearing it through.
      */
     suspend fun markAllPendingAsListened() {
+        val currentId = invalidatePlaybackSession()
         audioPlayer.stop()
         ttsPlayer.cancel()
-        currentPlayingId = null
+        val current = currentId?.let { id ->
+            runCatching { messageRepository.getById(id) }.getOrNull()
+        }
         val drained: List<Message> = synchronized(pendingQueue) {
             val copy = pendingQueue.toList()
             pendingQueue.clear()
             copy
         }
+        val acknowledged = buildList {
+            current?.let(::add)
+            addAll(drained)
+        }.distinctBy { it.id }
         val now = System.currentTimeMillis()
-        for (m in drained) {
+        for (m in acknowledged) {
             runCatching {
                 pendingPlaybackDao.deleteByMessageId(m.id)
                 messageRepository.update(m.copy(state = MessageState.PLAYED, playedAt = now))
@@ -1085,11 +1251,10 @@ class PlayReplyUseCase @Inject constructor(
      * history, restart re-plays *this* one.
      */
     suspend fun restartCurrent() {
-        val playingId = currentPlayingId ?: return
-        val msg = messageRepository.getById(playingId) ?: return
+        val playingId = invalidatePlaybackSession() ?: return
         audioPlayer.stop()
-        ttsPlayer.stop()
-        currentPlayingId = null
+        ttsPlayer.cancel()
+        val msg = messageRepository.getById(playingId) ?: return
         playQueued(msg)
     }
 
@@ -1108,13 +1273,14 @@ class PlayReplyUseCase @Inject constructor(
      */
     fun seekTo(positionMs: Int) {
         audioPlayer.seekTo(positionMs)
-        val currentId = currentPlayingId ?: return
+        val session = playbackSessionSnapshot() ?: return
         playbackScope.launch {
-            val msg = runCatching { messageRepository.getById(currentId) }.getOrNull()
+            val msg = runCatching { messageRepository.getById(session.messageId) }.getOrNull()
                 ?: return@launch
             val convo = runCatching {
                 conversationRepository.getById(msg.conversationId)
             }.getOrNull()
+            if (!isCurrentPlaybackSession(session.token, session.messageId)) return@launch
             // v1.23.0-rc.8 — read playback status inside the launch so a
             // pause that lands between AudioPlayer.seekTo() and the
             // MediaSession push doesn't get clobbered by a stale
@@ -1140,29 +1306,31 @@ class PlayReplyUseCase @Inject constructor(
      * FK on PendingPlaybackEntity.messageId, so this method only needs
      * to reconcile the in-memory state.
      */
-    fun clearForConversation(conversationId: String) {
-        val playingFromThisConvo = synchronized(pendingQueue) {
-            pendingQueue.removeAll { it.conversationId == conversationId }
-            // currentPlayingId is just an id — we don't store the
-            // conversationId of the playing message. Caller (HistoryViewModel)
-            // already knows the playing message's conversation via
-            // playbackStatus, but the simplest and safest action here is
-            // to always stop if anything is playing once we've changed
-            // the queue. stopAll() doesn't drop the queue (post-v1.20.11).
-            audioPlayer.isPlaying() || ttsPlayer.isSpeaking()
+    suspend fun clearForConversation(conversationId: String) {
+        val current = currentPlayingId?.let { id ->
+            runCatching { messageRepository.getById(id) }.getOrNull()
         }
+        synchronized(pendingQueue) {
+            pendingQueue.removeAll { it.conversationId == conversationId }
+        }
+        val playingFromThisConvo = current?.conversationId == conversationId
         if (playingFromThisConvo) {
+            invalidatePlaybackSession(expectedMessageId = current.id)
             audioPlayer.stop()
-            ttsPlayer.stop()
-            currentPlayingId = null
+            ttsPlayer.cancel()
         }
         val remaining = pendingCount()
-        if (remaining > 0) {
-            _playbackStatus.value = PlaybackStatus.PendingCount(remaining)
-            pendingReplyNotifier.notifyPending(remaining)
-        } else {
-            _playbackStatus.value = PlaybackStatus.Idle
-            pendingReplyNotifier.cancel()
+        if (remaining > 0) pendingReplyNotifier.notifyPending(remaining)
+        else pendingReplyNotifier.cancel()
+
+        // Preserve an unrelated in-flight playback and its transport state.
+        // Only replace the status when this clear operation left no active item.
+        if (!isPlaybackActive()) {
+            _playbackStatus.value = if (remaining > 0) {
+                PlaybackStatus.PendingCount(remaining)
+            } else {
+                PlaybackStatus.Idle
+            }
         }
     }
 
@@ -1191,35 +1359,27 @@ class PlayReplyUseCase @Inject constructor(
      * user tapped a long-played row), falls back to [playManually].
      */
     suspend fun playFromHere(message: Message) {
-        val wasQueued = synchronized(pendingQueue) {
-            val idx = pendingQueue.indexOfFirst { it.id == message.id }
-            if (idx >= 0) {
-                pendingQueue.removeAt(idx)
-                true
-            } else false
-        }
-        if (!wasQueued) {
-            playManually(message)
-            return
-        }
-        // Hard-stop any in-flight playback so the requested message can
-        // actually become the playing one — otherwise playVoiceMessage's
-        // isPlaying() gate would re-enqueue it at the END of the queue
-        // and start playing the wrong thing. Same fix as playAllPending.
-        if (audioPlayer.isPlaying() || ttsPlayer.isSpeaking()) {
-            audioPlayer.stop()
-            ttsPlayer.stop()
-            currentPlayingId = null
-        }
-        playbackScope.launch {
-            try {
-                pendingPlaybackDao.deleteByMessageId(message.id)
-            } catch (e: Exception) {
-                Timber.w(e, "Failed to delete pending playback for ${message.id}")
+        val queuedStart: Boolean? = queueDrainLock.withLock {
+            val wasQueued = synchronized(pendingQueue) {
+                val idx = pendingQueue.indexOfFirst { it.id == message.id }
+                if (idx >= 0) {
+                    pendingQueue.removeAt(idx)
+                    true
+                } else false
             }
+            if (!wasQueued) return@withLock null
+            // Hard-stop any in-flight playback so the requested message can
+            // become the playing one, then keep the whole selection/start
+            // transition under the same lock used by automatic drains.
+            interruptForReplacement(message.id)
+            pendingReplyNotifier.notifyPending(pendingCount())
+            playQueued(message)
         }
-        pendingReplyNotifier.notifyPending(pendingCount())
-        playQueued(message)
+        when (queuedStart) {
+            null -> playManually(message)
+            false -> playNext()
+            true -> Unit
+        }
     }
 
     companion object {
@@ -1244,20 +1404,45 @@ class PlayReplyUseCase @Inject constructor(
     private fun isUserRecordingOrStarting(): Boolean =
         userRecordingGateActive || audioRecorder.isRecording()
 
-    private suspend fun playQueued(message: Message) {
+    /** @return true when playback started or was safely deferred. */
+    private suspend fun playQueued(message: Message): Boolean {
         val settings = settingsRepository.get()
+        // A fresh incoming/manual playback may have started while the settings
+        // read suspended. Put this item back at the front instead of allowing
+        // the queued path (which bypasses user gates) to replace it.
+        if (isPlaybackActive()) {
+            synchronized(pendingQueue) {
+                if (pendingQueue.none { it.id == message.id }) pendingQueue.add(0, message)
+            }
+            pendingReplyNotifier.notifyPending(pendingCount())
+            return true
+        }
         val hasReadableSummary = !message.summary.isNullOrBlank() ||
             !message.transcription.isNullOrBlank() ||
             !message.textContent.isNullOrBlank()
-        if (settings.summarizeLongMessages &&
+        return if (settings.summarizeLongMessages &&
             settings.summaryEngine != SummaryEngineType.NONE &&
             hasReadableSummary
         ) {
             playSummaryOrTranscription(message, respectUserGates = false)
+            true
         } else if (!message.audioFilePath.isNullOrBlank()) {
             playVoiceMessage(message, respectUserGates = false)
+            true
         } else if (!message.textContent.isNullOrBlank()) {
             playTextMessage(message, respectUserGates = false)
+            true
+        } else if (hasReadableSummary) {
+            // A summary/transcription may be the only surviving representation
+            // after cache cleanup; it is still preferable to silent loss.
+            playSummaryOrTranscription(message, respectUserGates = false)
+            true
+        } else {
+            handlePlaybackFailure(
+                message,
+                IllegalStateException("No playable audio or text content")
+            )
+            false
         }
     }
 }

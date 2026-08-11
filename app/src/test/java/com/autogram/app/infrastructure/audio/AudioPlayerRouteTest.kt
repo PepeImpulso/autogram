@@ -1,6 +1,7 @@
 package com.autogram.app.infrastructure.audio
 
 import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import androidx.car.app.connection.CarConnection
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -121,5 +122,19 @@ class AudioPlayerRouteTest {
                 carConnectionType = CarConnection.CONNECTION_TYPE_NOT_CONNECTED
             )
         )
+    }
+
+    @Test fun `permanent and transient focus loss terminate voice playback`() {
+        assertTrue(AudioPlayer.shouldTerminateForFocusChange(AudioManager.AUDIOFOCUS_LOSS))
+        assertTrue(AudioPlayer.shouldTerminateForFocusChange(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT))
+    }
+
+    @Test fun `duck and gain focus changes keep voice playback alive`() {
+        assertTrue(
+            !AudioPlayer.shouldTerminateForFocusChange(
+                AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK
+            )
+        )
+        assertTrue(!AudioPlayer.shouldTerminateForFocusChange(AudioManager.AUDIOFOCUS_GAIN))
     }
 }

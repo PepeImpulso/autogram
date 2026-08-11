@@ -29,29 +29,34 @@ import com.autogram.app.infrastructure.telegram.mtproto.AuthState
 import com.autogram.app.infrastructure.telegram.mtproto.TdLibClient
 import com.autogram.app.ui.phone.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.drinkless.tdlib.TdApi
 import timber.log.Timber
-import java.util.UUID
+import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 
 /**
- * Foreground service that keeps TDLib alive and pipes incoming voice notes
+ * Foreground service that keeps TDLib alive and pipes incoming text/audio
  * from every pinned target (chat + optional forum topic) into
  * [PlayReplyUseCase] for automatic playback.
  *
- * The pinned set is read reactively — when the user adds/removes a circle the
- * collector is re-bound with the new routing table. A single collector handles
- * all targets so playback queueing in PlayReplyUseCase stays strictly
- * sequential even when several circles receive at the same time.
+ * The pinned set is read reactively. Route snapshots are replaced atomically
+ * while one buffered-message collector remains active, so editing circles does
+ * not create a subscription gap. Sequential collection preserves arrival order
+ * until a message is handed to the playback/transcription pipeline.
  */
 @AndroidEntryPoint
 class MtprotoReceiverService : Service() {
@@ -61,6 +66,10 @@ class MtprotoReceiverService : Service() {
         const val NOTIFICATION_ID = 2
         const val ACTION_START = "com.autogram.app.MTPROTO_START"
         const val ACTION_STOP = "com.autogram.app.MTPROTO_STOP"
+        private const val DOWNLOAD_MAX_ATTEMPTS = 3
+        private const val DOWNLOAD_RETRY_BASE_DELAY_MS = 750L
+        private const val PROCESS_MAX_ATTEMPTS = 3
+        private const val PROCESS_RETRY_BASE_DELAY_MS = 250L
 
         @Volatile var isRunning = false
             private set
@@ -81,7 +90,11 @@ class MtprotoReceiverService : Service() {
 
     private var scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var supervisorJob: Job? = null
-    private var activeCollectorJob: Job? = null
+    private var newMessageCollectorJob: Job? = null
+    private var callStateCollectorJob: Job? = null
+    private var callEndDrainJob: Job? = null
+    private val routingRef = AtomicReference<Map<ReceiverRouteKey, Conversation>>(emptyMap())
+    private val processingMessageIds = ConcurrentHashMap.newKeySet<String>()
     // Audit-HIGH-6: guards against onCreate running after onDestroy on
     // Android's service lifecycle (rare but happens when the system rebinds).
     // Without the flag, the onCreate here would cancel the current scope and
@@ -176,10 +189,10 @@ class MtprotoReceiverService : Service() {
     }
 
     /**
-     * Waits for TDLib auth, then observes the pinned conversation set and
-     * (re)starts a single update collector whose routing table reflects the
-     * current pins — added when the user creates a circle, removed when they
-     * delete one.
+     * Waits for TDLib auth, then observes the pinned conversation set. Routing
+     * snapshots are replaced atomically while one incoming-message collector
+     * remains alive, eliminating the cancellation gap that previously lost
+     * messages whenever the user edited pinned circles.
      */
     private fun startSupervisor() {
         if (supervisorJob?.isActive == true) return
@@ -190,6 +203,7 @@ class MtprotoReceiverService : Service() {
             }
             tdLibClient.ensureStarted()
             tdLibClient.authState.first { it is AuthState.Ready }
+            startCallStateObserver()
             // WorkManager can run before TDLib finishes authenticating and
             // enter exponential backoff even though connectivity is already
             // available. Drain immediately on the Ready transition instead
@@ -204,35 +218,55 @@ class MtprotoReceiverService : Service() {
             }
 
             conversationRepository.observePinned()
-                .distinctUntilChanged { old, new ->
-                    // Ignore title / photo changes — only re-bind when the set of
-                    // (chatId, topicId) routing keys actually changes.
-                    old.map { it.targetChatId to it.topicId }.toSet() ==
-                        new.map { it.targetChatId to it.topicId }.toSet()
-                }
+                .distinctUntilChanged()
                 .collect { targets ->
-                    activeCollectorJob?.cancel()
-                    if (targets.isEmpty()) {
+                    val snapshot = buildReceiverRouting(targets)
+                    routingRef.set(snapshot.routes)
+                    snapshot.invalidTargets.forEach { target ->
+                        Timber.w(
+                            "Ignoring receiver target=${target.receiverLabel()} with invalid " +
+                                "chatId=${target.targetChatId}"
+                        )
+                    }
+                    snapshot.duplicateKeys.forEach { key ->
+                        val duplicates = targets.filter {
+                            it.targetChatId.toLongOrNull() == key.chatId && it.topicId == key.topicId
+                        }
+                        Timber.w(
+                            "Duplicate receiver route chatId=${key.chatId} topicId=${key.topicId}; " +
+                                "keeping first target=${duplicates.firstOrNull()?.receiverLabel()} " +
+                            "and ignoring ${duplicates.drop(1).joinToString { it.receiverLabel() }}"
+                        )
+                    }
+                    if (newMessageCollectorJob?.isActive != true) {
+                        // Start exactly once, after the first routing snapshot.
+                        // TdLibClient's channel retains messages that arrived
+                        // during auth/outbox startup until this point.
+                        newMessageCollectorJob = scope.launch { collectNewMessages() }
+                    }
+                    if (snapshot.routes.isEmpty()) {
                         updateNotification("Configura un destino en Ajustes")
-                        Timber.i("No pinned conversations — receiver idle")
+                        Timber.i("No valid pinned conversation routes — receiver idle")
                         return@collect
                     }
-                    activeCollectorJob = scope.launch { collectFor(targets) }
+                    updateListeningNotification(targets)
+                    Timber.i(
+                        "Receiver routing updated with ${snapshot.routes.size} exact route(s) " +
+                            "for ${targets.joinToString { it.receiverLabel() }}"
+                    )
                 }
         }
     }
 
     private fun stopSupervisor() {
-        activeCollectorJob?.cancel(); activeCollectorJob = null
+        newMessageCollectorJob?.cancel(); newMessageCollectorJob = null
+        callStateCollectorJob?.cancel(); callStateCollectorJob = null
+        callEndDrainJob?.cancel(); callEndDrainJob = null
         supervisorJob?.cancel(); supervisorJob = null
+        routingRef.set(emptyMap())
     }
 
-    private suspend fun collectFor(targets: List<Conversation>) {
-        // Routing table: (chatId, topicId) → Conversation. topicId=null keys
-        // match messages that arrive on a non-forum chat / forum General.
-        val routing: Map<Pair<Long, Long?>, Conversation> = targets.associateBy {
-            it.targetChatId.toLong() to it.topicId
-        }
+    private fun updateListeningNotification(targets: List<Conversation>) {
         updateNotification(
             if (targets.size == 1) {
                 val t = targets.first()
@@ -242,43 +276,175 @@ class MtprotoReceiverService : Service() {
                 "Escuchando ${targets.size} accesos rápidos"
             }
         )
-        Timber.i("Receiver subscribed to ${targets.size} target(s)")
-
-        tdLibClient.updates
-            .filterIsInstance<TdApi.UpdateNewMessage>()
-            .collect { update ->
-                val msg = update.message
-                if (msg.isOutgoing) return@collect
-                val topicId = (msg.topicId as? TdApi.MessageTopicForum)
-                    ?.forumTopicId?.toLong()
-                val target = routing[msg.chatId to topicId] ?: return@collect
-                when (val content = msg.content) {
-                    is TdApi.MessageVoiceNote -> handleVoiceNote(target, msg, content)
-                    is TdApi.MessageText -> handleText(target, msg, content)
-                    else -> Timber.d("Ignored non-voice incoming: ${content.javaClass.simpleName}")
-                }
-            }
     }
 
-    private suspend fun handleVoiceNote(
+    private fun startCallStateObserver() {
+        if (callStateCollectorJob?.isActive == true) return
+        callStateCollectorJob = scope.launch {
+            var wasInCall = callStateMonitor.isInCall.value
+            callStateMonitor.isInCall
+                .collect { isInCall ->
+                    if (isInCall) {
+                        // drainPendingIfAutoPlay includes a user-facing delay.
+                        // Cancel that delay immediately if another call starts.
+                        callEndDrainJob?.cancel()
+                        callEndDrainJob = null
+                    } else if (wasInCall) {
+                        Timber.i("Phone call ended; resuming pending autoplay queue")
+                        callEndDrainJob?.cancel()
+                        callEndDrainJob = scope.launch {
+                            if (callStateMonitor.isInCall.value) return@launch
+                            try {
+                                playReplyUseCase.drainPendingIfAutoPlay()
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (error: Exception) {
+                                Timber.w(error, "Pending autoplay drain after call failed")
+                            }
+                        }
+                    }
+                    wasInCall = isInCall
+                }
+        }
+    }
+
+    private suspend fun collectNewMessages() {
+        Timber.i("Receiver subscribed to the buffered incoming-message channel")
+        tdLibClient.newMessages.collect { update ->
+            try {
+                processNewMessageWithRetry(update)
+            } catch (cancelled: CancellationException) {
+                val requeued = tdLibClient.requeueNewMessage(update)
+                Timber.i(
+                    "Receiver collector cancelled with in-flight chatId=${update.message.chatId} " +
+                        "messageId=${update.message.id}; requeued=$requeued"
+                )
+                throw cancelled
+            }
+        }
+    }
+
+    private suspend fun processNewMessageWithRetry(update: TdApi.UpdateNewMessage) {
+        for (attempt in 1..PROCESS_MAX_ATTEMPTS) {
+            try {
+                processNewMessage(update)
+                return
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                if (attempt == PROCESS_MAX_ATTEMPTS) {
+                    Timber.e(
+                        error,
+                        "Incoming Telegram message processing exhausted $PROCESS_MAX_ATTEMPTS " +
+                            "attempts chatId=${update.message.chatId} messageId=${update.message.id}"
+                    )
+                    return
+                }
+                Timber.w(
+                    error,
+                    "Incoming Telegram message processing failed attempt=$attempt/" +
+                        "$PROCESS_MAX_ATTEMPTS chatId=${update.message.chatId} " +
+                        "messageId=${update.message.id}; retrying"
+                )
+                delay(PROCESS_RETRY_BASE_DELAY_MS * attempt)
+            }
+        }
+    }
+
+    private suspend fun processNewMessage(update: TdApi.UpdateNewMessage) {
+        currentCoroutineContext().ensureActive()
+        val msg = update.message
+        val contentClass = msg.content.javaClass.simpleName
+        if (msg.isOutgoing) {
+            Timber.d(
+                "Ignoring outgoing Telegram content=$contentClass " +
+                    "chatId=${msg.chatId} messageId=${msg.id}"
+            )
+            return
+        }
+        val routeKey = receiverRouteKey(msg.chatId, msg.topicId)
+        if (routeKey == null) {
+            Timber.w(
+                "Unmatched Telegram content=$contentClass chatId=${msg.chatId} " +
+                    "unsupportedTopic=${msg.topicId?.javaClass?.simpleName} messageId=${msg.id}"
+            )
+            return
+        }
+        val routing = routingRef.get()
+        val target = routing[routeKey]
+        // stopSupervisor cancels the collector before clearing the route map.
+        // Recheck cancellation here so that race requeues instead of treating
+        // the in-flight update as an unmatched message.
+        currentCoroutineContext().ensureActive()
+        if (target == null) {
+            Timber.w(
+                "Unmatched Telegram route chatId=${routeKey.chatId} topicId=${routeKey.topicId} " +
+                    "content=$contentClass messageId=${msg.id} " +
+                    "configuredRoutes=${routing.keys.joinToString()}"
+            )
+            return
+        }
+        val localMessageId = receiverMessageId(msg.chatId, msg.id)
+        if (!processingMessageIds.add(localMessageId)) {
+            Timber.i(
+                "Ignoring duplicate in-flight Telegram update chatId=${msg.chatId} messageId=${msg.id}"
+            )
+            return
+        }
+        try {
+            if (messageRepository.getById(localMessageId) != null) {
+                Timber.i(
+                    "Ignoring already-persisted Telegram update chatId=${msg.chatId} " +
+                        "messageId=${msg.id} localMessageId=$localMessageId"
+                )
+                return
+            }
+            Timber.i(
+                "Incoming Telegram content=$contentClass target=${target.receiverLabel()} " +
+                    "chatId=${routeKey.chatId} topicId=${routeKey.topicId} messageId=${msg.id}"
+            )
+            when (val content = classifyReceiverContent(msg.content)) {
+                is ReceiverContent.Audio ->
+                    handleAudio(target, msg, localMessageId, contentClass, content)
+                is ReceiverContent.Text -> handleText(target, msg, localMessageId, content.text)
+                is ReceiverContent.Unsupported -> Timber.w(
+                    "Unsupported incoming Telegram content=${content.className} " +
+                        "target=${target.receiverLabel()} messageId=${msg.id}"
+                )
+            }
+        } finally {
+            processingMessageIds.remove(localMessageId)
+        }
+    }
+
+    private suspend fun handleAudio(
         target: Conversation,
         tdMsg: TdApi.Message,
-        content: TdApi.MessageVoiceNote
+        localMessageId: String,
+        contentClass: String,
+        content: ReceiverContent.Audio
     ) {
-        val voiceFile = content.voiceNote.voice
-        val localPath = ensureDownloaded(voiceFile) ?: run {
-            Timber.w("Skipping voice note ${tdMsg.id} — download failed")
+        val localPath = ensureDownloaded(
+            file = content.file,
+            targetLabel = target.receiverLabel(),
+            contentClass = contentClass,
+            telegramMessageId = tdMsg.id
+        ) ?: run {
+            Timber.w(
+                "Skipping incoming audio content=$contentClass target=${target.receiverLabel()} " +
+                    "messageId=${tdMsg.id} after bounded download retries"
+            )
             return
         }
 
         val message = Message(
-            id = UUID.randomUUID().toString(),
+            id = localMessageId,
             conversationId = target.id,
             direction = MessageDirection.INCOMING,
             state = MessageState.RECEIVED,
             telegramMessageId = tdMsg.id,
             audioFilePath = localPath,
-            audioDurationMs = content.voiceNote.duration * 1000L,
+            audioDurationMs = content.durationSeconds.coerceAtLeast(0).toLong() * 1000L,
             createdAt = tdMsg.date.toLong() * 1000L
         )
         messageRepository.insert(message)
@@ -300,19 +466,24 @@ class MtprotoReceiverService : Service() {
             conversation = target,
             timestampMs = message.createdAt,
             messageId = message.id,
-            // v1.24.1 — pass the downloaded voice path so the MessagingStyle
-            // message carries an audio Uri AA can play through the car
-            // speakers itself. Fallback to text-only is handled in the
-            // notifier when FileProvider can't expose the path.
-            audioFilePath = localPath
+            // IncomingMessageNotifier currently labels attached media as
+            // audio/ogg. Only expose compatible OGG files there; MP3/M4A
+            // attachments still play through AudioPlayer without being
+            // misdeclared to Android Auto's notification reader.
+            audioFilePath = localPath.takeIf { content.oggTranscriptionCompatible }
         )
         val inCall = callStateMonitor.isInCall.value
         Timber.i(
-            "Incoming voice ${message.id} — autoPlay=${settings.autoPlayReplies} " +
+            "Incoming audio ${message.id} content=$contentClass target=${target.receiverLabel()} " +
+            "mime=${content.mimeType.ifBlank { "unknown" }} " +
+            "oggCompatible=${content.oggTranscriptionCompatible} autoPlay=${settings.autoPlayReplies} " +
             "inCall=$inCall " +
             "summarize=${settings.summarizeLongMessages} engine=${settings.summaryEngine}"
         )
-        if (settings.summarizeLongMessages && settings.summaryEngine != com.autogram.app.domain.model.SummaryEngineType.NONE) {
+        if (content.oggTranscriptionCompatible &&
+            settings.summarizeLongMessages &&
+            settings.summaryEngine != com.autogram.app.domain.model.SummaryEngineType.NONE
+        ) {
             // Summary mode — skip the original audio. Transcribe (which
             // chains summarize internally), then TTS the summary or, for
             // short messages that didn't qualify, the raw transcription.
@@ -328,8 +499,11 @@ class MtprotoReceiverService : Service() {
             }
         } else {
             // Classic mode: play the audio now, transcribe + summarize in
-            // the background for display in History.
-            scope.launch { transcribeVoiceUseCase.transcribe(message.id) }
+            // the background for display in History when the file is an OGG
+            // container supported by the transcription pipeline.
+            if (content.oggTranscriptionCompatible) {
+                scope.launch { transcribeVoiceUseCase.transcribe(message.id) }
+            }
             playReplyUseCase.playVoiceMessage(
                 message = message,
                 isCallActive = callStateMonitor.isInCall.value
@@ -340,12 +514,12 @@ class MtprotoReceiverService : Service() {
     private suspend fun handleText(
         target: Conversation,
         tdMsg: TdApi.Message,
-        content: TdApi.MessageText
+        localMessageId: String,
+        text: String
     ) {
-        val text = content.text.text.orEmpty()
         if (text.isBlank()) return
         val message = Message(
-            id = UUID.randomUUID().toString(),
+            id = localMessageId,
             conversationId = target.id,
             direction = MessageDirection.INCOMING,
             state = MessageState.RECEIVED,
@@ -391,28 +565,62 @@ class MtprotoReceiverService : Service() {
         }
     }
 
-    /** Blocks until TDLib has the file on disk, or returns null on failure. */
-    private suspend fun ensureDownloaded(file: TdApi.File): String? {
-        if (file.local.isDownloadingCompleted && !file.local.path.isNullOrEmpty()) {
-            return file.local.path
-        }
-        val result = tdLibClient.send(
-            TdApi.DownloadFile().apply {
-                fileId = file.id
-                priority = 32
-                offset = 0
-                limit = 0
-                synchronous = true
+    /**
+     * Blocks until TDLib has the file on disk. Transient failures are retried
+     * in place so FIFO reception order is preserved; permanent failures stop
+     * immediately. The buffered TDLib channel holds later messages while this
+     * bounded retry runs.
+     */
+    private suspend fun ensureDownloaded(
+        file: TdApi.File,
+        targetLabel: String,
+        contentClass: String,
+        telegramMessageId: Long
+    ): String? {
+        file.completedLocalPath()?.let { return it }
+
+        for (attempt in 1..DOWNLOAD_MAX_ATTEMPTS) {
+            val result = tdLibClient.send(
+                TdApi.DownloadFile().apply {
+                    fileId = file.id
+                    priority = 32
+                    offset = 0
+                    limit = 0
+                    synchronous = true
+                }
+            )
+            when (result) {
+                is TdApi.File -> {
+                    result.completedLocalPath()?.let { return it }
+                    Timber.w(
+                        "Download incomplete attempt=$attempt/$DOWNLOAD_MAX_ATTEMPTS " +
+                            "content=$contentClass target=$targetLabel messageId=$telegramMessageId"
+                    )
+                }
+                is TdApi.Error -> {
+                    val transient = isTransientDownloadError(result.code, result.message)
+                    Timber.w(
+                        "Download failed attempt=$attempt/$DOWNLOAD_MAX_ATTEMPTS transient=$transient " +
+                            "code=${result.code} content=$contentClass target=$targetLabel " +
+                            "messageId=$telegramMessageId error=${result.message}"
+                    )
+                    if (!transient) return null
+                }
+                else -> Timber.w(
+                    "Unexpected download result=${result.javaClass.simpleName} " +
+                        "attempt=$attempt/$DOWNLOAD_MAX_ATTEMPTS content=$contentClass " +
+                        "target=$targetLabel messageId=$telegramMessageId"
+                )
             }
+            if (attempt < DOWNLOAD_MAX_ATTEMPTS) {
+                delay(DOWNLOAD_RETRY_BASE_DELAY_MS * attempt)
+            }
+        }
+        Timber.w(
+            "Download exhausted $DOWNLOAD_MAX_ATTEMPTS attempts content=$contentClass " +
+                "target=$targetLabel messageId=$telegramMessageId"
         )
-        return when (result) {
-            is TdApi.File -> if (result.local.isDownloadingCompleted) result.local.path else null
-            is TdApi.Error -> {
-                Timber.w("DownloadFile failed: ${result.code} ${result.message}")
-                null
-            }
-            else -> null
-        }
+        return null
     }
 
     // --- Notification ---
@@ -448,4 +656,159 @@ class MtprotoReceiverService : Service() {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         nm.notify(NOTIFICATION_ID, buildNotification(text))
     }
+}
+
+internal data class ReceiverRouteKey(val chatId: Long, val topicId: Long?)
+
+/** Stable local identity used to make repeated TDLib updates idempotent. */
+internal fun receiverMessageId(chatId: Long, telegramMessageId: Long): String =
+    "telegram:$chatId:$telegramMessageId"
+
+internal data class ReceiverRoutingSnapshot(
+    val routes: Map<ReceiverRouteKey, Conversation>,
+    val duplicateKeys: Set<ReceiverRouteKey>,
+    val invalidTargets: List<Conversation>
+)
+
+/** Builds an immutable routing snapshot while preserving pinned-list order. */
+internal fun buildReceiverRouting(targets: List<Conversation>): ReceiverRoutingSnapshot {
+    val routes = linkedMapOf<ReceiverRouteKey, Conversation>()
+    val duplicates = linkedSetOf<ReceiverRouteKey>()
+    val invalid = mutableListOf<Conversation>()
+    for (target in targets) {
+        val chatId = target.targetChatId.toLongOrNull()
+        if (chatId == null) {
+            invalid += target
+            continue
+        }
+        val key = ReceiverRouteKey(chatId, target.topicId)
+        if (routes.putIfAbsent(key, target) != null) duplicates += key
+    }
+    return ReceiverRoutingSnapshot(routes.toMap(), duplicates.toSet(), invalid.toList())
+}
+
+/** Returns null for topic kinds Autogram cannot configure or route exactly. */
+internal fun receiverRouteKey(chatId: Long, topic: TdApi.MessageTopic?): ReceiverRouteKey? =
+    when (topic) {
+        null -> ReceiverRouteKey(chatId, null)
+        is TdApi.MessageTopicForum -> ReceiverRouteKey(chatId, topic.forumTopicId.toLong())
+        else -> null
+    }
+
+internal sealed interface ReceiverContent {
+    data class Text(val text: String) : ReceiverContent
+
+    data class Audio(
+        val file: TdApi.File,
+        val durationSeconds: Int,
+        val mimeType: String,
+        val fileName: String?,
+        val oggTranscriptionCompatible: Boolean
+    ) : ReceiverContent
+
+    data class Unsupported(val className: String) : ReceiverContent
+}
+
+/** Normalizes Telegram's three audio representations into one playback path. */
+internal fun classifyReceiverContent(content: TdApi.MessageContent): ReceiverContent = when (content) {
+    is TdApi.MessageText -> ReceiverContent.Text(content.text?.text.orEmpty())
+    is TdApi.MessageVoiceNote -> {
+        val note = content.voiceNote
+        val file = note?.voice
+        if (note == null || file == null) {
+            ReceiverContent.Unsupported(content.javaClass.simpleName)
+        } else {
+            ReceiverContent.Audio(
+                file = file,
+                durationSeconds = note.duration,
+                mimeType = note.mimeType.orEmpty(),
+                fileName = null,
+                // Older TDLib rows can omit MIME for genuine voice notes;
+                // Telegram voice notes were OGG/Opus in those app versions.
+                oggTranscriptionCompatible = isOggAudio(
+                    mimeType = note.mimeType,
+                    fileName = null,
+                    assumeOggWhenUnknown = true
+                )
+            )
+        }
+    }
+    is TdApi.MessageAudio -> {
+        val audio = content.audio
+        val file = audio?.audio
+        if (audio == null || file == null) {
+            ReceiverContent.Unsupported(content.javaClass.simpleName)
+        } else {
+            ReceiverContent.Audio(
+                file = file,
+                durationSeconds = audio.duration,
+                mimeType = audio.mimeType.orEmpty(),
+                fileName = audio.fileName,
+                oggTranscriptionCompatible = isOggAudio(audio.mimeType, audio.fileName)
+            )
+        }
+    }
+    is TdApi.MessageDocument -> {
+        val document = content.document
+        val mimeType = document?.mimeType.orEmpty()
+        val fileName = document?.fileName
+        val file = document?.document
+        if (document == null || file == null || !isAudioDocument(mimeType, fileName)) {
+            ReceiverContent.Unsupported(content.javaClass.simpleName)
+        } else {
+            ReceiverContent.Audio(
+                file = file,
+                durationSeconds = 0,
+                mimeType = mimeType,
+                fileName = fileName,
+                oggTranscriptionCompatible = isOggAudio(mimeType, fileName)
+            )
+        }
+    }
+    else -> ReceiverContent.Unsupported(content.javaClass.simpleName)
+}
+
+internal fun isOggAudio(
+    mimeType: String?,
+    fileName: String?,
+    assumeOggWhenUnknown: Boolean = false
+): Boolean {
+    val normalizedMime = mimeType.orEmpty().substringBefore(';').trim().lowercase(Locale.ROOT)
+    val normalizedName = fileName.orEmpty().trim().lowercase(Locale.ROOT)
+    if (normalizedMime == "audio/ogg" || normalizedMime == "application/ogg") return true
+    if (normalizedName.endsWith(".ogg") || normalizedName.endsWith(".oga")) return true
+    return assumeOggWhenUnknown && normalizedMime.isBlank() && normalizedName.isBlank()
+}
+
+/** Accept audio documents whose sender omitted or generalized the MIME type. */
+internal fun isAudioDocument(mimeType: String?, fileName: String?): Boolean {
+    val normalizedMime = mimeType.orEmpty().substringBefore(';').trim().lowercase(Locale.ROOT)
+    if (normalizedMime.startsWith("audio/")) return true
+    val normalizedName = fileName.orEmpty().trim().lowercase(Locale.ROOT)
+    return AUDIO_DOCUMENT_EXTENSIONS.any(normalizedName::endsWith)
+}
+
+private val AUDIO_DOCUMENT_EXTENSIONS = setOf(
+    ".aac", ".flac", ".m4a", ".mp3", ".oga", ".ogg", ".opus", ".wav", ".webm"
+)
+
+internal fun isTransientDownloadError(code: Int, message: String): Boolean {
+    if (code == 408 || code == 429 || code == 598 || code in 500..599) return true
+    val normalized = message.uppercase(Locale.ROOT)
+    return normalized.contains("TIMEOUT") ||
+        normalized.contains("NETWORK") ||
+        normalized.contains("CONNECTION") ||
+        normalized.contains("TEMPORAR") ||
+        normalized.contains("FLOOD_WAIT")
+}
+
+private fun TdApi.File.completedLocalPath(): String? {
+    val localFile = local ?: return null
+    val path = localFile.path?.takeIf { localFile.isDownloadingCompleted && it.isNotBlank() } ?: return null
+    return path.takeIf { java.io.File(it).isFile }
+}
+
+private fun Conversation.receiverLabel(): String = buildString {
+    append(targetTitle?.takeIf { it.isNotBlank() } ?: "conversation:$id")
+    topicName?.takeIf { it.isNotBlank() }?.let { append(" › ").append(it) }
 }

@@ -98,14 +98,14 @@ class AutogramApplication : Application(), Configuration.Provider {
     }
 
     /**
-     * Audit-HIGH-5: release the TextToSpeech engine when the system says we're
-     * short on memory. `Application.onTerminate()` is only called in emulators,
-     * so we hook onTrimMemory instead — fired on real devices when the system
-     * backgrounds or is under pressure.
+     * Keep TTS alive when the phone UI is merely hidden. Android Auto normally
+     * triggers TRIM_MEMORY_UI_HIDDEN while the car host owns the visible UI;
+     * shutting down here used to cut off an active reply and strand its queue.
+     * Only release an idle engine at the platform's strongest trim level.
      */
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        if (level >= TRIM_MEMORY_UI_HIDDEN) {
+        if (level >= TRIM_MEMORY_COMPLETE && !ttsPlayer.isSpeaking()) {
             runCatching { ttsPlayer.shutdown() }
         }
     }

@@ -271,5 +271,7 @@ enum class PendingReason {
      * and the Pending Queue tab list (which queries Room) would show
      * empty even though the badge counted them.
      */
-    PLAYBACK_BUSY
+    PLAYBACK_BUSY,
+    /** Playback started but was interrupted before audibility was confirmed. */
+    PLAYBACK_INTERRUPTED
 }

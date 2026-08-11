@@ -12,6 +12,7 @@ import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.domain.repository.SettingsRepository
 import com.autogram.app.infrastructure.audio.AudioPlayer
 import com.autogram.app.infrastructure.audio.AudioRecorder
+import com.autogram.app.infrastructure.audio.AudioFocusDeniedException
 import com.autogram.app.infrastructure.audio.TtsPlayer
 import com.autogram.app.infrastructure.persistence.dao.PendingPlaybackDao
 import com.autogram.app.service.AutogramMediaPlaybackController
@@ -77,6 +78,8 @@ class PlayReplyUseCaseTest {
         every { audioPlayer.play(any(), any(), any(), any(), any()) } returns Result.success(Unit)
         every { audioRecorder.isRecording() } returns false
         coEvery { settingsRepository.get() } returns defaultSettings
+        coEvery { pendingPlaybackDao.getAll() } returns emptyList()
+        coEvery { messageRepository.getStaleNowPlaying() } returns emptyList()
 
         existingAudio = File.createTempFile("autogram-test-", ".ogg").apply { writeText("dummy") }
 
@@ -209,7 +212,7 @@ class PlayReplyUseCaseTest {
         useCase.playTextMessage(msg, isCallActive = false)
 
         coVerify { pendingPlaybackDao.insert(match { it.reason == PendingReason.USER_RECORDING }) }
-        coVerify(exactly = 0) { ttsPlayer.speak(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { ttsPlayer.speak(any(), any(), any(), any(), any()) }
     }
 
     @Test fun `recording drain waits two seconds after gate clears`() = runTest {
@@ -237,13 +240,13 @@ class PlayReplyUseCaseTest {
         coEvery { settingsRepository.get() } returns defaultSettings.copy(autoPlayReplies = false)
         useCase.playTextMessage(textMessage(), isCallActive = false)
         coVerify { pendingPlaybackDao.insert(match { it.reason == PendingReason.SILENT_MODE }) }
-        coVerify(exactly = 0) { ttsPlayer.speak(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { ttsPlayer.speak(any(), any(), any(), any(), any()) }
     }
 
     @Test fun `playTextMessage respects in-call`() = runTest {
         useCase.playTextMessage(textMessage(), isCallActive = true)
         coVerify { pendingPlaybackDao.insert(match { it.reason == PendingReason.IN_CALL }) }
-        coVerify(exactly = 0) { ttsPlayer.speak(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { ttsPlayer.speak(any(), any(), any(), any(), any()) }
     }
 
     @Test fun `playTextMessage with autoPlay off enqueues for manual drain`() = runTest {
@@ -251,13 +254,13 @@ class PlayReplyUseCaseTest {
         coEvery { settingsRepository.get() } returns defaultSettings.copy(autoPlayReplies = false)
         useCase.playTextMessage(textMessage(), isCallActive = false)
         coVerify { pendingPlaybackDao.insert(match { it.reason == PendingReason.SILENT_MODE }) }
-        coVerify(exactly = 0) { ttsPlayer.speak(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { ttsPlayer.speak(any(), any(), any(), any(), any()) }
     }
 
     @Test fun `playManually speaks text even when autoPlayReplies is off`() = runTest {
         coEvery { settingsRepository.get() } returns defaultSettings.copy(autoPlayReplies = false)
         useCase.playManually(textMessage(text = "hola"))
-        coVerify { ttsPlayer.speak("hola", any(), any(), any()) }
+        coVerify { ttsPlayer.speak("hola", any(), any(), any(), any()) }
     }
 
     @Test fun `playAllPending bypasses autoPlayReplies off`() = runTest {
@@ -272,7 +275,7 @@ class PlayReplyUseCaseTest {
 
     @Test fun `playTextMessage happy path calls speak`() = runTest {
         useCase.playTextMessage(textMessage(text = "hola"), isCallActive = false)
-        coVerify { ttsPlayer.speak("hola", any(), any(), defaultSettings.playbackSpeed) }
+        coVerify { ttsPlayer.speak("hola", any(), any(), defaultSettings.playbackSpeed, any()) }
     }
 
     @Test fun `playTextMessage uses configured playback speed for TTS`() = runTest {
@@ -280,12 +283,12 @@ class PlayReplyUseCaseTest {
 
         useCase.playTextMessage(textMessage(text = "hola"), isCallActive = false)
 
-        coVerify { ttsPlayer.speak("hola", any(), any(), 1.75f) }
+        coVerify { ttsPlayer.speak("hola", any(), any(), 1.75f, any()) }
     }
 
     @Test fun `playTextMessage skips blank text`() = runTest {
         useCase.playTextMessage(textMessage(text = ""), isCallActive = false)
-        coVerify(exactly = 0) { ttsPlayer.speak(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { ttsPlayer.speak(any(), any(), any(), any(), any()) }
     }
 
     // --- playSummaryOrTranscription preference order ----------------------
@@ -298,7 +301,7 @@ class PlayReplyUseCaseTest {
             transcriptionState = TranscriptionState.DONE
         )
         useCase.playSummaryOrTranscription(msg, isCallActive = false)
-        coVerify { ttsPlayer.speak("short summary", any(), any(), defaultSettings.playbackSpeed) }
+        coVerify { ttsPlayer.speak("short summary", any(), any(), defaultSettings.playbackSpeed, any()) }
     }
 
     @Test fun `playSummaryOrTranscription falls back to transcription when no summary`() = runTest {
@@ -307,7 +310,7 @@ class PlayReplyUseCaseTest {
             transcriptionState = TranscriptionState.DONE
         )
         useCase.playSummaryOrTranscription(msg, isCallActive = false)
-        coVerify { ttsPlayer.speak("transcription text", any(), any(), defaultSettings.playbackSpeed) }
+        coVerify { ttsPlayer.speak("transcription text", any(), any(), defaultSettings.playbackSpeed, any()) }
     }
 
     @Test fun `playSummaryOrTranscription returns silently with no usable text`() = runTest {
@@ -317,7 +320,7 @@ class PlayReplyUseCaseTest {
             textContent = null
         )
         useCase.playSummaryOrTranscription(msg, isCallActive = false)
-        coVerify(exactly = 0) { ttsPlayer.speak(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { ttsPlayer.speak(any(), any(), any(), any(), any()) }
     }
 
     // --- stopAll resets state ---------------------------------------------
@@ -376,5 +379,175 @@ class PlayReplyUseCaseTest {
         verify { pendingReplyNotifier.notifyPending(1) }
         useCase.playVoiceMessage(voiceMessage("m2"), isCallActive = true)
         verify { pendingReplyNotifier.notifyPending(2) }
+    }
+
+    @Test fun `accepted TTS request keeps a rapid second text in the queue`() = runTest {
+        every { ttsPlayer.isSpeaking() } returns false
+
+        useCase.playTextMessage(textMessage("first", "first reply"))
+        useCase.playTextMessage(textMessage("second", "second reply"))
+
+        coVerify(exactly = 1) {
+            ttsPlayer.speak("first reply", any(), any(), any(), any())
+        }
+        coVerify {
+            pendingPlaybackDao.insert(match {
+                it.messageId == "second" && it.reason == PendingReason.PLAYBACK_BUSY
+            })
+        }
+    }
+
+    @Test fun `audio focus denial returns voice to pending instead of marking failed`() = runTest {
+        every {
+            audioPlayer.play(any(), any(), any(), any(), any())
+        } returns Result.failure(AudioFocusDeniedException("voice"))
+
+        useCase.playVoiceMessage(voiceMessage("focus-denied"))
+
+        coVerify {
+            pendingPlaybackDao.insert(match {
+                it.messageId == "focus-denied" &&
+                    it.reason == PendingReason.PLAYBACK_INTERRUPTED
+            })
+        }
+        coVerify(exactly = 0) {
+            messageRepository.update(match {
+                it.id == "focus-denied" && it.state == MessageState.FAILED
+            })
+        }
+        assertEquals(1, useCase.pendingCount())
+    }
+
+    @Test fun `pending persistence is deleted only after audible completion`() = runTest {
+        val completion = slot<(Result<Unit>) -> Unit>()
+        every {
+            audioPlayer.play(any(), any(), any(), any(), capture(completion))
+        } returns Result.success(Unit)
+        val message = voiceMessage("durable")
+        useCase.playVoiceMessage(message, isCallActive = true)
+
+        useCase.playAllPending()
+
+        coVerify(exactly = 0) { pendingPlaybackDao.deleteByMessageId("durable") }
+        completion.captured(Result.success(Unit))
+        coVerify(timeout = 2_000) { pendingPlaybackDao.deleteByMessageId("durable") }
+    }
+
+    @Test fun `stale playing message is restored as pending not acknowledged`() = runTest {
+        val stale = voiceMessage("interrupted").copy(state = MessageState.PLAYING)
+        coEvery { messageRepository.getStaleNowPlaying() } returns listOf(stale)
+
+        useCase.restorePendingQueue()
+
+        coVerify {
+            messageRepository.update(match {
+                it.id == "interrupted" && it.state == MessageState.PENDING_PLAYBACK
+            })
+        }
+        coVerify {
+            pendingPlaybackDao.insert(match {
+                it.messageId == "interrupted" &&
+                    it.reason == PendingReason.PLAYBACK_INTERRUPTED
+            })
+        }
+        coVerify(exactly = 0) {
+            messageRepository.update(match {
+                it.id == "interrupted" && it.state == MessageState.PLAYED
+            })
+        }
+    }
+
+    @Test fun `mark all acknowledges the current item and the remaining queue`() = runTest {
+        val current = voiceMessage("current")
+        val queued = voiceMessage("queued")
+        coEvery { messageRepository.getById("current") } returns
+            current.copy(state = MessageState.PLAYING)
+
+        useCase.playVoiceMessage(current)
+        useCase.playVoiceMessage(queued)
+        useCase.markAllPendingAsListened()
+
+        coVerify { pendingPlaybackDao.deleteByMessageId("current") }
+        coVerify { pendingPlaybackDao.deleteByMessageId("queued") }
+        coVerify {
+            messageRepository.update(match {
+                it.id == "current" && it.state == MessageState.PLAYED
+            })
+        }
+        coVerify {
+            messageRepository.update(match {
+                it.id == "queued" && it.state == MessageState.PLAYED
+            })
+        }
+        assertEquals(0, useCase.pendingCount())
+    }
+
+    @Test fun `late completion cannot clear a replacement playback`() = runTest {
+        val callbacks = mutableListOf<(Result<Unit>) -> Unit>()
+        every {
+            audioPlayer.play(any(), any(), any(), any(), any())
+        } answers {
+            callbacks += arg<(Result<Unit>) -> Unit>(4)
+            Result.success(Unit)
+        }
+        val first = voiceMessage("first")
+        val replacement = voiceMessage("replacement")
+        coEvery { messageRepository.getById("first") } returns first
+
+        useCase.playVoiceMessage(first)
+        useCase.playManually(replacement)
+        callbacks.first().invoke(Result.success(Unit))
+        Thread.sleep(150)
+
+        assertEquals(
+            PlayReplyUseCase.PlaybackStatus.Playing("replacement"),
+            useCase.playbackStatus.value
+        )
+        coVerify(exactly = 0) {
+            messageRepository.update(match {
+                it.id == "first" && it.state == MessageState.PLAYED
+            })
+        }
+        verify(exactly = 2) { audioPlayer.play(any(), any(), any(), any(), any()) }
+    }
+
+    @Test fun `repeated play all starts only one queued item`() = runTest {
+        useCase.playVoiceMessage(voiceMessage("first"), isCallActive = true)
+        useCase.playVoiceMessage(voiceMessage("second"), isCallActive = true)
+
+        useCase.playAllPending()
+        useCase.playAllPending()
+
+        verify(exactly = 1) { audioPlayer.play(any(), any(), any(), any(), any()) }
+        assertEquals(1, useCase.pendingCount())
+    }
+
+    @Test fun `repeated stop does not cancel current item requeue`() = runTest {
+        val current = voiceMessage("current")
+        coEvery { messageRepository.getById("current") } returns current
+        useCase.playVoiceMessage(current)
+
+        useCase.stopAll()
+        useCase.stopAll()
+
+        coVerify(timeout = 2_000) {
+            pendingPlaybackDao.insert(match { it.messageId == "current" })
+        }
+        assertEquals(1, useCase.pendingCount())
+    }
+
+    @Test fun `queued item without playable content fails and drain continues`() = runTest {
+        val invalid = voiceMessage("invalid", path = null)
+        useCase.playVoiceMessage(invalid, isCallActive = true)
+
+        useCase.playAllPending()
+
+        coVerify {
+            messageRepository.update(match {
+                it.id == "invalid" && it.state == MessageState.FAILED
+            })
+        }
+        coVerify { pendingPlaybackDao.deleteByMessageId("invalid") }
+        assertEquals(0, useCase.pendingCount())
     }
 }

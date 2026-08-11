@@ -33,15 +33,13 @@ class AudioPlayer @Inject constructor(
     private val diagnostics: PlaybackDiagnostics,
     private val carConnectionMonitor: CarConnectionMonitor
 ) {
+    private val operationLock = Any()
+    private val stateLock = Any()
     private var mediaPlayer: MediaPlayer? = null
-    private var isPlaying = false
+    @Volatile private var isPlaying = false
     private var audioFocusRequest: AudioFocusRequest? = null
     private var completionHandler: ((Result<Unit>) -> Unit)? = null
-    // v1.24.1 — track focus result + focus mode at play() time so the
-    // post-start diagnostics record carries both. Kept private; the
-    // public StateFlow surface lives on [PlaybackDiagnostics].
-    private var lastFocusGranted: Boolean = false
-    private var lastFocusMode: AudioFocusMode = AudioFocusMode.TRANSIENT_MAY_DUCK
+    private var playbackGeneration: Long = 0L
 
     /**
      * Play an audio file. Requests audio focus per [focusMode] before
@@ -68,7 +66,18 @@ class AudioPlayer @Inject constructor(
         focusMode: AudioFocusMode = AudioFocusMode.TRANSIENT_MAY_DUCK,
         useNavigationUsage: Boolean = false,
         onComplete: (Result<Unit>) -> Unit = {}
+    ): Result<Unit> = synchronized(operationLock) {
+        playLocked(file, speed, focusMode, useNavigationUsage, onComplete)
+    }
+
+    private fun playLocked(
+        file: File,
+        speed: Float,
+        focusMode: AudioFocusMode,
+        useNavigationUsage: Boolean,
+        onComplete: (Result<Unit>) -> Unit
     ): Result<Unit> {
+        var startedGeneration: Long? = null
         return try {
             // v1.24.6 — entry log up-front so the file log makes it
             // obvious which playback path (and which attributes) was
@@ -82,8 +91,9 @@ class AudioPlayer @Inject constructor(
                     "effectiveSpeed=$effectiveSpeed " +
                     "focusMode=$focusMode navUsage=$useNavigationUsage exists=${file.exists()} size=${file.length()}"
             )
-            stop()
-            completionHandler = onComplete
+            stopLocked()
+            val generation = beginPlayback(onComplete)
+            startedGeneration = generation
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             val outputSnapshot = getOutputDevices(audioManager)
             val carConnectionType = carConnectionMonitor.currentType()
@@ -106,34 +116,64 @@ class AudioPlayer @Inject constructor(
             // TRANSIENT_MAY_DUCK is accepted most freely but some cars treat
             // it as a "soft" request and route the audio to a muted channel.
             // TRANSIENT_EXCLUSIVE / GAIN are stricter (other media is ducked
-            // or paused). Whichever the user has selected, we keep playing
-            // even on denial — the platform's mixer is responsible for the
-            // final output. See [AudioFocusMode].
-            val focusGranted = requestAudioFocus(audioManager, playbackAttributes, focusMode)
-            lastFocusGranted = focusGranted
-            lastFocusMode = focusMode
-            if (!focusGranted) {
-                Timber.w("Audio focus denied (likely AA/Maps active) — playing anyway with ducking")
-            } else {
-                Timber.d("Audio focus granted")
+            // or paused). A denied request is a failed start: allowing the
+            // decoder to run anyway would mark a message played even when
+            // Android Auto's mixer suppresses it.
+            when (requestAudioFocus(audioManager, playbackAttributes, focusMode, generation)) {
+                FocusRequestResult.DENIED -> {
+                    Timber.w("Audio focus denied; voice playback will not start")
+                    diagnostics.record(
+                        source = PlaybackDiagnostics.Source.AUDIO_PLAYER,
+                        focusGranted = false,
+                        routedDeviceType = null,
+                        focusMode = focusMode
+                    )
+                    cancelStart(generation)
+                    return Result.failure(AudioFocusDeniedException("voice playback"))
+                }
+                FocusRequestResult.SUPERSEDED -> {
+                    Timber.d("Audio focus request superseded before playback start")
+                    return Result.success(Unit)
+                }
+                FocusRequestResult.GRANTED -> Timber.d("Audio focus granted")
             }
 
-            mediaPlayer = MediaPlayer().apply {
+            val player = MediaPlayer()
+            if (!attachPlayer(generation, player)) {
+                player.release()
+                return Result.success(Unit)
+            }
+            player.apply {
                 setDataSource(file.absolutePath)
                 setAudioAttributes(playbackAttributes)
                 setOnCompletionListener {
-                    this@AudioPlayer.isPlaying = false
-                    abandonAudioFocus()
-                    completionHandler?.invoke(Result.success(Unit))
+                    completePlayback(
+                        generation = generation,
+                        expectedPlayer = this,
+                        result = Result.success(Unit)
+                    )
                 }
                 setOnErrorListener { _, what, extra ->
                     Timber.e("MediaPlayer error: what=$what extra=$extra")
-                    this@AudioPlayer.isPlaying = false
-                    abandonAudioFocus()
-                    completionHandler?.invoke(Result.failure(Exception("MediaPlayer error: what=$what extra=$extra")))
+                    completePlayback(
+                        generation = generation,
+                        expectedPlayer = this,
+                        result = Result.failure(Exception("MediaPlayer error: what=$what extra=$extra"))
+                    )
                     true
                 }
                 prepare()
+                if (!isCurrentPlayback(generation, this)) return Result.success(Unit)
+                // Select the route before PlaybackParams: setPlaybackParams can
+                // auto-start from Prepared on some OEMs, so routing afterwards
+                // can lose the beginning of the message to a stale sink.
+                preferOutputRoute(
+                    player = this,
+                    audioManager = audioManager,
+                    attributes = playbackAttributes,
+                    outputSnapshot = outputSnapshot,
+                    carConnectionType = carConnectionType
+                )
                 // Applying PlaybackParams before start() on some OEMs silently
                 // auto-starts playback; set it after prepare() + right before
                 // start() and guard against invalid speeds.
@@ -142,67 +182,175 @@ class AudioPlayer @Inject constructor(
                         playbackParams = playbackParams.setSpeed(effectiveSpeed)
                     }.onFailure { Timber.w(it, "setSpeed($effectiveSpeed) failed — playing at 1x") }
                 }
-                // Prefer routing to a connected Bluetooth / car output so the
-                // driver hears replies through the car speakers / headset
-                // instead of the phone's loudspeaker.
-                preferOutputRoute(
-                    player = this,
-                    audioManager = audioManager,
-                    attributes = playbackAttributes,
-                    outputSnapshot = outputSnapshot,
-                    carConnectionType = carConnectionType
-                )
+                if (!isCurrentPlayback(generation, this)) return Result.success(Unit)
                 start()
-                logRoutedDevice(this)
+                if (markStarted(generation, this)) {
+                    logRoutedDevice(this, focusMode)
+                }
             }
-            isPlaying = true
             Timber.d("Playing: ${file.name} (speed=${effectiveSpeed}x)")
             Result.success(Unit)
         } catch (e: Exception) {
             Timber.e(e, "Failed to play audio")
-            // BUG-17: Release MediaPlayer on error to prevent resource leak
-            try { mediaPlayer?.release() } catch (_: Exception) {}
-            mediaPlayer = null
-            isPlaying = false
-            abandonAudioFocus()
-            Result.failure(e)
+            // If focus loss or an explicit stop already completed/invalidated
+            // this generation, its callback/state owner has handled the event.
+            // Returning success prevents callers from processing it twice.
+            val generation = startedGeneration
+            if (generation == null || cancelStart(generation)) {
+                Result.failure(e)
+            } else {
+                Result.success(Unit)
+            }
         }
     }
 
     fun pause() {
-        mediaPlayer?.let {
-            if (it.isPlaying) {
-                it.pause()
-                isPlaying = false
+        val player = synchronized(stateLock) { mediaPlayer }
+        player?.let {
+            runCatching {
+                if (it.isPlaying) it.pause()
+            }.onSuccess {
+                synchronized(stateLock) {
+                    if (mediaPlayer === player) isPlaying = false
+                }
             }
         }
     }
 
     fun resume() {
         try {
-            mediaPlayer?.let {
+            val player = synchronized(stateLock) { mediaPlayer }
+            player?.let {
                 it.start()
-                isPlaying = true
+                synchronized(stateLock) {
+                    if (mediaPlayer === player) isPlaying = true
+                }
             }
         } catch (e: Exception) {
             Timber.e(e, "Failed to resume playback")
         }
     }
 
-    fun stop() {
-        try {
-            mediaPlayer?.apply {
-                if (isPlaying) stop()
-                release()
-            }
-        } catch (_: Exception) {
+    fun stop() = synchronized(operationLock) {
+        stopLocked()
+    }
+
+    private fun stopLocked() {
+        val player: MediaPlayer?
+        val focusRequest: AudioFocusRequest?
+        synchronized(stateLock) {
+            playbackGeneration++
+            player = mediaPlayer
+            focusRequest = audioFocusRequest
+            mediaPlayer = null
+            audioFocusRequest = null
+            completionHandler = null
+            isPlaying = false
         }
-        mediaPlayer = null
-        isPlaying = false
-        abandonAudioFocus()
+        releasePlayer(player)
+        abandonAudioFocus(focusRequest)
     }
 
     fun isPlaying(): Boolean = isPlaying
+
+    /** True while a player is prepared/paused/playing and owns completion state. */
+    fun isActive(): Boolean = synchronized(stateLock) {
+        mediaPlayer != null && completionHandler != null
+    }
+
+    private fun beginPlayback(onComplete: (Result<Unit>) -> Unit): Long =
+        synchronized(stateLock) {
+            playbackGeneration++
+            completionHandler = onComplete
+            mediaPlayer = null
+            audioFocusRequest = null
+            isPlaying = false
+            playbackGeneration
+        }
+
+    private fun attachPlayer(generation: Long, player: MediaPlayer): Boolean =
+        synchronized(stateLock) {
+            if (generation != playbackGeneration || completionHandler == null) {
+                false
+            } else {
+                mediaPlayer = player
+                true
+            }
+        }
+
+    private fun isCurrentPlayback(generation: Long, player: MediaPlayer): Boolean =
+        synchronized(stateLock) {
+            generation == playbackGeneration &&
+                mediaPlayer === player &&
+                completionHandler != null
+        }
+
+    private fun markStarted(generation: Long, player: MediaPlayer): Boolean =
+        synchronized(stateLock) {
+            if (generation != playbackGeneration || mediaPlayer !== player || completionHandler == null) {
+                false
+            } else {
+                isPlaying = true
+                true
+            }
+        }
+
+    /**
+     * Complete one playback generation exactly once. MediaPlayer callbacks
+     * capture both the generation and player instance, so a late event from a
+     * released player cannot invoke the handler installed for a newer message.
+     */
+    private fun completePlayback(
+        generation: Long,
+        expectedPlayer: MediaPlayer?,
+        result: Result<Unit>
+    ): Boolean {
+        val player: MediaPlayer?
+        val focusRequest: AudioFocusRequest?
+        val callback: ((Result<Unit>) -> Unit)?
+        synchronized(stateLock) {
+            if (generation != playbackGeneration || completionHandler == null) return false
+            if (expectedPlayer != null && mediaPlayer !== expectedPlayer) return false
+            playbackGeneration++
+            player = mediaPlayer
+            focusRequest = audioFocusRequest
+            callback = completionHandler
+            mediaPlayer = null
+            audioFocusRequest = null
+            completionHandler = null
+            isPlaying = false
+        }
+        releasePlayer(player)
+        abandonAudioFocus(focusRequest)
+        runCatching { callback?.invoke(result) }
+            .onFailure { Timber.e(it, "AudioPlayer completion callback failed") }
+        return true
+    }
+
+    /** Clear a failed start without invoking its asynchronous callback. */
+    private fun cancelStart(generation: Long): Boolean {
+        val player: MediaPlayer?
+        val focusRequest: AudioFocusRequest?
+        synchronized(stateLock) {
+            if (generation != playbackGeneration || completionHandler == null) return false
+            playbackGeneration++
+            player = mediaPlayer
+            focusRequest = audioFocusRequest
+            mediaPlayer = null
+            audioFocusRequest = null
+            completionHandler = null
+            isPlaying = false
+        }
+        releasePlayer(player)
+        abandonAudioFocus(focusRequest)
+        return true
+    }
+
+    private fun releasePlayer(player: MediaPlayer?) {
+        if (player == null) return
+        runCatching { if (player.isPlaying) player.stop() }
+        runCatching { player.release() }
+    }
 
     /**
      * Current playback position in milliseconds, or null when nothing is
@@ -211,14 +359,18 @@ class AudioPlayer @Inject constructor(
      * IllegalStateException if the player is in an Error state, so we
      * wrap it.
      */
-    fun currentPositionMs(): Int? = runCatching { mediaPlayer?.currentPosition }.getOrNull()
+    fun currentPositionMs(): Int? = runCatching {
+        synchronized(stateLock) { mediaPlayer }?.currentPosition
+    }.getOrNull()
 
     /**
      * Total duration of the loaded track in milliseconds, or null when
      * nothing is loaded. Same IllegalStateException risk as
      * [currentPositionMs].
      */
-    fun durationMs(): Int? = runCatching { mediaPlayer?.duration }.getOrNull()
+    fun durationMs(): Int? = runCatching {
+        synchronized(stateLock) { mediaPlayer }?.duration
+    }.getOrNull()
 
     /**
      * v1.23.0-rc.6 — jumps the underlying [mediaPlayer] to [positionMs]
@@ -229,7 +381,7 @@ class AudioPlayer @Inject constructor(
      */
     fun seekTo(positionMs: Int) {
         runCatching {
-            val mp = mediaPlayer ?: return
+            val mp = synchronized(stateLock) { mediaPlayer } ?: return
             val clamped = positionMs.coerceAtLeast(0).let { p ->
                 val d = mp.duration
                 if (d > 0) p.coerceAtMost(d) else p
@@ -254,8 +406,9 @@ class AudioPlayer @Inject constructor(
     private fun requestAudioFocus(
         audioManager: AudioManager,
         attributes: AudioAttributes,
-        focusMode: AudioFocusMode
-    ): Boolean {
+        focusMode: AudioFocusMode,
+        generation: Long
+    ): FocusRequestResult {
         val focusGainType = when (focusMode) {
             AudioFocusMode.TRANSIENT_MAY_DUCK -> AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
             AudioFocusMode.TRANSIENT_EXCLUSIVE -> AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
@@ -266,18 +419,68 @@ class AudioPlayer @Inject constructor(
                 .setAudioAttributes(attributes)
                 .setWillPauseWhenDucked(false)
                 .setOnAudioFocusChangeListener { focusChange ->
-                    if (focusChange == android.media.AudioManager.AUDIOFOCUS_LOSS) {
-                        pause()
+                    when {
+                        shouldTerminateForFocusChange(focusChange) -> {
+                            Timber.w("Audio focus lost during voice playback (change=$focusChange)")
+                            completePlayback(
+                                generation = generation,
+                                expectedPlayer = null,
+                                result = Result.failure(
+                                    AudioFocusLostException("voice playback", focusChange)
+                                )
+                            )
+                        }
+                        focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                            // The user chose a mode that permits ducking. Keep
+                            // playing; Android owns the temporary attenuation.
+                            Timber.d("Audio focus duck requested; voice playback continues")
+                        }
+                        focusChange == AudioManager.AUDIOFOCUS_GAIN -> {
+                            Timber.d("Audio focus gained for voice playback")
+                        }
                     }
                 }
                 .build()
         } catch (e: Exception) {
             Timber.w(e, "AudioFocusRequest build failed; treating as denied")
-            return false
+            return FocusRequestResult.DENIED
         }
-        audioFocusRequest = request
-        return audioManager.requestAudioFocus(request) ==
-            android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        val installed = synchronized(stateLock) {
+            if (generation != playbackGeneration || completionHandler == null) {
+                false
+            } else {
+                audioFocusRequest = request
+                true
+            }
+        }
+        if (!installed) return FocusRequestResult.SUPERSEDED
+
+        val result = runCatching { audioManager.requestAudioFocus(request) }
+            .onFailure { Timber.w(it, "Audio focus request failed") }
+            .getOrDefault(AudioManager.AUDIOFOCUS_REQUEST_FAILED)
+        if (result != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+            val wasCurrent = synchronized(stateLock) {
+                if (generation == playbackGeneration && audioFocusRequest === request) {
+                    audioFocusRequest = null
+                    true
+                } else {
+                    false
+                }
+            }
+            abandonAudioFocus(request)
+            return if (wasCurrent) FocusRequestResult.DENIED else FocusRequestResult.SUPERSEDED
+        }
+
+        val stillCurrent = synchronized(stateLock) {
+            generation == playbackGeneration &&
+                audioFocusRequest === request &&
+                completionHandler != null
+        }
+        if (!stillCurrent) {
+            abandonAudioFocus(request)
+            return FocusRequestResult.SUPERSEDED
+        }
+        return FocusRequestResult.GRANTED
     }
 
     /**
@@ -383,7 +586,7 @@ class AudioPlayer @Inject constructor(
     private fun buildPlaybackAttributes(useNavigationUsage: Boolean): AudioAttributes {
         // v1.24.5 — mirrors `TtsPlayer.speak`'s `ttsAsNavigationPrompt`
         // branch so the user-facing toggle covers BOTH engines. Same
-        // USAGE_ASSISTANCE_NAVIGATION_GUIDANCE + CONTENT_TYPE_SONIFICATION
+        // USAGE_ASSISTANCE_NAVIGATION_GUIDANCE + CONTENT_TYPE_SPEECH
         // pairing Google Maps directions use; that path speaks over music
         // and routes reliably to car speakers when the default USAGE_MEDIA
         // path gets silently muted by AA's media arbiter (the symptom Pepe
@@ -391,7 +594,9 @@ class AudioPlayer @Inject constructor(
         if (useNavigationUsage) {
             return AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                // This is spoken content, not a click/beep. SPEECH also keeps
+                // Android's focus policy from automatically ducking words.
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                 .build()
         }
         return AudioAttributes.Builder()
@@ -420,18 +625,18 @@ class AudioPlayer @Inject constructor(
         }.getOrDefault(emptyList())
     }
 
-    private fun logRoutedDevice(player: MediaPlayer) {
+    private fun logRoutedDevice(player: MediaPlayer, focusMode: AudioFocusMode) {
         runCatching {
             val type = player.routedDevice?.type
             diagnostics.record(
                 source = PlaybackDiagnostics.Source.AUDIO_PLAYER,
-                focusGranted = lastFocusGranted,
+                focusGranted = true,
                 routedDeviceType = type,
-                focusMode = lastFocusMode
+                focusMode = focusMode
             )
             Timber.i(
                 "AudioPlayer started on routed output type=$type " +
-                    "(focusGranted=$lastFocusGranted mode=$lastFocusMode)"
+                    "(focusGranted=true mode=$focusMode)"
             )
         }
     }
@@ -440,17 +645,18 @@ class AudioPlayer @Inject constructor(
         joinToString(prefix = "[", postfix = "]") { it.type.toString() }
 
     // BUG-38: minSdk=29, always API O+
-    private fun abandonAudioFocus() {
+    private fun abandonAudioFocus(request: AudioFocusRequest?) {
         try {
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+            request?.let { audioManager.abandonAudioFocusRequest(it) }
         } catch (_: Exception) {
         }
-        audioFocusRequest = null
     }
 
     @SuppressLint("InlinedApi")
     companion object {
+        private enum class FocusRequestResult { GRANTED, DENIED, SUPERSEDED }
+
         private val PROJECTED_CAR_OUTPUT_PRIORITY = listOf(
             AudioDeviceInfo.TYPE_BUS,
             AudioDeviceInfo.TYPE_USB_ACCESSORY,
@@ -508,6 +714,10 @@ class AudioPlayer @Inject constructor(
         ): Boolean = requestedNavigationUsage ||
             isConnectedCarConnectionType(carConnectionType) ||
             outputTypes.any(::isProjectedCarOutputType)
+
+        internal fun shouldTerminateForFocusChange(focusChange: Int): Boolean =
+            focusChange == AudioManager.AUDIOFOCUS_LOSS ||
+                focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT
 
         private fun firstByPriority(types: List<Int>, priority: List<Int>): Int? =
             priority.firstOrNull { it in types }

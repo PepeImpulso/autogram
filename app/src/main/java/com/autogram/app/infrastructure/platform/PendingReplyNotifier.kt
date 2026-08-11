@@ -54,6 +54,8 @@ class PendingReplyNotifier @Inject constructor(
             .setContentText(body)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setSilent(true)
+            .setOnlyAlertOnce(true)
             .setAutoCancel(true)
             .setContentIntent(pi)
             .build()
@@ -84,6 +86,8 @@ class PendingReplyNotifier @Inject constructor(
                 NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
                 description = context.getString(R.string.notification_channel_pending_replies_desc)
+                setSound(null, null)
+                enableVibration(false)
             }
             nm.createNotificationChannel(channel)
         }

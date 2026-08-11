@@ -12,13 +12,16 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.drinkless.tdlib.Client
@@ -82,10 +85,11 @@ class TdLibClient @Inject constructor(
     fun clearLastAuthError() { _lastAuthError.value = null }
 
     /**
-     * All non-auth updates from TDLib. Consumers (e.g. MtprotoReceiverService)
-     * filter for the events they care about — typically UpdateNewMessage and
-     * UpdateFile for download progress. Buffer is bounded with DROP_OLDEST so
-     * a slow consumer cannot stall TDLib's update pump.
+     * All non-auth updates from TDLib for ancillary consumers such as file and
+     * chat progress observers. Buffer is bounded with DROP_OLDEST so a slow
+     * consumer cannot stall TDLib's update pump. Incoming messages also go
+     * through [newMessages], whose process-local channel survives ordinary
+     * receiver subscription gaps.
      */
     private val _updates = MutableSharedFlow<TdApi.Object>(
         replay = 0,
@@ -93,6 +97,25 @@ class TdLibClient @Inject constructor(
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     val updates: SharedFlow<TdApi.Object> = _updates.asSharedFlow()
+
+    /**
+     * Process-local FIFO inbox for incoming Telegram messages.
+     *
+     * The general [updates] stream intentionally has no replay and can drop old
+     * events under load. That is appropriate for transient file/chat progress,
+     * but not for user messages: the receiver subscribes only after auth and its
+     * first routing snapshot are ready. A channel retains messages emitted in
+     * that startup window and delivers them FIFO to the receiver's single
+     * collector. This is not durable across process death; the receiver uses
+     * deterministic database IDs for idempotency and requeues an item if its
+     * collector is cancelled while processing it.
+     */
+    private val newMessageChannel = Channel<TdApi.UpdateNewMessage>(Channel.UNLIMITED)
+    val newMessages: Flow<TdApi.UpdateNewMessage> = newMessageChannel.receiveAsFlow()
+
+    /** Returns an in-flight update to the process-local inbox after cancellation. */
+    internal fun requeueNewMessage(update: TdApi.UpdateNewMessage): Boolean =
+        offerNewMessage(update, source = "receiver cancellation")
 
     /** Lazy init — creates the native client and starts pumping updates. */
     @Synchronized
@@ -228,11 +251,25 @@ class TdLibClient @Inject constructor(
         when (obj) {
             is TdApi.UpdateAuthorizationState -> handleAuthState(obj.authorizationState)
             else -> {
+                if (obj is TdApi.UpdateNewMessage && !obj.message.isOutgoing) {
+                    offerNewMessage(obj, source = "TDLib")
+                }
                 // Forward everything else to subscribers. tryEmit never suspends;
                 // if buffer is full DROP_OLDEST trims the oldest event silently.
                 _updates.tryEmit(obj)
             }
         }
+    }
+
+    private fun offerNewMessage(update: TdApi.UpdateNewMessage, source: String): Boolean {
+        val accepted = newMessageChannel.trySend(update)
+        if (accepted.isFailure) {
+            Timber.e(
+                accepted.exceptionOrNull(),
+                "Incoming Telegram message channel rejected an update from $source"
+            )
+        }
+        return accepted.isSuccess
     }
 
     private fun handleAuthState(s: TdApi.AuthorizationState) {
