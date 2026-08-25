@@ -73,6 +73,18 @@ class AudioPlayerRouteTest {
         assertEquals(AudioDeviceInfo.TYPE_WIRED_HEADSET, selected)
     }
 
+    @Test fun `sco is never forced for media voice playback`() {
+        val selected = AudioPlayer.choosePreferredOutputType(
+            routedTypes = listOf(AudioDeviceInfo.TYPE_BLUETOOTH_SCO),
+            outputTypes = listOf(
+                AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
+                AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+            )
+        )
+
+        assertNull(selected)
+    }
+
     @Test fun `no useful external output leaves routing to the os`() {
         val selected = AudioPlayer.choosePreferredOutputType(
             routedTypes = listOf(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER),
