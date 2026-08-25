@@ -6,6 +6,8 @@ import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.media.MediaExtractor
+import android.media.MediaFormat
 import android.media.MediaPlayer
 import android.os.Build
 import androidx.car.app.connection.CarConnection
@@ -86,10 +88,12 @@ class AudioPlayer @Inject constructor(
             // routing-silenced playback indistinguishable from "play()
             // never called" in the log file.
             val effectiveSpeed = PlaybackSpeed.coerce(speed)
+            val sourceFormat = inspectAudioFormat(file)
             Timber.i(
                 "AudioPlayer.play start file=${file.name} speed=$speed " +
                     "effectiveSpeed=$effectiveSpeed " +
-                    "focusMode=$focusMode navUsage=$useNavigationUsage exists=${file.exists()} size=${file.length()}"
+                    "focusMode=$focusMode navUsage=$useNavigationUsage exists=${file.exists()} " +
+                    "size=${file.length()} source=${sourceFormat?.logSummary() ?: "unavailable"}"
             )
             stopLocked()
             val generation = beginPlayback(onComplete)
@@ -172,7 +176,8 @@ class AudioPlayer @Inject constructor(
                     audioManager = audioManager,
                     attributes = playbackAttributes,
                     outputSnapshot = outputSnapshot,
-                    carConnectionType = carConnectionType
+                    carConnectionType = carConnectionType,
+                    fileName = file.name
                 )
                 // Applying PlaybackParams before start() on some OEMs silently
                 // auto-starts playback; set it after prepare() + right before
@@ -185,7 +190,7 @@ class AudioPlayer @Inject constructor(
                 if (!isCurrentPlayback(generation, this)) return Result.success(Unit)
                 start()
                 if (markStarted(generation, this)) {
-                    logRoutedDevice(this, focusMode)
+                    logRoutedDevice(this, focusMode, file.name)
                 }
             }
             Timber.d("Playing: ${file.name} (speed=${effectiveSpeed}x)")
@@ -495,7 +500,8 @@ class AudioPlayer @Inject constructor(
         audioManager: AudioManager,
         attributes: AudioAttributes,
         outputSnapshot: List<AudioDeviceInfo>,
-        carConnectionType: Int
+        carConnectionType: Int,
+        fileName: String
     ) {
         try {
             val routedDevices = getRoutedDevices(audioManager, attributes)
@@ -546,7 +552,7 @@ class AudioPlayer @Inject constructor(
                 Timber.i(
                     "AudioPlayer: AA connected — leaving routing to OS so AA's " +
                         "media stream picks up the playback " +
-                        "(carConnection=${carConnectionMonitor.typeLabel(carConnectionType)}, " +
+                        "(file=$fileName carConnection=${carConnectionMonitor.typeLabel(carConnectionType)}, " +
                         "routed=${routedDevices.typeSummary()}, outputs=${outputSnapshot.typeSummary()})"
                 )
                 return
@@ -558,7 +564,7 @@ class AudioPlayer @Inject constructor(
             )
             if (preferredType == null) {
                 Timber.d(
-                    "AudioPlayer routing: OS default (routed=${routedDevices.typeSummary()}, " +
+                    "AudioPlayer routing: OS default (file=$fileName routed=${routedDevices.typeSummary()}, " +
                         "outputs=${outputSnapshot.typeSummary()})"
                 )
                 return
@@ -572,7 +578,7 @@ class AudioPlayer @Inject constructor(
             }
             val accepted = player.setPreferredDevice(preferred)
             Timber.i(
-                "AudioPlayer preferred output type=${preferred.type} accepted=$accepted " +
+                "AudioPlayer preferred output file=$fileName type=${preferred.type} accepted=$accepted " +
                     "(routed=${routedDevices.typeSummary()}, outputs=${outputSnapshot.typeSummary()})"
             )
         } catch (e: SecurityException) {
@@ -625,7 +631,11 @@ class AudioPlayer @Inject constructor(
         }.getOrDefault(emptyList())
     }
 
-    private fun logRoutedDevice(player: MediaPlayer, focusMode: AudioFocusMode) {
+    private fun logRoutedDevice(
+        player: MediaPlayer,
+        focusMode: AudioFocusMode,
+        fileName: String
+    ) {
         runCatching {
             val type = player.routedDevice?.type
             diagnostics.record(
@@ -635,10 +645,66 @@ class AudioPlayer @Inject constructor(
                 focusMode = focusMode
             )
             Timber.i(
-                "AudioPlayer started on routed output type=$type " +
+                "AudioPlayer started file=$fileName on routed output type=$type " +
                     "(focusGranted=true mode=$focusMode)"
             )
         }
+    }
+
+    /** Extracts decoder-visible metadata without logging message content or paths. */
+    private fun inspectAudioFormat(file: File): SourceAudioFormat? {
+        val extractor = MediaExtractor()
+        return try {
+            extractor.setDataSource(file.absolutePath)
+            (0 until extractor.trackCount)
+                .asSequence()
+                .map(extractor::getTrackFormat)
+                .firstOrNull { format ->
+                    format.getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true
+                }
+                ?.let { format ->
+                    val durationUs = format.longOrNull(MediaFormat.KEY_DURATION)
+                    val containerBitrate = format.intOrNull(MediaFormat.KEY_BIT_RATE)
+                    val estimatedBitrate = durationUs
+                        ?.takeIf { it > 0L }
+                        ?.let { duration ->
+                            ((file.length() * 8L * 1_000_000L) / duration)
+                                .coerceAtMost(Int.MAX_VALUE.toLong())
+                                .toInt()
+                        }
+                    SourceAudioFormat(
+                        mimeType = format.getString(MediaFormat.KEY_MIME),
+                        sampleRateHz = format.intOrNull(MediaFormat.KEY_SAMPLE_RATE),
+                        channelCount = format.intOrNull(MediaFormat.KEY_CHANNEL_COUNT),
+                        bitrateBps = containerBitrate ?: estimatedBitrate,
+                        durationMs = durationUs?.div(1_000L)
+                    )
+                }
+        } catch (error: Exception) {
+            Timber.d(error, "Audio source format inspection failed for ${file.name}")
+            null
+        } finally {
+            runCatching { extractor.release() }
+        }
+    }
+
+    private fun MediaFormat.intOrNull(key: String): Int? =
+        if (containsKey(key)) runCatching { getInteger(key) }.getOrNull() else null
+
+    private fun MediaFormat.longOrNull(key: String): Long? =
+        if (containsKey(key)) runCatching { getLong(key) }.getOrNull() else null
+
+    private data class SourceAudioFormat(
+        val mimeType: String?,
+        val sampleRateHz: Int?,
+        val channelCount: Int?,
+        val bitrateBps: Int?,
+        val durationMs: Long?
+    ) {
+        fun logSummary(): String =
+            "mime=${mimeType ?: "unknown"},sampleRateHz=${sampleRateHz ?: "unknown"}," +
+                "channels=${channelCount ?: "unknown"},bitrateBps=${bitrateBps ?: "unknown"}," +
+                "durationMs=${durationMs ?: "unknown"}"
     }
 
     private fun List<AudioDeviceInfo>.typeSummary(): String =
@@ -666,6 +732,8 @@ class AudioPlayer @Inject constructor(
             AudioDeviceInfo.TYPE_HDMI_EARC
         )
 
+        // TYPE_BLUETOOTH_SCO is intentionally excluded: Android treats it as a
+        // telephony route, which can make media voice replies sound narrow-band or robotic.
         private val PERSONAL_OUTPUT_PRIORITY = listOf(
             AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
             AudioDeviceInfo.TYPE_BLE_SPEAKER,
@@ -674,8 +742,7 @@ class AudioPlayer @Inject constructor(
             AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
             AudioDeviceInfo.TYPE_LINE_ANALOG,
             AudioDeviceInfo.TYPE_LINE_DIGITAL,
-            AudioDeviceInfo.TYPE_AUX_LINE,
-            AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+            AudioDeviceInfo.TYPE_AUX_LINE
         )
 
         // Personal outputs ranked in the order we want to fall back to
@@ -737,8 +804,7 @@ class AudioPlayer @Inject constructor(
     ): AudioDeviceInfo? {
         val combined = (routed + outputs).distinctBy { it.id }
         val personal = combined.filter {
-            !isProjectedCarOutputType(it.type) &&
-                it.type != AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+            it.type in PERSONAL_OUTPUT_PRIORITY
         }
         if (personal.isEmpty()) return null
         val byType = personal.groupBy { it.type }
