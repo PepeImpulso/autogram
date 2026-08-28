@@ -52,4 +52,9 @@ class TtsPlayerChunkingTest {
     @Test fun `blank text creates no utterances`() {
         assertEquals(emptyList<String>(), TtsPlayer.chunkText("   ", maxLength = 20))
     }
+
+    @Test fun `a rejected engine request is retried only once`() {
+        assertTrue(TtsPlayer.shouldRetryRejectedRequest(attempt = 0))
+        assertEquals(false, TtsPlayer.shouldRetryRejectedRequest(attempt = 1))
+    }
 }

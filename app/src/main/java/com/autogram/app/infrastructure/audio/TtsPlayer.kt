@@ -72,6 +72,11 @@ class TtsPlayer @Inject constructor(
         val onError: ((Throwable) -> Unit)?
     )
 
+    private data class TtsRequestFailure(
+        val description: String,
+        val cause: Throwable? = null
+    )
+
     @Volatile private var audioFocusHandle: FocusHandle? = null
     @Volatile private var activeSpeech: ActiveSpeech? = null
 
@@ -102,7 +107,8 @@ class TtsPlayer @Inject constructor(
                     .getOrDefault(DEFAULT_MAX_SPEECH_INPUT_LENGTH)
                     .coerceAtLeast(1)
                 val chunks = chunkText(text, maxInputLength)
-                val utteranceIds = chunks.indices.map { index -> "$token:$index" }
+                var attempt = 0
+                var utteranceIds = utteranceIds(token, attempt, chunks.size)
 
                 // A direct/manual caller may replace an active utterance. End the
                 // previous session exactly once before installing the replacement.
@@ -125,7 +131,7 @@ class TtsPlayer @Inject constructor(
                 }
                 if (!installed) return@withLock
 
-                val tts = ensureEngine() ?: run {
+                var tts = ensureEngine() ?: run {
                     failSpeech(
                         token,
                         TtsSynthesisException("TTS engine unavailable"),
@@ -138,22 +144,6 @@ class TtsPlayer @Inject constructor(
                 val settings = settingsRepository.get()
                 if (!isSpeechActive(token)) return@withLock
                 val requested = locale ?: currentLocaleOrDefault()
-                val effectiveLocale = resolveSupportedLocale(tts, requested)
-                runCatching { tts.language = effectiveLocale }
-                val pickedVoice = pickInstalledVoice(tts, effectiveLocale)
-                if (pickedVoice != null) {
-                    val accepted = runCatching { tts.voice = pickedVoice }.isSuccess
-                    Timber.i(
-                        "TtsPlayer: voice=${pickedVoice.name} locale=${pickedVoice.locale} " +
-                            "quality=${pickedVoice.quality} accepted=$accepted (requested=$requested)"
-                    )
-                } else {
-                    Timber.w(
-                        "TtsPlayer: no installed Voice found for $effectiveLocale " +
-                            "(requested=$requested). Falling back to the loaded engine voice."
-                    )
-                }
-
                 val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
                 val outputTypes = runCatching {
                     audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).map { it.type }
@@ -174,9 +164,6 @@ class TtsPlayer @Inject constructor(
                         .setUsage(AudioAttributes.USAGE_MEDIA)
                         .build()
                 }
-                tts.setAudioAttributes(ttsAttrs)
-                if (!isSpeechActive(token)) return@withLock
-
                 val focusGranted = requestAudioFocus(
                     token = token,
                     attributes = ttsAttrs,
@@ -202,7 +189,7 @@ class TtsPlayer @Inject constructor(
                     return@withLock
                 }
 
-                tts.setSpeechRate(PlaybackSpeed.coerce(speed ?: settings.playbackSpeed))
+                val speechRate = PlaybackSpeed.coerce(speed ?: settings.playbackSpeed)
                 val progressListener = object : UtteranceProgressListener() {
                     override fun onStart(id: String?) = Unit
 
@@ -233,50 +220,52 @@ class TtsPlayer @Inject constructor(
                         }
                     }
                 }
-                val listenerResult = runCatching {
-                    tts.setOnUtteranceProgressListener(progressListener)
-                }
-                if (listenerResult.isFailure || listenerResult.getOrNull() != TextToSpeech.SUCCESS) {
-                    failSpeech(
-                        token,
-                        TtsSynthesisException(
-                            "TTS engine rejected its progress listener " +
-                                "(result=${listenerResult.getOrNull()})",
-                            listenerResult.exceptionOrNull()
-                        ),
-                        stopEngine = true
+                while (isSpeechActive(token)) {
+                    val configurationFailure = configureEngineForSpeech(
+                        tts = tts,
+                        requestedLocale = requested,
+                        attributes = ttsAttrs,
+                        speechRate = speechRate,
+                        progressListener = progressListener
                     )
-                    return@withLock
-                }
+                    val queueFailure = configurationFailure ?: queueChunks(
+                        tts = tts,
+                        token = token,
+                        chunks = chunks,
+                        utteranceIds = utteranceIds
+                    )
+                    if (queueFailure == null) return@withLock
 
-                for ((index, chunk) in chunks.withIndex()) {
-                    val queueMode = if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
-                    val utteranceId = utteranceIds[index]
-                    val result: Result<Int>? = synchronized(engineCommandLock) {
-                        if (!isSpeechActive(token)) {
-                            null
-                        } else {
-                            runCatching {
-                                tts.speak(chunk, queueMode, null, utteranceId)
-                            }
-                        }
-                    }
-                    if (result == null) return@withLock
-                    val returnCode = result.getOrNull()
-                    if (result.isFailure || returnCode != TextToSpeech.SUCCESS) {
-                        val cause = result.exceptionOrNull()
-                        Timber.w(cause, "TtsPlayer.speak rejected chunk ${index + 1}/${chunks.size}")
-                        failSpeech(
-                            token,
-                            TtsSynthesisException(
-                                "TTS engine rejected chunk ${index + 1}/${chunks.size} " +
-                                    "(result=$returnCode)",
-                                cause
-                            ),
-                            stopEngine = true
+                    if (shouldRetryRejectedRequest(attempt) && isSpeechActive(token)) {
+                        attempt += 1
+                        utteranceIds = utteranceIds(token, attempt, chunks.size)
+                        if (!replaceActiveUtteranceIds(token, utteranceIds)) return@withLock
+                        Timber.w(
+                            queueFailure.cause,
+                            "TtsPlayer: engine rejected request; rebuilding and retrying once " +
+                                "(${queueFailure.description})"
                         )
-                        return@withLock
+                        tts = recreateEngine(tts) ?: run {
+                            failSpeech(
+                                token,
+                                TtsSynthesisException(
+                                    "TTS engine unavailable after rejected request",
+                                    queueFailure.cause
+                                ),
+                                stopEngine = false
+                            )
+                            return@withLock
+                        }
+                        continue
                     }
+
+                    val error = TtsSynthesisException(
+                        "TTS engine rejected request after retry (${queueFailure.description})",
+                        queueFailure.cause
+                    )
+                    failSpeech(token, error, stopEngine = false)
+                    discardEngine(tts)
+                    return@withLock
                 }
             }
         } finally {
@@ -435,6 +424,110 @@ class TtsPlayer @Inject constructor(
         }.getOrNull()
     }
 
+    private fun configureEngineForSpeech(
+        tts: TextToSpeech,
+        requestedLocale: Locale,
+        attributes: AudioAttributes,
+        speechRate: Float,
+        progressListener: UtteranceProgressListener
+    ): TtsRequestFailure? {
+        val effectiveLocale = resolveSupportedLocale(tts, requestedLocale)
+        val languageResult = runCatching { tts.setLanguage(effectiveLocale) }
+        if (languageResult.isFailure || languageResult.getOrNull().let { it == null || it < 0 }) {
+            return TtsRequestFailure(
+                "language setup result=${languageResult.getOrNull()}",
+                languageResult.exceptionOrNull()
+            )
+        }
+
+        val pickedVoice = pickInstalledVoice(tts, effectiveLocale)
+        if (pickedVoice != null) {
+            val voiceResult = runCatching { tts.setVoice(pickedVoice) }
+            val accepted = voiceResult.getOrNull() == TextToSpeech.SUCCESS
+            Timber.i(
+                "TtsPlayer: voice=${pickedVoice.name} locale=${pickedVoice.locale} " +
+                    "quality=${pickedVoice.quality} accepted=$accepted " +
+                    "(requested=$requestedLocale)"
+            )
+        } else {
+            Timber.w(
+                "TtsPlayer: no installed Voice found for $effectiveLocale " +
+                    "(requested=$requestedLocale). Falling back to the loaded engine voice."
+            )
+        }
+
+        val attributesResult = runCatching { tts.setAudioAttributes(attributes) }
+        if (attributesResult.isFailure || attributesResult.getOrNull() != TextToSpeech.SUCCESS) {
+            return TtsRequestFailure(
+                "audio attributes result=${attributesResult.getOrNull()}",
+                attributesResult.exceptionOrNull()
+            )
+        }
+
+        val rateResult = runCatching { tts.setSpeechRate(speechRate) }
+        if (rateResult.isFailure || rateResult.getOrNull() != TextToSpeech.SUCCESS) {
+            return TtsRequestFailure(
+                "speech rate result=${rateResult.getOrNull()}",
+                rateResult.exceptionOrNull()
+            )
+        }
+
+        val listenerResult = runCatching {
+            tts.setOnUtteranceProgressListener(progressListener)
+        }
+        if (listenerResult.isFailure || listenerResult.getOrNull() != TextToSpeech.SUCCESS) {
+            return TtsRequestFailure(
+                "progress listener result=${listenerResult.getOrNull()}",
+                listenerResult.exceptionOrNull()
+            )
+        }
+        return null
+    }
+
+    private fun queueChunks(
+        tts: TextToSpeech,
+        token: String,
+        chunks: List<String>,
+        utteranceIds: List<String>
+    ): TtsRequestFailure? {
+        for ((index, chunk) in chunks.withIndex()) {
+            val queueMode = if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+            val result: Result<Int>? = synchronized(engineCommandLock) {
+                if (!isSpeechActive(token)) null
+                else runCatching { tts.speak(chunk, queueMode, null, utteranceIds[index]) }
+            }
+            if (result == null) return null
+            val returnCode = result.getOrNull()
+            if (result.isFailure || returnCode != TextToSpeech.SUCCESS) {
+                return TtsRequestFailure(
+                    "chunk ${index + 1}/${chunks.size} result=$returnCode",
+                    result.exceptionOrNull()
+                )
+            }
+        }
+        return null
+    }
+
+    private suspend fun recreateEngine(staleEngine: TextToSpeech): TextToSpeech? {
+        discardEngine(staleEngine)
+        return ensureEngine()
+    }
+
+    private fun discardEngine(staleEngine: TextToSpeech) {
+        val discarded = synchronized(engineStateLock) {
+            if (engine !== staleEngine) return@synchronized false
+            engineGeneration += 1
+            initialized = false
+            engine = null
+            true
+        }
+        if (!discarded) return
+        synchronized(engineCommandLock) {
+            runCatching { staleEngine.stop() }
+            runCatching { staleEngine.shutdown() }
+        }
+    }
+
     private suspend fun ensureEngine(): TextToSpeech? = engineInitMutex.withLock {
         synchronized(engineStateLock) {
             if (initialized) return@withLock engine
@@ -506,6 +599,15 @@ class TtsPlayer @Inject constructor(
         synchronized(speechStateLock) {
             val speech = activeSpeech
             speech?.token == token && utteranceId in speech.remainingUtteranceIds
+        }
+
+    private fun replaceActiveUtteranceIds(token: String, utteranceIds: List<String>): Boolean =
+        synchronized(speechStateLock) {
+            val speech = activeSpeech ?: return@synchronized false
+            if (speech.token != token) return@synchronized false
+            speech.remainingUtteranceIds.clear()
+            speech.remainingUtteranceIds.addAll(utteranceIds)
+            true
         }
 
     private fun completeChunk(token: String, utteranceId: String) {
@@ -661,6 +763,13 @@ class TtsPlayer @Inject constructor(
 
     companion object {
         private const val DEFAULT_MAX_SPEECH_INPUT_LENGTH = 4_000
+        private const val MAX_TTS_REQUEST_RETRIES = 1
+
+        private fun utteranceIds(token: String, attempt: Int, chunkCount: Int): List<String> =
+            List(chunkCount) { index -> "$token:$attempt:$index" }
+
+        internal fun shouldRetryRejectedRequest(attempt: Int): Boolean =
+            attempt < MAX_TTS_REQUEST_RETRIES
 
         /**
          * Split long replies within Android's per-utterance limit. Prefer a

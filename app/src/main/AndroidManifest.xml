@@ -32,10 +32,13 @@
         android:name="android.hardware.microphone"
         android:required="true" />
 
-    <!-- Required on API 30+ so SpeechRecognizer can find a recognition service -->
+    <!-- Required on API 30+ so speech services remain discoverable. -->
     <queries>
         <intent>
             <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>
     </queries>
 

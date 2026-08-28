@@ -9,6 +9,7 @@ import com.autogram.app.infrastructure.audio.AudioRecorder
 import com.autogram.app.infrastructure.audio.AudioFocusDeniedException
 import com.autogram.app.infrastructure.audio.AudioFocusLostException
 import com.autogram.app.infrastructure.audio.TtsPlayer
+import com.autogram.app.infrastructure.audio.TtsSynthesisException
 import com.autogram.app.infrastructure.persistence.dao.PendingPlaybackDao
 import com.autogram.app.infrastructure.persistence.entity.PendingPlaybackEntity
 import com.autogram.app.infrastructure.platform.PendingReplyNotifier
@@ -902,14 +903,17 @@ class PlayReplyUseCase @Inject constructor(
     }
 
     /**
-     * Finalize an engine failure. Focus interruptions remain pending because
-     * the engine running to completion does not mean the driver heard them.
-     * Other decoder/synthesis failures are terminal and let the queue advance.
+     * Finalize an engine failure. Focus interruptions and TTS service failures
+     * remain pending because the engine running to completion does not mean the
+     * driver heard them. Decoder failures are terminal and let the queue advance.
      *
      * @return true when the next queued item may be started immediately.
      */
     private suspend fun handlePlaybackFailure(message: Message, error: Throwable): Boolean {
-        return if (error is AudioFocusDeniedException || error is AudioFocusLostException) {
+        return if (error is AudioFocusDeniedException ||
+            error is AudioFocusLostException ||
+            error is TtsSynthesisException
+        ) {
             Timber.w(error, "Playback interrupted for ${message.id}; returning it to pending")
             enqueuePending(message, PendingReason.PLAYBACK_INTERRUPTED)
             false
