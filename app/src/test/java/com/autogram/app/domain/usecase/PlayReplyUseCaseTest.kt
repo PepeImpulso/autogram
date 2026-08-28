@@ -14,6 +14,7 @@ import com.autogram.app.infrastructure.audio.AudioPlayer
 import com.autogram.app.infrastructure.audio.AudioRecorder
 import com.autogram.app.infrastructure.audio.AudioFocusDeniedException
 import com.autogram.app.infrastructure.audio.TtsPlayer
+import com.autogram.app.infrastructure.audio.TtsSynthesisException
 import com.autogram.app.infrastructure.persistence.dao.PendingPlaybackDao
 import com.autogram.app.service.AutogramMediaPlaybackController
 import com.autogram.app.infrastructure.persistence.entity.PendingPlaybackEntity
@@ -413,6 +414,29 @@ class PlayReplyUseCaseTest {
         coVerify(exactly = 0) {
             messageRepository.update(match {
                 it.id == "focus-denied" && it.state == MessageState.FAILED
+            })
+        }
+        assertEquals(1, useCase.pendingCount())
+    }
+
+    @Test fun `TTS rejection returns text to pending instead of marking failed`() = runTest {
+        val rejection = slot<(Throwable) -> Unit>()
+        coEvery {
+            ttsPlayer.speak(any(), any(), any(), any(), capture(rejection))
+        } answers { Unit }
+
+        useCase.playTextMessage(textMessage("tts-rejected", "Please read this"))
+        rejection.captured(TtsSynthesisException("TTS engine rejected request after retry"))
+
+        coVerify(timeout = 2_000) {
+            pendingPlaybackDao.insert(match {
+                it.messageId == "tts-rejected" &&
+                    it.reason == PendingReason.PLAYBACK_INTERRUPTED
+            })
+        }
+        coVerify(exactly = 0) {
+            messageRepository.update(match {
+                it.id == "tts-rejected" && it.state == MessageState.FAILED
             })
         }
         assertEquals(1, useCase.pendingCount())
