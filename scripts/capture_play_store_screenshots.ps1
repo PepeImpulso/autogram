@@ -43,7 +43,8 @@ try {
     # emulator captures in their own folder instead of overwriting it.
     $outputDir = Join-Path $repoRoot "docs\play-store\assets\phone-screenshots\synthetic"
     New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
-    $component = "com.autogram.app/.ui.phone.StoreScreenshotActivity"
+    $playApplicationId = "com.impulsotecnologico.autogram"
+    $component = "$playApplicationId/com.autogram.app.ui.phone.StoreScreenshotActivity"
 
     $captures = [ordered]@{
         "home" = "01-home.png"
@@ -54,7 +55,7 @@ try {
     }
 
     foreach ($entry in $captures.GetEnumerator()) {
-        Invoke-Adb -Arguments @("shell", "am", "force-stop", "com.autogram.app")
+        Invoke-Adb -Arguments @("shell", "am", "force-stop", $playApplicationId)
         Invoke-Adb -Arguments @(
             "shell", "am", "start", "-W", "-n", $component,
             "--es", "screen", $entry.Key

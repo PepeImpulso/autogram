@@ -40,8 +40,8 @@ android {
         applicationId = "com.autogram.app"
         minSdk = 29
         targetSdk = 36
-        versionCode = 142
-        versionName = "1.25.6"
+        versionCode = 143
+        versionName = "1.25.7"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -80,6 +80,13 @@ android {
         }
         create("play") {
             dimension = "distribution"
+            // Google Play package names are permanent. The original
+            // com.autogram.app ID is already owned by another Play developer,
+            // so only the Play flavor uses the company-controlled ID. Keeping
+            // the Kotlin namespace unchanged avoids an unrelated source-package
+            // migration, while the GitHub flavor remains upgrade-compatible
+            // with existing standalone installations.
+            applicationId = "com.impulsotecnologico.autogram"
             buildConfigField("String", "SENTRY_DSN", "\"\"")
             buildConfigField("boolean", "ENABLE_SELF_UPDATE", "false")
             buildConfigField("boolean", "ENABLE_AUTOMATIC_CRASH_REPORTING", "false")
