@@ -149,4 +149,14 @@ class AudioPlayerRouteTest {
         )
         assertTrue(!AudioPlayer.shouldTerminateForFocusChange(AudioManager.AUDIOFOCUS_GAIN))
     }
+
+    @Test fun `invalid operation is retried once whether reported as what or extra`() {
+        assertTrue(AudioPlayer.shouldRetryMediaPlayerError(what = -38, extra = 0, attempt = 0))
+        assertTrue(AudioPlayer.shouldRetryMediaPlayerError(what = 1, extra = -38, attempt = 0))
+    }
+
+    @Test fun `media player recovery never loops or retries unrelated errors`() {
+        assertTrue(!AudioPlayer.shouldRetryMediaPlayerError(what = -38, extra = 0, attempt = 1))
+        assertTrue(!AudioPlayer.shouldRetryMediaPlayerError(what = 1, extra = -1004, attempt = 0))
+    }
 }
