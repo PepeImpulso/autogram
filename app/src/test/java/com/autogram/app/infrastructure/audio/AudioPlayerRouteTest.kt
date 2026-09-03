@@ -136,6 +136,35 @@ class AudioPlayerRouteTest {
         )
     }
 
+    @Test fun `projected car connection disables media time stretching`() {
+        val speed = AudioPlayer.chooseEffectivePlaybackSpeed(
+            requestedSpeed = 1.75f,
+            carConnectionType = CarConnection.CONNECTION_TYPE_PROJECTION
+        )
+
+        assertEquals(1f, speed)
+    }
+
+    @Test fun `projected output disables time stretching when car state is stale`() {
+        val speed = AudioPlayer.chooseEffectivePlaybackSpeed(
+            requestedSpeed = 1.25f,
+            carConnectionType = CarConnection.CONNECTION_TYPE_NOT_CONNECTED,
+            outputTypes = listOf(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER, AudioDeviceInfo.TYPE_BUS)
+        )
+
+        assertEquals(1f, speed)
+    }
+
+    @Test fun `phone playback preserves the configured speed`() {
+        val speed = AudioPlayer.chooseEffectivePlaybackSpeed(
+            requestedSpeed = 1.75f,
+            carConnectionType = CarConnection.CONNECTION_TYPE_NOT_CONNECTED,
+            outputTypes = listOf(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER)
+        )
+
+        assertEquals(1.75f, speed)
+    }
+
     @Test fun `permanent and transient focus loss terminate voice playback`() {
         assertTrue(AudioPlayer.shouldTerminateForFocusChange(AudioManager.AUDIOFOCUS_LOSS))
         assertTrue(AudioPlayer.shouldTerminateForFocusChange(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT))
