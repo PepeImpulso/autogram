@@ -147,52 +147,19 @@ class AudioPlayer @Inject constructor(
                 player.release()
                 return Result.success(Unit)
             }
-            player.apply {
-                setDataSource(file.absolutePath)
-                setAudioAttributes(playbackAttributes)
-                setOnCompletionListener {
-                    completePlayback(
-                        generation = generation,
-                        expectedPlayer = this,
-                        result = Result.success(Unit)
-                    )
-                }
-                setOnErrorListener { _, what, extra ->
-                    Timber.e("MediaPlayer error: what=$what extra=$extra")
-                    completePlayback(
-                        generation = generation,
-                        expectedPlayer = this,
-                        result = Result.failure(Exception("MediaPlayer error: what=$what extra=$extra"))
-                    )
-                    true
-                }
-                prepare()
-                if (!isCurrentPlayback(generation, this)) return Result.success(Unit)
-                // Select the route before PlaybackParams: setPlaybackParams can
-                // auto-start from Prepared on some OEMs, so routing afterwards
-                // can lose the beginning of the message to a stale sink.
-                preferOutputRoute(
-                    player = this,
-                    audioManager = audioManager,
-                    attributes = playbackAttributes,
-                    outputSnapshot = outputSnapshot,
-                    carConnectionType = carConnectionType,
-                    fileName = file.name
-                )
-                // Applying PlaybackParams before start() on some OEMs silently
-                // auto-starts playback; set it after prepare() + right before
-                // start() and guard against invalid speeds.
-                if (effectiveSpeed != 1f) {
-                    runCatching {
-                        playbackParams = playbackParams.setSpeed(effectiveSpeed)
-                    }.onFailure { Timber.w(it, "setSpeed($effectiveSpeed) failed — playing at 1x") }
-                }
-                if (!isCurrentPlayback(generation, this)) return Result.success(Unit)
-                start()
-                if (markStarted(generation, this)) {
-                    logRoutedDevice(this, focusMode, file.name)
-                }
-            }
+            configureAndStartPlayer(
+                generation = generation,
+                player = player,
+                file = file,
+                playbackAttributes = playbackAttributes,
+                audioManager = audioManager,
+                outputSnapshot = outputSnapshot,
+                carConnectionType = carConnectionType,
+                focusMode = focusMode,
+                speed = effectiveSpeed,
+                attempt = 0,
+                allowPreferredRoute = true
+            )
             Timber.d("Playing: ${file.name} (speed=${effectiveSpeed}x)")
             Result.success(Unit)
         } catch (e: Exception) {
@@ -206,6 +173,143 @@ class AudioPlayer @Inject constructor(
             } else {
                 Result.success(Unit)
             }
+        }
+    }
+
+    private fun configureAndStartPlayer(
+        generation: Long,
+        player: MediaPlayer,
+        file: File,
+        playbackAttributes: AudioAttributes,
+        audioManager: AudioManager,
+        outputSnapshot: List<AudioDeviceInfo>,
+        carConnectionType: Int,
+        focusMode: AudioFocusMode,
+        speed: Float,
+        attempt: Int,
+        allowPreferredRoute: Boolean
+    ) {
+        player.setDataSource(file.absolutePath)
+        player.setAudioAttributes(playbackAttributes)
+        player.setOnCompletionListener {
+            completePlayback(
+                generation = generation,
+                expectedPlayer = player,
+                result = Result.success(Unit)
+            )
+        }
+        player.setOnErrorListener { _, what, extra ->
+            if (shouldRetryMediaPlayerError(what, extra, attempt)) {
+                retryInvalidOperation(
+                    generation = generation,
+                    failedPlayer = player,
+                    file = file,
+                    playbackAttributes = playbackAttributes,
+                    audioManager = audioManager,
+                    outputSnapshot = outputSnapshot,
+                    carConnectionType = carConnectionType,
+                    focusMode = focusMode,
+                    what = what,
+                    extra = extra
+                )
+            } else {
+                Timber.e(
+                    "MediaPlayer error file=${file.name} attempt=$attempt " +
+                        "what=$what extra=$extra"
+                )
+                completePlayback(
+                    generation = generation,
+                    expectedPlayer = player,
+                    result = Result.failure(
+                        Exception("MediaPlayer error: what=$what extra=$extra")
+                    )
+                )
+            }
+            true
+        }
+        player.prepare()
+        if (!isCurrentPlayback(generation, player)) return
+        // Select the route before PlaybackParams: setPlaybackParams can
+        // auto-start from Prepared on some OEMs, so routing afterwards
+        // can lose the beginning of the message to a stale sink. A retry
+        // deliberately leaves routing to Android to remove this variable.
+        if (allowPreferredRoute) {
+            preferOutputRoute(
+                player = player,
+                audioManager = audioManager,
+                attributes = playbackAttributes,
+                outputSnapshot = outputSnapshot,
+                carConnectionType = carConnectionType,
+                fileName = file.name
+            )
+        }
+        // Applying PlaybackParams before start() on some OEMs silently
+        // auto-starts playback; set it after prepare() + right before
+        // start() and guard against invalid speeds.
+        if (speed != 1f) {
+            runCatching {
+                player.playbackParams = player.playbackParams.setSpeed(speed)
+            }.onFailure { Timber.w(it, "setSpeed($speed) failed — playing at 1x") }
+        }
+        if (!isCurrentPlayback(generation, player)) return
+        player.start()
+        if (markStarted(generation, player)) {
+            logRoutedDevice(player, focusMode, file.name)
+        }
+    }
+
+    /**
+     * Samsung's Android 16 MediaPlayer can report INVALID_OPERATION (-38)
+     * asynchronously after preparation. Replace the failed engine once and
+     * retry with the least surprising configuration: 1x speed and OS routing.
+     */
+    private fun retryInvalidOperation(
+        generation: Long,
+        failedPlayer: MediaPlayer,
+        file: File,
+        playbackAttributes: AudioAttributes,
+        audioManager: AudioManager,
+        outputSnapshot: List<AudioDeviceInfo>,
+        carConnectionType: Int,
+        focusMode: AudioFocusMode,
+        what: Int,
+        extra: Int
+    ) = synchronized(operationLock) {
+        val replacement = MediaPlayer()
+        if (!replacePlayerForRetry(generation, failedPlayer, replacement)) {
+            releasePlayer(replacement)
+            return@synchronized
+        }
+        runCatching {
+            failedPlayer.setOnCompletionListener(null)
+            failedPlayer.setOnErrorListener(null)
+        }
+        releasePlayer(failedPlayer)
+        Timber.w(
+            "MediaPlayer invalid operation file=${file.name} what=$what extra=$extra; " +
+                "retrying once at 1x with OS routing"
+        )
+        runCatching {
+            configureAndStartPlayer(
+                generation = generation,
+                player = replacement,
+                file = file,
+                playbackAttributes = playbackAttributes,
+                audioManager = audioManager,
+                outputSnapshot = outputSnapshot,
+                carConnectionType = carConnectionType,
+                focusMode = focusMode,
+                speed = 1f,
+                attempt = 1,
+                allowPreferredRoute = false
+            )
+        }.onFailure { error ->
+            Timber.e(error, "MediaPlayer recovery failed for ${file.name}")
+            completePlayback(
+                generation = generation,
+                expectedPlayer = replacement,
+                result = Result.failure(error)
+            )
         }
     }
 
@@ -289,6 +393,23 @@ class AudioPlayer @Inject constructor(
                 mediaPlayer === player &&
                 completionHandler != null
         }
+
+    private fun replacePlayerForRetry(
+        generation: Long,
+        failedPlayer: MediaPlayer,
+        replacement: MediaPlayer
+    ): Boolean = synchronized(stateLock) {
+        if (generation != playbackGeneration ||
+            mediaPlayer !== failedPlayer ||
+            completionHandler == null
+        ) {
+            false
+        } else {
+            mediaPlayer = replacement
+            isPlaying = false
+            true
+        }
+    }
 
     private fun markStarted(generation: Long, player: MediaPlayer): Boolean =
         synchronized(stateLock) {
@@ -786,8 +907,16 @@ class AudioPlayer @Inject constructor(
             focusChange == AudioManager.AUDIOFOCUS_LOSS ||
                 focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT
 
+        internal fun shouldRetryMediaPlayerError(
+            what: Int,
+            extra: Int,
+            attempt: Int
+        ): Boolean = attempt == 0 && (what == INVALID_OPERATION || extra == INVALID_OPERATION)
+
         private fun firstByPriority(types: List<Int>, priority: List<Int>): Int? =
             priority.firstOrNull { it in types }
+
+        private const val INVALID_OPERATION = -38
     }
 
     /**
