@@ -2,8 +2,9 @@
 # Builds the signed Android App Bundle intended for Google Play.
 #
 # Requires the same local.properties and keystore.properties files as the
-# GitHub release build. Google Play must receive the existing signing key on
-# first enrollment so installations from GitHub remain upgrade-compatible.
+# GitHub release build. The Play application ID is separate, so this signing
+# configuration authenticates the upload but does not make the two variants
+# upgrade-compatible.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -58,9 +59,15 @@ if [[ ! -f "$MERGED_MANIFEST" || ! -f "$AUTO_DESCRIPTOR" || ! -f "$R8_MAPPING" ]
     exit 1
 fi
 
+if ! grep -q 'package="com.impulsotecnologico.autogram"' "$MERGED_MANIFEST"; then
+    echo "ERROR: unexpected Play application ID in merged manifest." >&2
+    exit 1
+fi
+
 for forbidden in \
     REQUEST_INSTALL_PACKAGES \
     FOREGROUND_SERVICE_DATA_SYNC \
+    android.hardware.type.automotive \
     AutogramCarAppService \
     minCarApiLevel \
     StoreScreenshotActivity \
