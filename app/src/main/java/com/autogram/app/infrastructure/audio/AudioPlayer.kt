@@ -87,20 +87,32 @@ class AudioPlayer @Inject constructor(
             // entry log only fired AFTER start() succeeded, which made
             // routing-silenced playback indistinguishable from "play()
             // never called" in the log file.
-            val effectiveSpeed = PlaybackSpeed.coerce(speed)
             val sourceFormat = inspectAudioFormat(file)
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val outputSnapshot = getOutputDevices(audioManager)
+            val carConnectionType = carConnectionMonitor.currentType()
+            val effectiveSpeed = chooseEffectivePlaybackSpeed(
+                requestedSpeed = speed,
+                carConnectionType = carConnectionType,
+                outputTypes = outputSnapshot.map { it.type }
+            )
             Timber.i(
                 "AudioPlayer.play start file=${file.name} speed=$speed " +
                     "effectiveSpeed=$effectiveSpeed " +
                     "focusMode=$focusMode navUsage=$useNavigationUsage exists=${file.exists()} " +
                     "size=${file.length()} source=${sourceFormat?.logSummary() ?: "unavailable"}"
             )
+            if (effectiveSpeed != PlaybackSpeed.coerce(speed)) {
+                Timber.i(
+                    "AudioPlayer: car playback uses 1x to avoid OEM time-stretch artifacts " +
+                        "(requestedSpeed=$speed " +
+                        "carConnection=${carConnectionMonitor.typeLabel(carConnectionType)} " +
+                        "outputs=${outputSnapshot.typeSummary()})"
+                )
+            }
             stopLocked()
             val generation = beginPlayback(onComplete)
             startedGeneration = generation
-            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            val outputSnapshot = getOutputDevices(audioManager)
-            val carConnectionType = carConnectionMonitor.currentType()
             val effectiveNavigationUsage = shouldUseNavigationUsage(
                 requestedNavigationUsage = useNavigationUsage,
                 carConnectionType = carConnectionType,
@@ -902,6 +914,17 @@ class AudioPlayer @Inject constructor(
         ): Boolean = requestedNavigationUsage ||
             isConnectedCarConnectionType(carConnectionType) ||
             outputTypes.any(::isProjectedCarOutputType)
+
+        internal fun chooseEffectivePlaybackSpeed(
+            requestedSpeed: Float,
+            carConnectionType: Int,
+            outputTypes: List<Int> = emptyList()
+        ): Float {
+            val requested = PlaybackSpeed.coerce(requestedSpeed)
+            val carPresent = isConnectedCarConnectionType(carConnectionType) ||
+                outputTypes.any(::isProjectedCarOutputType)
+            return if (carPresent) 1f else requested
+        }
 
         internal fun shouldTerminateForFocusChange(focusChange: Int): Boolean =
             focusChange == AudioManager.AUDIOFOCUS_LOSS ||
