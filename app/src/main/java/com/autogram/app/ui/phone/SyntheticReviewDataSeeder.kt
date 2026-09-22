@@ -8,6 +8,7 @@ import com.autogram.app.domain.model.MessageState
 import com.autogram.app.domain.model.QuickReply
 import com.autogram.app.domain.model.QuickReplyKind
 import com.autogram.app.domain.model.SummaryState
+import com.autogram.app.domain.model.SyntheticReviewIdentity
 import com.autogram.app.domain.model.TranscriptionState
 import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.MessageRepository
@@ -44,7 +45,7 @@ class SyntheticReviewDataSeeder @Inject constructor(
     }
 
     companion object {
-        const val PRIMARY_CONVERSATION_ID: String = "store-alex"
+        const val PRIMARY_CONVERSATION_ID: String = SyntheticReviewIdentity.PRIMARY
 
         fun primaryConversation(now: Long = System.currentTimeMillis()): Conversation =
             syntheticConversations(now).first()
@@ -69,7 +70,7 @@ class SyntheticReviewDataSeeder @Inject constructor(
                 sortOrder = 0
             ),
             Conversation(
-                id = "store-family",
+                id = SyntheticReviewIdentity.FAMILY,
                 targetChatId = "10002",
                 targetTitle = "Family",
                 isActive = false,
@@ -78,7 +79,7 @@ class SyntheticReviewDataSeeder @Inject constructor(
                 sortOrder = 1
             ),
             Conversation(
-                id = "store-project",
+                id = SyntheticReviewIdentity.PROJECT,
                 targetChatId = "10003",
                 targetTitle = "Project Atlas",
                 topicId = 42,
@@ -120,7 +121,7 @@ class SyntheticReviewDataSeeder @Inject constructor(
             ),
             Message(
                 id = "store-message-3",
-                conversationId = "store-family",
+                conversationId = SyntheticReviewIdentity.FAMILY,
                 direction = MessageDirection.INCOMING,
                 state = MessageState.RECEIVED,
                 textContent = "Dinner is ready at eight. Everyone can make it.",
@@ -129,7 +130,7 @@ class SyntheticReviewDataSeeder @Inject constructor(
             ),
             Message(
                 id = "store-message-4",
-                conversationId = "store-project",
+                conversationId = SyntheticReviewIdentity.PROJECT,
                 direction = MessageDirection.INCOMING,
                 state = MessageState.PLAYED,
                 textContent = "The launch checklist is complete and the final review is scheduled for tomorrow morning.",

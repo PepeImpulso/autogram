@@ -5,6 +5,7 @@ import com.autogram.app.domain.model.Conversation
 import com.autogram.app.domain.model.Message
 import com.autogram.app.domain.model.MessageDirection
 import com.autogram.app.domain.model.MessageState
+import com.autogram.app.domain.model.SyntheticReviewIdentity
 import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.domain.repository.SettingsRepository
@@ -658,8 +659,13 @@ class SendVoiceMtprotoUseCase @Inject constructor(
             .onFailure { Timber.w(it, "Failed to persist outgoing message") }
     }
 
-    private suspend fun resolveTarget(id: String?) =
-        if (id != null) conversationRepository.getById(id) else conversationRepository.getActive()
+    private suspend fun resolveTarget(id: String?): Conversation? {
+        val target = if (id != null) conversationRepository.getById(id)
+                     else conversationRepository.getActive()
+        // A synthetic fixture must never be sent or persisted in the real outbox,
+        // even if review mode has ended and a real Telegram account is now ready.
+        return target?.takeUnless { SyntheticReviewIdentity.isSynthetic(it.id) }
+    }
 
     fun reset() {
         _status.value = SendStatus.Idle

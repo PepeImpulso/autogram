@@ -93,6 +93,47 @@ class OutboxRetryUseCaseTest {
         coVerify(exactly = 0) { tdLib.send<TdApi.Object>(any()) }
     }
 
+    @Test fun `legacy synthetic outbox is quarantined after real account login`() = runTest {
+        val messages = listOf("store-alex", "store-family", "store-project").map {
+            textMessage(id = "queued-$it").copy(conversationId = it)
+        }
+        coEvery { messageRepo.getOutbox(any(), any()) } returns messages
+
+        assertEquals(OutboxRetryUseCase.Outcome.SUCCESS, useCase.runOnce())
+
+        messages.forEach { original ->
+            coVerify(exactly = 1) {
+                messageRepo.update(match {
+                    it.id == original.id && it.state == MessageState.PERMANENTLY_FAILED &&
+                        it.errorMessage == "Synthetic review messages cannot be sent to Telegram"
+                })
+            }
+        }
+        coVerify(exactly = 0) { tdLib.send<TdApi.Object>(any()) }
+        coVerify(exactly = 0) { conversationRepo.getById(any()) }
+    }
+
+    @Test fun `quarantining a synthetic voice message does not block a real reply`() = runTest {
+        val synthetic = textMessage("synthetic-voice").copy(
+            conversationId = "store-alex",
+            textContent = null,
+            audioFilePath = "/not-a-real-review-file.ogg"
+        )
+        val real = textMessage("real-reply")
+        coEvery { messageRepo.getOutbox(any(), any()) } returns listOf(synthetic, real)
+        coEvery { tdLib.send<TdApi.Object>(any()) } returns TdApi.Message().apply { id = 123L }
+
+        assertEquals(OutboxRetryUseCase.Outcome.SUCCESS, useCase.runOnce())
+
+        coVerify(exactly = 1) { tdLib.send<TdApi.Object>(any()) }
+        coVerify { messageRepo.update(match {
+            it.id == "synthetic-voice" && it.state == MessageState.PERMANENTLY_FAILED
+        }) }
+        coVerify { messageRepo.update(match {
+            it.id == "real-reply" && it.state == MessageState.SENT && it.telegramMessageId == 123L
+        }) }
+    }
+
     @Test fun `successful send marks SENT, sets telegramMessageId and updates lastRepliedAt`() = runTest {
         val msg = textMessage()
         coEvery { messageRepo.getOutbox(any(), any()) } returns listOf(msg)

@@ -109,6 +109,44 @@ class SendVoiceMtprotoUseCaseTest {
 
     // --- sendQuickReply happy path ---------------------------------------
 
+    @Test fun `synthetic reply with a real session is neither sent nor queued`() = runTest {
+        val target = sampleTarget.copy(id = "store-alex", targetChatId = "10001")
+        coEvery { conversationRepo.getById(target.id) } returns target
+
+        assertTrue(useCase.sendQuickReply("review reply", target.id).isFailure)
+
+        coVerify(exactly = 0) { tdLib.send<TdApi.Object>(any()) }
+        coVerify(exactly = 0) { messageRepo.insert(any()) }
+    }
+
+    @Test fun `synthetic active target is never queued when unauthenticated`() = runTest {
+        authStateFlow.value = AuthState.Initializing
+        coEvery { conversationRepo.getActive() } returns sampleTarget.copy(id = "store-family")
+
+        assertTrue(useCase.sendQuickReply("review reply").isFailure)
+
+        coVerify(exactly = 0) { tdLib.send<TdApi.Object>(any()) }
+        coVerify(exactly = 0) { messageRepo.insert(any()) }
+    }
+
+    @Test fun `synthetic voice shortcut cannot enter the Telegram outbox`() = runTest {
+        val voice = java.io.File.createTempFile("review-voice-", ".ogg")
+        try {
+            voice.writeBytes(byteArrayOf(1, 2, 3))
+            coEvery { conversationRepo.getById("store-project") } returns
+                sampleTarget.copy(id = "store-project")
+            every { connectivity.isOnline() } returns false
+
+            assertTrue(useCase.sendVoiceShortcut(voice.path, 1000, "store-project").isFailure)
+
+            coVerify(exactly = 0) { tdLib.send<TdApi.Object>(any()) }
+            coVerify(exactly = 0) { messageRepo.insert(any()) }
+            assertTrue(voice.exists())
+        } finally {
+            voice.delete()
+        }
+    }
+
     @Test fun `sendQuickReply requires accepted messaging terms`() = runTest {
         every { acceptableUseConsentStore.isAccepted() } returns false
 

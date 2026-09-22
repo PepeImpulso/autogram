@@ -43,7 +43,7 @@ class IncomingMessageNotifierAndroidTest {
     }
 
     @Test
-    fun incomingMessage_isAndroidAutoCompliant() {
+    fun incomingMessage_exposesMessagingStyleReplyAndMarkReadActions() {
         IncomingMessageNotifier(context).postTextReceived(
             conversation = Conversation(
                 id = "notification-test",

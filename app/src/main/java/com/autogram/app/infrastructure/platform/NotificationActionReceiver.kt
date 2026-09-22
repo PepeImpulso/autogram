@@ -5,17 +5,15 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.RemoteInput
-import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.MessageRepository
+import com.autogram.app.domain.usecase.MarkNotificationMessageReadUseCase
 import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.domain.usecase.SendVoiceMtprotoUseCase
-import com.autogram.app.infrastructure.telegram.mtproto.TdLibSender
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import org.drinkless.tdlib.TdApi
 import timber.log.Timber
 import javax.inject.Inject
 
@@ -40,10 +38,9 @@ import javax.inject.Inject
 class NotificationActionReceiver : BroadcastReceiver() {
 
     @Inject lateinit var messageRepository: MessageRepository
-    @Inject lateinit var conversationRepository: ConversationRepository
     @Inject lateinit var playReplyUseCase: PlayReplyUseCase
     @Inject lateinit var sendVoiceMtprotoUseCase: SendVoiceMtprotoUseCase
-    @Inject lateinit var tdLibSender: TdLibSender
+    @Inject lateinit var markMessageRead: MarkNotificationMessageReadUseCase
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -96,18 +93,8 @@ class NotificationActionReceiver : BroadcastReceiver() {
     private suspend fun handleMarkAsRead(context: Context, intent: Intent, notificationId: Int) {
         val messageId = intent.getStringExtra(EXTRA_MESSAGE_ID)
         val conversationId = intent.getStringExtra(EXTRA_CONVERSATION_ID)
-        val message = messageId?.let { messageRepository.getById(it) }
-        val conversation = conversationId?.let { conversationRepository.getById(it) }
-        val chatId = conversation?.targetChatId?.toLongOrNull()
-        val telegramMessageId = message?.telegramMessageId
-
-        if (chatId != null && telegramMessageId != null) {
-            runCatching {
-                tdLibSender.send(
-                    TdApi.ViewMessages(chatId, longArrayOf(telegramMessageId), null, true)
-                )
-            }.onFailure { Timber.w(it, "Failed to mark Telegram message as read") }
-        }
+        runCatching { markMessageRead(messageId, conversationId) }
+            .onFailure { Timber.w(it, "Failed to mark Telegram message as read") }
         if (notificationId > 0) {
             NotificationManagerCompat.from(context).cancel(notificationId)
         }
