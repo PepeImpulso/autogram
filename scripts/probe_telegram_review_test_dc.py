@@ -32,7 +32,9 @@ async def probe() -> int:
         print("TEST_DC_CONNECTED", flush=True)
         sent = await client.send_code_request(phone)
         print("TEST_CODE_REQUEST_ACCEPTED", flush=True)
+        print("TEST_CODE_TYPE:" + type(sent.type).__name__, flush=True)
         length = getattr(sent.type, "length", 5)
+        print(f"TEST_CODE_LENGTH:{length}", flush=True)
         if length not in (5, 6):
             print("UNSUPPORTED_TEST_CODE_LENGTH", flush=True)
             return 2
