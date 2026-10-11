@@ -109,8 +109,6 @@ fi
 
 if [[ "$PUSH_TAG" == "1" ]]; then
     git push origin "$BRANCH"
-    git tag -a "$TAG" -m "$TAG"
-    git push origin "$TAG"
 fi
 
 # Publish (or replace) the release on the public repo.
@@ -156,6 +154,19 @@ else
 fi
 
 [[ "$CLEANUP_NOTES" == "1" ]] && rm -f "$NOTES_FILE"
+
+# Push the source tag only AFTER the public release exists. The tag push
+# triggers the 'Release APK' workflow, which skips its build when the public
+# release is already there; pushing the tag first made CI rebuild the APK and
+# then fail at 'release already exists'.
+if [[ "$PUSH_TAG" == "1" ]]; then
+    git tag -a "$TAG" -m "$TAG"
+    if ! git push origin "$TAG"; then
+        echo "ERROR: release $TAG is published, but pushing the source tag failed." >&2
+        echo "Recover with: git push origin $TAG   (the local tag already exists; do NOT rerun this script)" >&2
+        exit 1
+    fi
+fi
 
 echo
 echo "[publish] OK"
