@@ -28,7 +28,7 @@ import javax.inject.Singleton
         SettingsEntity::class,
         CircleFolderEntity::class
     ],
-    version = 22,
+    version = 23,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -275,6 +275,14 @@ object DatabaseModule {
         }
     }
 
+    // v22 → v23: spokenText on messages — replacement TTS text (null = speak the
+    // message text). Set for Hermes exec-approval requests (issue #87).
+    private val MIGRATION_22_23 = object : Migration(22, 23) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE messages ADD COLUMN spokenText TEXT DEFAULT NULL")
+        }
+    }
+
     // v11 → v12: summary fields on messages + summary engine config in settings.
     // Feature is off by default (summaryEngine=NONE); turning it on requires
     // the user to pick an engine in Settings → Summary.
@@ -298,7 +306,7 @@ object DatabaseModule {
             AutogramDatabase::class.java,
             "autogram.db"
         )
-            .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22)
+            .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23)
             // Fallback for any earlier schema (v1 / v2) that has no proper path
             // forward — those versions predate the stable 1.2 line and already
             // wiped once, so destroying from them is acceptable.

@@ -48,7 +48,8 @@ data class MessageEntity(
     val transcription: String? = null,
     val transcriptionState: TranscriptionState = TranscriptionState.NONE,
     val summary: String? = null,
-    val summaryState: SummaryState = SummaryState.NONE
+    val summaryState: SummaryState = SummaryState.NONE,
+    val spokenText: String? = null
 )
 
 @Entity(tableName = "conversations")

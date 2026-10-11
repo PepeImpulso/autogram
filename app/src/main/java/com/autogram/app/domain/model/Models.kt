@@ -95,7 +95,12 @@ data class Message(
     // engine (Gemini Nano on-device or an OpenAI-compatible endpoint) and
     // the content is long enough to benefit.
     val summary: String? = null,
-    val summaryState: SummaryState = SummaryState.NONE
+    val summaryState: SummaryState = SummaryState.NONE,
+    // Replacement text for TTS / car read-aloud surfaces. When set, it is spoken
+    // instead of [textContent]; [textContent] itself is never altered. Used for
+    // Hermes exec-approval requests, where only a short pointer to Telegram is
+    // spoken and the command stays unread (issue #87).
+    val spokenText: String? = null
 )
 
 data class Conversation(

@@ -9,6 +9,7 @@ Tap a button, speak, and your voice note is delivered to Telegram. When a reply 
 - 🎤 **One-tap voice recording** from Android Auto
 - 📨 **Send voice notes** to Telegram (OGG/OPUS)
 - 🔊 **Auto-play incoming replies** (voice + TTS for text)
+- 🛡️ **Short pointer for Hermes approval requests** — a command-approval card from a configured assistant is not read aloud; Autogram says only that a request is pending in Telegram (see `docs/03-architecture.md`, 3.2.1)
 - ⚡ **Quick replies** — preset messages via buttons
 - 📵 **Empty message filter** — discards accidental recordings
 - 📞 **Call-aware** — suppresses playback during calls

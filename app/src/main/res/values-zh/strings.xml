@@ -25,6 +25,7 @@
     <string name="notification_channel_incoming_voice">语音收到</string>
     <string name="notification_channel_incoming_voice_desc">收到语音消息。</string>
     <string name="notification_incoming_voice_body">新语音消息</string>
+    <string name="approval_request_spoken_notice">有一个待处理的授权请求。停车后请在 Telegram 中查看。</string>
     <string name="notification_action_listen">收听</string>
     <string name="notification_action_reply">回复</string>
     <string name="notification_action_mark_read">标为已读</string>

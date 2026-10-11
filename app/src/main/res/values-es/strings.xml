@@ -28,6 +28,7 @@
     <string name="notification_channel_incoming_voice">Voz entrante</string>
     <string name="notification_channel_incoming_voice_desc">Ha llegado un audio.</string>
     <string name="notification_incoming_voice_body">Nuevo mensaje de voz</string>
+    <string name="approval_request_spoken_notice">Hay una solicitud de autorización pendiente. Revísala en Telegram cuando estés parado.</string>
     <string name="notification_action_listen">Escuchar</string>
     <string name="notification_action_reply">Responder</string>
     <string name="notification_action_mark_read">Marcar como leído</string>

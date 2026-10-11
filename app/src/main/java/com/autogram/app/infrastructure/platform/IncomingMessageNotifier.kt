@@ -148,14 +148,23 @@ class IncomingMessageNotifier @Inject constructor(
      * wiring as voice, but shows the message preview (truncated) instead of
      * a generic "voice message" label. Android Auto reads the body aloud.
      */
-    fun postTextReceived(conversation: Conversation, preview: String, timestampMs: Long, messageId: String? = null) {
+    fun postTextReceived(
+        conversation: Conversation,
+        preview: String,
+        timestampMs: Long,
+        messageId: String? = null,
+        // Hermes approval request (#87): no Reply/dictation action, so a spoken
+        // "yes" in Android Auto cannot be sent back and read as approval.
+        isApprovalNotice: Boolean = false
+    ) {
         val trimmed = preview.take(120)
         postIncoming(
             conversation = conversation,
             timestampMs = timestampMs,
             bodyText = trimmed,
             messageId = messageId,
-            audioFilePath = null
+            audioFilePath = null,
+            allowReply = !isApprovalNotice
         )
     }
 
@@ -164,7 +173,8 @@ class IncomingMessageNotifier @Inject constructor(
         timestampMs: Long,
         bodyText: String,
         messageId: String?,
-        audioFilePath: String?
+        audioFilePath: String?,
+        allowReply: Boolean = true
     ) {
         ensureChannel()
 
@@ -216,7 +226,7 @@ class IncomingMessageNotifier @Inject constructor(
             .addMessage(message)
 
         val listenAction = messageId?.let { buildListenAction(it, notificationId) }
-        val replyAction = buildReplyAction(conversation.id, notificationId)
+        val replyAction = if (allowReply) buildReplyAction(conversation.id, notificationId) else null
         val markReadAction = buildMarkReadAction(conversation.id, messageId, notificationId)
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
@@ -232,7 +242,7 @@ class IncomingMessageNotifier @Inject constructor(
             .setContentIntent(openAppIntent)
             .apply {
                 listenAction?.let { addAction(it) }
-                addAction(replyAction)
+                replyAction?.let { addAction(it) }
                 addInvisibleAction(markReadAction)
             }
             // Keep the legacy car extension for older Android Auto hosts.
@@ -245,7 +255,7 @@ class IncomingMessageNotifier @Inject constructor(
                         listenAction?.actionIntent?.let { pi ->
                             addAction(listenAction.icon, listenAction.title, pi)
                         }
-                        replyAction.actionIntent?.let { pi ->
+                        replyAction?.actionIntent?.let { pi ->
                             addAction(replyAction.icon, replyAction.title, pi)
                         }
                         markReadAction.actionIntent?.let { pi ->

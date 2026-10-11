@@ -52,6 +52,7 @@ import com.autogram.app.R
 import com.autogram.app.domain.model.Conversation
 import com.autogram.app.domain.model.Message
 import com.autogram.app.domain.model.MessageDirection
+import com.autogram.app.domain.model.displayText
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -298,9 +299,7 @@ private fun conversationLabel(conversation: Conversation?): String {
 @Composable
 private fun subtitleFor(message: Message, isOutgoing: Boolean): String {
     val hasAudio = !message.audioFilePath.isNullOrBlank()
-    val text = message.summary?.takeIf { it.isNotBlank() }
-        ?: message.transcription?.takeIf { it.isNotBlank() }
-        ?: message.textContent?.takeIf { it.isNotBlank() }
+    val text = message.displayText()
     val core = when {
         hasAudio && text != null -> text
         hasAudio -> stringResource(R.string.pending_queue_row_voice, formatRowDuration(message.audioDurationMs ?: 0L))

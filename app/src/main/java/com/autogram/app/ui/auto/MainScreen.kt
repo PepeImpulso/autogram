@@ -33,6 +33,8 @@ import com.autogram.app.domain.model.MessageDirection
 import com.autogram.app.domain.model.QuickReply
 import com.autogram.app.domain.model.QuickReplyKind
 import com.autogram.app.domain.model.VoiceCommand
+import com.autogram.app.domain.model.displayText
+import com.autogram.app.domain.model.approvalPendingIn
 import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.domain.repository.QuickReplyRepository
@@ -328,9 +330,7 @@ class MainScreen(
             if (i >= maxItems) break
             val conv = convById[msg.conversationId]
             val title = conv?.let { tileTitle(it) } ?: carContext.getString(R.string.app_name)
-            val subtitle = msg.summary?.takeIf { it.isNotBlank() }
-                ?: msg.transcription?.takeIf { it.isNotBlank() }
-                ?: msg.textContent?.takeIf { it.isNotBlank() }
+            val subtitle = msg.displayText()
                 ?: carContext.getString(R.string.aa_voice_message)
             items.addItem(
                 Row.Builder()
@@ -475,9 +475,16 @@ class MainScreen(
                 .map { it.toCarMessage(conv) }
                 .ifEmpty { listOf(emptyCarMessage(conv)) }
 
+            // A reply from the car must not answer a Hermes approval request
+            // (#87): "yes" could be read by Hermes as approval. Approve in
+            // Telegram only. Reply/Record are omitted from the item while the
+            // newest incoming message is the notice, and every handler also
+            // re-checks at call time (the template can be stale).
+            val approvalPendingNow = messagesByConversation[conv.id].orEmpty().approvalPendingIn(conv.id)
             val callback = object : ConversationCallback {
                 override fun onMarkAsRead() = Unit
                 override fun onTextReply(text: String) {
+                    if (blockCarReplyForApproval(conv.id)) return
                     screenScope.launch {
                         sendMessageUseCase.sendQuickReply(text, targetConversationId = conv.id)
                         invalidate()
@@ -498,20 +505,24 @@ class MainScreen(
                     // input from ConversationCallback.onTextReply. Pushes a
                     // child ConversationReplyScreen with the user's quick
                     // replies + "Record voice reply" row.
-                    .addAction(
-                        Action.Builder()
-                            .setTitle(carContext.getString(R.string.aa_detail_quick_reply))
-                            .setIcon(carIcon(R.drawable.ic_reply, CarColor.PRIMARY))
-                            .setOnClickListener { openReplyScreen(conv) }
-                            .build()
-                    )
-                    .addAction(
-                        Action.Builder()
-                            .setTitle(carContext.getString(R.string.aa_record))
-                            .setIcon(carIcon(R.drawable.ic_mic, CarColor.PRIMARY))
-                            .setOnClickListener { startRecording(conv.id) }
-                            .build()
-                    )
+                    .apply {
+                        if (!approvalPendingNow) {
+                            addAction(
+                                Action.Builder()
+                                    .setTitle(carContext.getString(R.string.aa_detail_quick_reply))
+                                    .setIcon(carIcon(R.drawable.ic_reply, CarColor.PRIMARY))
+                                    .setOnClickListener { openReplyScreen(conv) }
+                                    .build()
+                            )
+                            addAction(
+                                Action.Builder()
+                                    .setTitle(carContext.getString(R.string.aa_record))
+                                    .setIcon(carIcon(R.drawable.ic_mic, CarColor.PRIMARY))
+                                    .setOnClickListener { startRecording(conv.id) }
+                                    .build()
+                            )
+                        }
+                    }
                     .build()
             )
         }
@@ -535,9 +546,7 @@ class MainScreen(
             .build()
 
     private fun Message.toCarMessage(conv: Conversation): CarMessage {
-        val body = summary?.takeIf { it.isNotBlank() }
-            ?: transcription?.takeIf { it.isNotBlank() }
-            ?: textContent?.takeIf { it.isNotBlank() }
+        val body = displayText()
             ?: carContext.getString(R.string.aa_voice_message)
         return CarMessage.Builder()
             .setSender(if (direction == MessageDirection.OUTGOING) selfPerson() else senderPerson(conv))
@@ -775,7 +784,19 @@ class MainScreen(
             .build()
     }
 
+    /**
+     * True (and logs) when a car-originated reply to [conversationId] must be
+     * dropped because its newest incoming message is a Hermes approval notice.
+     * Evaluated at call time from the live message cache, not at template build.
+     */
+    private fun blockCarReplyForApproval(conversationId: String?): Boolean {
+        if (!cachedMessages.value.approvalPendingIn(conversationId)) return false
+        Timber.i("Ignoring car reply: newest message is an approval request; approve in Telegram")
+        return true
+    }
+
     private fun startRecording(targetId: String?) {
+        if (blockCarReplyForApproval(targetId)) return
         resetJob?.cancel()
         screenScope.launch {
             val result = sendMessageUseCase.startRecording(targetId)
@@ -828,6 +849,7 @@ class MainScreen(
      * [sendShortcut] for the in-Inbox-reply path.
      */
     private fun sendShortcutTo(qr: QuickReply, conversationId: String) {
+        if (blockCarReplyForApproval(conversationId)) return
         screenScope.launch {
             when (qr.kind) {
                 QuickReplyKind.TEXT -> sendMessageUseCase.sendQuickReply(
@@ -850,6 +872,8 @@ class MainScreen(
     }
 
     private fun sendShortcut(qr: QuickReply) {
+        // Untargeted shortcuts go to the primary (first pinned) circle.
+        if (blockCarReplyForApproval(qr.targetConversationId ?: cachedPinned.value.firstOrNull()?.id)) return
         screenScope.launch {
             when (qr.kind) {
                 QuickReplyKind.TEXT -> sendMessageUseCase.sendQuickReply(qr.textContent)
