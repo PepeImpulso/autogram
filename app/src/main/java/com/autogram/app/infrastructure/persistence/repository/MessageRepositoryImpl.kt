@@ -103,7 +103,8 @@ class MessageRepositoryImpl @Inject constructor(
         transcription = transcription,
         transcriptionState = transcriptionState,
         summary = summary,
-        summaryState = summaryState
+        summaryState = summaryState,
+        spokenText = spokenText
     )
 
     private fun Message.toEntity() = MessageEntity(
@@ -124,6 +125,7 @@ class MessageRepositoryImpl @Inject constructor(
         transcription = transcription,
         transcriptionState = transcriptionState,
         summary = summary,
-        summaryState = summaryState
+        summaryState = summaryState,
+        spokenText = spokenText
     )
 }

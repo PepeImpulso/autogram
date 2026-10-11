@@ -25,6 +25,7 @@
     <string name="notification_channel_incoming_voice">Eingehende Sprachnachricht</string>
     <string name="notification_channel_incoming_voice_desc">Eine Sprachnachricht ist eingegangen.</string>
     <string name="notification_incoming_voice_body">Neue Sprachnachricht</string>
+    <string name="approval_request_spoken_notice">Es gibt eine ausstehende Autorisierungsanfrage. Sieh sie dir in Telegram an, wenn du angehalten hast.</string>
     <string name="notification_action_listen">Anhören</string>
     <string name="notification_action_reply">Antworten</string>
     <string name="notification_action_mark_read">Als gelesen markieren</string>

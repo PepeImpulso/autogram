@@ -14,6 +14,7 @@ import com.autogram.app.domain.model.MessageDirection
 import com.autogram.app.domain.model.QuickReply
 import com.autogram.app.domain.model.QuickReplyFilter
 import com.autogram.app.domain.model.QuickReplyKind
+import com.autogram.app.domain.model.latestSuggestionSource
 import com.autogram.app.domain.repository.CircleFolderRepository
 import com.autogram.app.domain.usecase.PlayReplyUseCase
 import com.autogram.app.domain.usecase.SendVoiceMtprotoUseCase
@@ -285,11 +286,8 @@ class MainViewModel @Inject constructor(
             ) { messages, active ->
                 val activeId = active?.id
                 if (activeId == null) return@combine null
-                messages.asSequence()
-                    .filter { it.conversationId == activeId }
-                    .filter { it.direction == MessageDirection.INCOMING }
-                    .sortedByDescending { it.createdAt }
-                    .firstOrNull { !it.textContent.isNullOrBlank() || !it.transcription.isNullOrBlank() }
+                // Null for approval requests: no LLM call with the command, no chips.
+                latestSuggestionSource(messages.asSequence(), activeId)
             }.collect { latest ->
                 if (latest == null) { _suggestedChips.value = emptyList(); return@collect }
                 if (latest.id == lastSuggestionSourceId) return@collect

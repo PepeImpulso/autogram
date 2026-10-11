@@ -127,6 +127,41 @@ State: PLAYING → PLAYED
 UI update: "Reply from [chat]"
 ```
 
+#### 3.2.1 Hermes approval requests are not read aloud
+
+When the Hermes assistant asks for permission to run a command, the Telegram
+message carries a long command, code and approve/deny buttons. Reading that
+aloud while driving is confusing and unsafe, so Autogram speaks one short,
+localized notice instead ("There is a pending authorization request. Review it
+in Telegram when you are stopped.") at the configured playback speed.
+
+- **Detection** (`ApprovalPromptDetector`, applied in `MtprotoReceiverService`):
+  only on routes the user pinned as an assistant, only for messages sent by a
+  bot, and only when the message has Hermes' approval inline keyboard (callback
+  data `ea:{once|session|always|deny}:<id>`, at least `once` and `deny`) or the
+  exact text-fallback card (fixed Hermes header + typed `/approve` and `/deny`
+  + the "will NOT run" deadline line). Words like "authorize", code blocks and
+  Hermes' internal `is_approval_prompt` flag are deliberately not used.
+- **Original is untouched.** The Telegram message and the stored
+  `Message.textContent` keep the full command. The notice is stored in
+  `Message.spokenText`; `PlayReplyUseCase` speaks it in place of the text, and
+  the incoming notification, Android Auto message body and media subtitle use
+  it too. Approval requests are never summarized (no command text goes to the
+  summary LLM).
+- **Never an approval.** Autogram does not press the buttons or treat voice as
+  authorization; approving or denying happens only in Telegram. While an
+  approval notice is the newest incoming message, the notification has no
+  Reply/dictation action, the Android Auto conversation ignores dictated
+  replies, and no quick-reply suggestions are generated (a "Yes"/"OK" reply
+  could be read by Hermes as approval). The same rule covers the whole car
+  surface: the conversation's Reply and Record actions are omitted, and the
+  reply screen, quick-reply shortcuts, recording and dictation are re-checked
+  at call time. The phone UI deliberately keeps the user's own shortcuts and
+  recording, because the user can see the card there.
+- **Not covered:** the notice has no description of the request (no reliable
+  short description is available), and it is spoken once per message; Hermes
+  decides whether it sends a new card per request.
+
 ### 3.3 Network Error
 
 ```

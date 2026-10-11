@@ -470,7 +470,8 @@ class PlayReplyUseCase @Inject constructor(
      * because the user explicitly pressed Listen.
      */
     suspend fun playTextManually(message: Message) {
-        val text = message.summary?.takeIf { it.isNotBlank() }
+        val text = message.spokenText?.takeIf { it.isNotBlank() }
+            ?: message.summary?.takeIf { it.isNotBlank() }
             ?: message.transcription?.takeIf { it.isNotBlank() }
             ?: message.textContent?.takeIf { it.isNotBlank() }
             ?: return
@@ -484,7 +485,7 @@ class PlayReplyUseCase @Inject constructor(
         val uiLocale = if (settings.languageTag.isNotBlank())
             java.util.Locale.forLanguageTag(settings.languageTag)
         else java.util.Locale.getDefault()
-        val detected = TtsPlayer.detectLocale(text, uiLocale)
+        val detected = ttsLocaleFor(message, text, uiLocale)
         if (!isCurrentPlaybackSession(sessionToken, message.id)) return
         ttsPlayer.speak(
             text,
@@ -539,7 +540,8 @@ class PlayReplyUseCase @Inject constructor(
         isCallActive: Boolean = false,
         respectUserGates: Boolean = true
     ) {
-        val text = message.summary?.takeIf { it.isNotBlank() }
+        val text = message.spokenText?.takeIf { it.isNotBlank() }
+            ?: message.summary?.takeIf { it.isNotBlank() }
             ?: message.transcription?.takeIf { it.isNotBlank() }
             ?: message.textContent?.takeIf { it.isNotBlank() }
         if (text == null) {
@@ -615,7 +617,7 @@ class PlayReplyUseCase @Inject constructor(
             else java.util.Locale.getDefault()
             // Content-based override wins over UI locale if the script doesn't
             // match (e.g. UI is English but the summary came out in Spanish).
-            val detected = com.autogram.app.infrastructure.audio.TtsPlayer.detectLocale(text, uiLocale)
+            val detected = ttsLocaleFor(message, text, uiLocale)
             ttsPlayer.speak(
                 text,
                 locale = detected,
@@ -655,7 +657,11 @@ class PlayReplyUseCase @Inject constructor(
         isCallActive: Boolean = false,
         respectUserGates: Boolean = true
     ) {
-        val text = message.textContent ?: return
+        // spokenText (Hermes approval pointer) replaces the original text for
+        // TTS only; textContent stays intact for History and Telegram parity.
+        val text = message.spokenText?.takeIf { it.isNotBlank() }
+            ?: message.textContent
+            ?: return
         if (text.isBlank()) return
         // Same gates as playVoiceMessage: in a call, silent mode, or autoplay
         // off — queue for later instead of speaking over other audio. Texts
@@ -717,7 +723,7 @@ class PlayReplyUseCase @Inject constructor(
             val uiLocale = if (settings.languageTag.isNotBlank())
                 java.util.Locale.forLanguageTag(settings.languageTag)
             else java.util.Locale.getDefault()
-            val detected = com.autogram.app.infrastructure.audio.TtsPlayer.detectLocale(text, uiLocale)
+            val detected = ttsLocaleFor(message, text, uiLocale)
 
             ttsPlayer.speak(
                 text,
@@ -1404,6 +1410,15 @@ class PlayReplyUseCase @Inject constructor(
          */
         private const val PLAYED_HISTORY_CAP: Int = 5
     }
+
+    /**
+     * Voice for [text]. A [Message.spokenText] notice is generated in the UI
+     * language, so it is spoken with that locale directly: script/stopword
+     * detection is meant for foreign message bodies and can mistake short
+     * French or German function words for Spanish.
+     */
+    private fun ttsLocaleFor(message: Message, text: String, uiLocale: java.util.Locale): java.util.Locale =
+        if (!message.spokenText.isNullOrBlank()) uiLocale else TtsPlayer.detectLocale(text, uiLocale)
 
     private fun isUserRecordingOrStarting(): Boolean =
         userRecordingGateActive || audioRecorder.isRecording()

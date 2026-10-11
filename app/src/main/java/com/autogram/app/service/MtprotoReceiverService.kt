@@ -7,6 +7,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.autogram.app.R
@@ -25,6 +26,7 @@ import com.autogram.app.infrastructure.platform.CallStateMonitor
 import com.autogram.app.infrastructure.platform.IncomingMessageNotifier
 import com.autogram.app.infrastructure.privacy.AcceptableUseConsentStore
 import com.autogram.app.infrastructure.review.PlayReviewModeStore
+import com.autogram.app.infrastructure.telegram.mtproto.ApprovalPromptDetector
 import com.autogram.app.infrastructure.telegram.mtproto.AuthState
 import com.autogram.app.infrastructure.telegram.mtproto.TdLibClient
 import com.autogram.app.ui.phone.MainActivity
@@ -518,6 +520,11 @@ class MtprotoReceiverService : Service() {
         text: String
     ) {
         if (text.isBlank()) return
+        // Hermes exec-approval request (issue #87): speak only a short pointer
+        // to Telegram. The original text is stored untouched in textContent;
+        // the notice goes in spokenText and is what TTS and the car surfaces
+        // read. See ApprovalPromptDetector for the signals and why.
+        val approvalNotice = approvalNoticeFor(tdMsg, text)
         val message = Message(
             id = localMessageId,
             conversationId = target.id,
@@ -525,20 +532,67 @@ class MtprotoReceiverService : Service() {
             state = MessageState.RECEIVED,
             telegramMessageId = tdMsg.id,
             textContent = text,
-            createdAt = tdMsg.date.toLong() * 1000L
+            createdAt = tdMsg.date.toLong() * 1000L,
+            spokenText = approvalNotice
         )
         messageRepository.insert(message)
         incomingMessageNotifier.postTextReceived(
             conversation = target,
-            preview = text,
+            preview = approvalNotice ?: text,
             timestampMs = message.createdAt,
-            messageId = message.id
+            messageId = message.id,
+            isApprovalNotice = approvalNotice != null
         )
-        scope.launch { summarizeMessageUseCase.summarize(message.id) }
+        // Never summarize an approval request: the summary would send the
+        // command to the configured LLM endpoint and could replace the notice.
+        if (approvalNotice == null) {
+            scope.launch { summarizeMessageUseCase.summarize(message.id) }
+        }
         playReplyUseCase.playTextMessage(
             message = message,
             isCallActive = callStateMonitor.isInCall.value
         )
+    }
+
+    /**
+     * Returns the localized short notice to speak instead of [text] when this
+     * message is a Hermes exec-approval request from a bot on a configured
+     * route, otherwise null (the message is read normally). Fails open: any
+     * lookup problem means the message is treated as a normal one.
+     */
+    private suspend fun approvalNoticeFor(tdMsg: TdApi.Message, text: String): String? {
+        val keyboardSignal = ApprovalPromptDetector.hasApprovalKeyboard(tdMsg.replyMarkup)
+        if (!keyboardSignal && !ApprovalPromptDetector.isTextFallback(text)) return null
+        val senderId = ApprovalPromptDetector.candidateSenderUserId(tdMsg) ?: return null
+        val lookup = try {
+            tdLibClient.send(TdApi.GetUser(senderId))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Timber.w(error, "Sender lookup failed for approval-shaped message ${tdMsg.id}")
+            null
+        }
+        val sender = lookup as? TdApi.User
+        // A forged ea: keyboard only changes what is spoken (the notice is
+        // harmless), so when the lookup itself failed the keyboard signal alone
+        // is enough. A resolved non-bot sender is always rejected, and the
+        // plain-text signal always requires the bot check.
+        val trusted = if (sender != null) sender.type is TdApi.UserTypeBot else keyboardSignal
+        if (!trusted) {
+            Timber.i("Approval-shaped message ${tdMsg.id} is not from a bot; reading it normally")
+            return null
+        }
+        val languageTag = runCatching { settingsRepository.get().languageTag }.getOrDefault("")
+        val localized = if (languageTag.isBlank()) {
+            this
+        } else {
+            createConfigurationContext(
+                Configuration(resources.configuration).apply { setLocale(Locale.forLanguageTag(languageTag)) }
+            )
+        }
+        // Log only the message id: the command text must not reach logs/Sentry.
+        Timber.i("Approval request ${tdMsg.id} will be spoken as a short Telegram pointer")
+        return localized.getString(R.string.approval_request_spoken_notice)
     }
 
     /**

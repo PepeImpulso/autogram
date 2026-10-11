@@ -230,6 +230,7 @@ class AutogramMediaPlaybackController @Inject constructor(
         } ?: "Autogram"
         val subtitle = when {
             !message.audioFilePath.isNullOrBlank() -> "Voice message"
+            !message.spokenText.isNullOrBlank() -> message.spokenText.take(80)
             !message.textContent.isNullOrBlank() -> message.textContent.take(80)
             else -> "Message"
         }

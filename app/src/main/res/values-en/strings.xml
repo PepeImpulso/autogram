@@ -334,4 +334,5 @@
     <string name="acceptable_use_rules_confirm">I accept the Autogram Terms of Use and messaging rules.</string>
     <string name="acceptable_use_accept">Accept and continue</string>
     <string name="acceptable_use_exit">Exit Autogram</string>
+    <string name="approval_request_spoken_notice">There is a pending authorization request. Review it in Telegram when you are stopped.</string>
 </resources>

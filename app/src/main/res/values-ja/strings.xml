@@ -25,6 +25,7 @@
     <string name="notification_channel_incoming_voice">音声受信</string>
     <string name="notification_channel_incoming_voice_desc">音声メッセージが届いたとき。</string>
     <string name="notification_incoming_voice_body">新しい音声メッセージ</string>
+    <string name="approval_request_spoken_notice">保留中の承認リクエストがあります。停車したら Telegram で確認してください。</string>
     <string name="notification_action_listen">聞く</string>
     <string name="notification_action_reply">返信</string>
     <string name="notification_action_mark_read">既読にする</string>
