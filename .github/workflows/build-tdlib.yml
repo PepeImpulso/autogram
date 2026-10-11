@@ -77,7 +77,8 @@ jobs:
         with:
           name: tdlib-android
           path: td/example/android/tdlib/tdlib.zip
-          retention-days: 90
+          # TDLib artifacts are large and only needed shortly after manual runs.
+          retention-days: 14
           if-no-files-found: error
 
       - name: Upload raw tdlib directory (fallback)
@@ -86,5 +87,5 @@ jobs:
         with:
           name: tdlib-raw
           path: td/example/android/tdlib/
-          retention-days: 30
+          retention-days: 3
           if-no-files-found: warn

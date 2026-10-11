@@ -99,7 +99,9 @@ jobs:
         with:
           name: autogram-apk-${{ steps.apk.outputs.version }}
           path: ${{ steps.apk.outputs.apk_path }}
-          retention-days: 30
+          # APKs are published to PepeImpulso/autogram-releases on tag builds;
+          # keep CI artifacts briefly to avoid exhausting GitHub Actions storage.
+          retention-days: 7
           if-no-files-found: error
 
       # Releases are published to the PUBLIC PepeImpulso/autogram-releases repo
