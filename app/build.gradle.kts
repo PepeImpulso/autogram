@@ -72,7 +72,9 @@ android {
             dimension = "distribution"
             buildConfigField("boolean", "ENABLE_SELF_UPDATE", "true")
             buildConfigField("boolean", "ENABLE_AUTOMATIC_CRASH_REPORTING", "true")
-            buildConfigField("boolean", "ENABLE_SENTRY_SCREENSHOTS", "true")
+            // Off: a crash screenshot can show contact names and message text
+            // that server-side scrubbing never sees.
+            buildConfigField("boolean", "ENABLE_SENTRY_SCREENSHOTS", "false")
             buildConfigField("boolean", "ALLOW_CLEARTEXT_LLM_ENDPOINT", "true")
         }
     }
