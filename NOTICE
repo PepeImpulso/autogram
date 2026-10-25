@@ -1,0 +1,77 @@
+Autogram
+Copyright (C) 2026 the Autogram authors
+
+Autogram is free software, licensed under the GNU General Public License,
+version 3 (see LICENSE). Autogram is an independent project. It is not
+affiliated with, endorsed by, or sponsored by Telegram.
+
+This file lists third-party software that is bundled with or linked into
+Autogram, together with its license. Exact dependency versions are pinned in
+gradle/libs.versions.toml.
+
+--------------------------------------------------------------------------
+1. TDLib (Telegram Database Library) -- Boost Software License 1.0 (BSL-1.0)
+--------------------------------------------------------------------------
+Copyright Aliaksei Levin (levlam@telegram.org),
+Arseny Smirnov (arseny30@gmail.com) 2014-2026
+https://github.com/tdlib/td
+
+Bundled as:
+  - app/src/main/java/org/drinkless/tdlib/Client.java
+  - app/src/main/java/org/drinkless/tdlib/TdApi.java
+  - app/src/main/jniLibs/arm64-v8a/libtdjni.so
+  - app/src/main/jniLibs/x86_64/libtdjni.so
+
+License: https://www.boost.org/LICENSE_1_0.txt
+
+Binary provenance (libtdjni.so):
+  The native libraries are built by the manually dispatched GitHub Actions
+  workflow .github/workflows/build-tdlib.yml. It clones
+  https://github.com/tdlib/td, checks out commit 8921c22f0f85 (the workflow's
+  default `td_ref` input), and runs TDLib's own example/android scripts
+  (fetch-sdk.sh, build-openssl.sh, build-tdlib.sh), patched to build only the
+  arm64-v8a and x86_64 ABIs. The workflow uploads a tdlib.zip artifact; its
+  libs/<abi>/libtdjni.so files and Java sources were copied by hand into the
+  paths above. To reproduce: run the workflow with the same td_ref and
+  vendor the output.
+
+------------------------------------------------------------------
+2. Statically linked into libtdjni.so
+------------------------------------------------------------------
+  - OpenSSL -- Apache License 2.0 -- https://www.openssl.org/
+    Built from the source fetched by TDLib's build-openssl.sh.
+  - zlib -- zlib License -- https://zlib.net/
+    Copyright (C) 1995-2024 Jean-loup Gailly and Mark Adler.
+
+------------------------------------------------------------------
+3. Apache License 2.0 -- https://www.apache.org/licenses/LICENSE-2.0
+------------------------------------------------------------------
+  - AndroidX: Core, AppCompat, Biometric, Lifecycle, Activity, Compose
+    (UI, Material 3, Material Icons), Car App Library, Room, WorkManager,
+    Hilt integration (androidx.hilt), Security Crypto, Media
+    (Copyright The Android Open Source Project)
+  - Dagger / Hilt (Copyright The Dagger Authors)
+  - Retrofit and Retrofit Gson converter (Copyright Square, Inc.)
+  - OkHttp (Copyright Square, Inc.)
+  - Gson (Copyright Google Inc.), pulled in by the Retrofit converter
+  - Timber (Copyright Jake Wharton)
+  - Kotlin standard library and kotlinx.coroutines (Copyright JetBrains s.r.o.)
+  - Reorderable, sh.calvin.reorderable (Copyright Calvin Liang)
+  - Gradle Wrapper (Copyright Gradle Inc.)
+
+Test-only dependencies (not shipped in the APK): JUnit 4 (EPL-1.0), MockK
+(Apache-2.0), Turbine (Apache-2.0), AndroidX Test and Espresso (Apache-2.0).
+
+------------------------------------------------------------------
+4. MIT License -- https://opensource.org/license/mit
+------------------------------------------------------------------
+  - Sentry Android and Sentry Timber integration
+    (Copyright Functional Software, Inc. dba Sentry) -- optional crash
+    reporting.
+
+------------------------------------------------------------------
+5. Artwork
+------------------------------------------------------------------
+The app icon and logo are part of this repository. See LICENSE for the code
+license; the redistribution rights for the artwork are being confirmed by the
+project owner.

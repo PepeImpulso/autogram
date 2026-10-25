@@ -1,110 +1,74 @@
 # Autogram
 
-Voice-based bidirectional messaging for Android Auto via Telegram.
+Hands-free Telegram voice messages for Android Auto.
 
-Tap a button, speak, and your voice note is delivered to Telegram. When a reply comes, it plays automatically through your car speakers. Zero screen reading, zero typing.
+Tap a button in the car, speak, and your voice message is sent on Telegram.
+Replies are read aloud through the car speakers, so you never have to look at
+a screen or type. The same voice flow works on the phone with push-to-talk.
 
-## Features (v1)
+> **Independent project.** Autogram is not affiliated with, endorsed by, or
+> sponsored by Telegram. "Telegram" is a trademark of its respective owner.
 
-- 🎤 **One-tap voice recording** from Android Auto
-- 📨 **Send voice notes** to Telegram (OGG/OPUS)
-- 🔊 **Auto-play incoming replies** (voice + TTS for text)
-- 🛡️ **Short pointer for Hermes approval requests** — a command-approval card from a configured assistant is not read aloud; Autogram says only that a request is pending in Telegram (see `docs/03-architecture.md`, 3.2.1)
-- ⚡ **Quick replies** — preset messages via buttons
-- 📵 **Empty message filter** — discards accidental recordings
-- 📞 **Call-aware** — suppresses playback during calls
-- 🔇 **Silent mode** — pause auto-play when needed
-- 📋 **Message history** on phone
-- 🔄 **Retry queue** — automatic retries with exponential backoff
-- 🔐 **Secure** — bot token stored with encryption
+## Features
 
-## Setup
+- One-tap voice recording from Android Auto, or push-to-talk on the phone
+- Voice messages are sent as OGG/Opus
+- Incoming replies play automatically (voice messages, and text via text-to-speech)
+- Quick replies, message history, silent mode, and call-aware playback
+- Automatic retries when the network drops
+- Signs in to your own Telegram account through [TDLib](https://github.com/tdlib/td)
 
-### Prerequisites
-- Android Studio (Hedgehog or newer)
-- Android device with API 29+ (Android 10)
-- Android Auto compatible head unit or [Desktop Head Unit (DHU)](https://developer.android.com/training/cars/testing/dhu)
-- Telegram account
+*Screenshots: none yet.*
 
-### Telegram Bot Setup
-1. Open Telegram, search for `@BotFather`
-2. Send `/newbot` and follow instructions
-3. Save the **bot token** (e.g., `123456789:ABCdefGHIjklMNOpqrsTUVwxyz`)
-4. Get your **chat ID**: send a message to your bot, then visit:
-   `https://api.telegram.org/bot<TOKEN>/getUpdates`
-5. Look for `chat.id` in the response
+## Requirements
 
-### Build & Install
-```bash
-git clone https://github.com/erpepebot/Autogram.git
-cd Autogram
-./gradlew assembleDebug
-```
-Install the APK on your device and connect to Android Auto.
+- Android 10 (API 29) or newer
+- A Telegram account
+- Android Auto, for use in the car
 
-### First Run
-1. Open Autogram on your phone
-2. Go to Settings (Configuración)
-3. Enter your **Bot Token** and **Chat ID**
-4. Tap **Probar conexión** to verify
+## Install
 
-## Architecture
+Autogram is distributed **only on GitHub**. There is no Google Play version.
 
-```
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│  Android Auto UI │────▶│   Domain Layer   │────▶│  Infrastructure  │
-│  (Car App Lib)   │     │  (Use Cases,     │     │  (Telegram,      │
-│                  │     │   State Machine)  │     │   Audio, Room)   │
-└─────────────────┘     └──────────────────┘     └─────────────────┘
-```
+1. On your phone, open the
+   [latest release](https://github.com/PepeImpulso/autogram-releases/releases/latest).
+2. Download the APK and open it. Allow your browser or file manager to install
+   unknown apps when Android asks.
+3. Open Autogram and sign in with your Telegram account.
 
-Clean Architecture with 3 layers: Interface → Domain → Infrastructure.
+## Updates
 
-See `docs/` for detailed documentation.
+Updates come only from the in-app updater, which checks the same GitHub
+releases: **Settings → Updates**. Nothing else will update the app.
 
-## Tech Stack
+## Android Auto setup
 
-| Component | Technology |
-|-----------|-----------|
-| Language | Kotlin |
-| Min SDK | 29 (Android 10) |
-| UI (Phone) | Jetpack Compose |
-| UI (Auto) | Car App Library 1.4 |
-| DI | Hilt |
-| Network | Retrofit + OkHttp |
-| Database | Room |
-| Background | ForegroundService + WorkManager |
-| Audio | MediaRecorder (OGG/OPUS) + MediaPlayer |
-| Security | EncryptedSharedPreferences |
+Android Auto hides apps that were not installed from the Play Store unless
+developer mode allows them. Without this, Autogram will not appear in the car.
 
-## Project Status
+1. Open **Android Auto** in your phone's settings.
+2. Scroll to the bottom and tap **Version** about 10 times, then confirm to
+   enable developer mode.
+3. Open the **⋮** menu → **Developer settings**.
+4. Turn on **Unknown sources**.
+5. Reconnect your phone to the car. Autogram should now be listed with your
+   media and messaging apps.
 
-**Current release: `v1.0.0-beta.1`** — first usable build. End-to-end verified on a Pixel 5 emulator (Android 35) + against a live Telegram bot.
+## Build from source
 
-✅ **Phase 0 — Technical Prototype** (complete)
-✅ **Phase 1 — Core MVP** (complete)
-✅ **Phase 2 — Robustness** (complete)
-✅ **Phase 3 — Polish** (complete) — daily retention worker, pending-reply notifications, Android Auto UI polish, first-run onboarding, battery-optimization opt-out
-✅ **Phase 4 — Voice Commands** (complete) — SpeechRecognizer integration with REPETIR / CANCELAR / PAUSAR / REANUDAR / ENVIAR / SILENCIO commands
-✅ **Phase 5 — Statistics** (code complete) — daily-counts dashboard on phone (success rate, durations, last-7-days bars). Evaluation tasks (WhatsApp / LLM / Play Store) remain as product decisions.
-✅ **Phone push-to-talk** — app is usable as a Telegram voice client without Android Auto (hold mic FAB to record, release to send, slide to cancel).
+See [docs/BUILDING.md](docs/BUILDING.md). Forks must register their own
+Telegram `api_id` and `api_hash`.
 
-All 60 implementation/bug issues resolved. The app implements the full message lifecycle: record → send → receive → auto-play with proper error handling, retries, call-awareness, retention cleanup, deferred-playback notifications, voice control on Android Auto, and a phone-side stats dashboard.
+## Privacy
 
-### Known limitations
-- SpeechRecognizer in Android Auto is gated by Google's distraction policy. The recognizer falls back to UNKNOWN (and shows the help screen) on devices/heads where the policy blocks it.
-- DB schema has no migrations (`exportSchema = false`); upgrading the version will require uninstalling the app.
-
-## Documentation
-
-- [01 — Critical Analysis](docs/01-critical-analysis.md)
-- [02 — Functional Planning](docs/02-functional-planning.md)
-- [03 — Architecture](docs/03-architecture.md)
-- [04 — Data Model](docs/04-data-model.md)
-- [05 — Risks](docs/05-risks.md)
-- [06 — Development Plan](docs/06-development-plan.md)
-- [07 — Code Review](docs/07-code-review.md)
+- Autogram talks directly to Telegram using TDLib. There is no Autogram server
+  in between, and the developers do not receive your messages.
+- Your Telegram session and messages are stored on your device.
+- Crash reporting through Sentry is optional.
+- If you choose to configure an external AI summary endpoint, the text you ask
+  to summarize is sent to that endpoint. The app asks you to confirm this first.
 
 ## License
 
-Personal use project. All rights reserved.
+Autogram is licensed under the [GNU General Public License v3.0](LICENSE).
+Third-party components, including TDLib, are listed in [NOTICE](NOTICE).
