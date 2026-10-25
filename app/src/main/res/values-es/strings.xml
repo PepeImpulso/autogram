@@ -126,6 +126,7 @@
     <string name="aa_stop_send">Parar y enviar</string>
     <string name="aa_recording_tap_to_send">Grabando · Toca para enviar</string>
     <string name="aa_cancel">Cancelar</string>
+    <string name="aa_tab_home">Inicio</string>
     <string name="aa_silent_on">Silenciar</string>
     <string name="aa_silent_off">Activar audio</string>
     <string name="aa_voice_command">Comando por voz</string>

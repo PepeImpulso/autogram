@@ -60,8 +60,11 @@ import java.io.File
  *   - Pinned conversations appear as ConversationItem rows, in the same order
  *     the phone's home screen shows them.
  *   - Reply callbacks send text replies to the selected target.
- *   - A per-conversation Record action starts a direct voice message.
- *   - Bottom ActionStrip keeps the Silent toggle + Voice-command CTA.
+ *   - A per-conversation Record action toggles a direct voice message.
+ *   - The Home tab is a phone-like grid of contact tiles: tap to start
+ *     recording, tap the same tile again to stop and send (#104).
+ *   - Bottom ActionStrip keeps the Silent toggle + Voice-command CTA, and
+ *     swaps the Silent toggle for Cancel while recording.
  */
 @OptIn(ExperimentalCarApi::class)
 class MainScreen(
@@ -98,10 +101,13 @@ class MainScreen(
     private val cachedSettings = MutableStateFlow<AppSettings?>(null)
     // v1.24.0 — which TabTemplate tab is active. Persists across invalidate()
     // so tab switches stick instead of resetting to Inbox every recomposition.
-    private val currentTab = MutableStateFlow(TabId.INBOX)
+    private val currentTab = MutableStateFlow(TabId.HOME)
+    // Contact the car last started recording for. The use case clears
+    // activeTargetId once a send finishes, so the Sent / Error tile state
+    // is drawn against this instead (see CarRecordToggle.tileState).
+    private var lastTargetId: String? = null
 
-    // Unchanged from v1.17.x: icon cache only used by the fallback
-    // GridTemplate on the non-home screens (recording / status).
+    // Bitmap tile icons for the Home grid, keyed by conversation + photo.
     private val iconCache: MutableMap<String, CarIcon> = HashMap()
 
     init {
@@ -185,43 +191,33 @@ class MainScreen(
      * TabCallback.onTabSelected reports back when the host switches tabs.
      */
     enum class TabId(val contentId: String) {
+        HOME("home"),
         INBOX("inbox"),
-        SHORTCUTS("shortcuts"),
         PENDING("pending"),
         SETTINGS("settings");
 
         companion object {
             fun fromContentId(id: String): TabId =
-                values().firstOrNull { it.contentId == id } ?: INBOX
+                values().firstOrNull { it.contentId == id } ?: HOME
         }
     }
 
     override fun onGetTemplate(): Template {
-        return when (val status = sendMessageUseCase.status.value) {
-            // Recording uses a simple driver-safe status screen with
-            // explicit Send / Cancel actions.
-            is SendVoiceMtprotoUseCase.SendStatus.Recording -> buildRecordingTemplate()
-            is SendVoiceMtprotoUseCase.SendStatus.Sending -> buildStatusTemplate(carContext.getString(R.string.status_sending))
-            // Auto-reset after Sent is scheduled by the flow collector
-            // in init {} — onGetTemplate stays pure (no side effects)
-            // so AA can re-request the template any number of times
-            // without accumulating delayed coroutines.
-            is SendVoiceMtprotoUseCase.SendStatus.Sent -> buildStatusTemplate(carContext.getString(R.string.status_sent))
-            is SendVoiceMtprotoUseCase.SendStatus.Discarded -> buildStatusTemplate(
-                carContext.getString(R.string.status_discarded, status.reason)
-            )
-            is SendVoiceMtprotoUseCase.SendStatus.Error -> buildStatusTemplate(
-                carContext.getString(R.string.status_error) + ": ${status.message}"
-            )
-            else -> buildTabbedHome()
-        }
+        // #104 — the home template stays up through the whole record →
+        // send cycle (no swap to a recording / status screen), like the
+        // phone. State shows on the tiles, row actions and template titles
+        // instead, and staying on one template type keeps the host's
+        // template-change quota untouched.
+        return buildTabbedHome()
     }
 
     /**
      * v1.24.0 — the new home is a [TabTemplate] with four tabs:
+     *   - Home: phone-like grid of contact tiles (tap to record, tap again
+     *     to send) followed by one-tap quick replies. Replaced the old
+     *     Shortcuts tab in #104 because TabTemplate allows four tabs.
      *   - Inbox: official messaging list (one [ConversationItem] per pinned
      *     conversation, with inline reply + Record per row).
-     *   - Shortcuts: grid of one-tap quick replies.
      *   - Pending: list of messages waiting to play.
      *   - Settings: PaneTemplate with on-the-road tweakable toggles (audio
      *     focus mode, autoplay, playback speed, TTS nav routing).
@@ -238,15 +234,15 @@ class MainScreen(
             }
         }
         val contents = when (currentTab.value) {
+            TabId.HOME -> TabContents.Builder(buildMainGrid()).build()
             TabId.INBOX -> buildInboxTabContents()
-            TabId.SHORTCUTS -> buildShortcutsTabContents()
             TabId.PENDING -> buildPendingTabContents()
             TabId.SETTINGS -> buildSettingsTabContents()
         }
         return TabTemplate.Builder(tabCallback)
             .setHeaderAction(Action.APP_ICON)
+            .addTab(buildTab(TabId.HOME, R.string.aa_tab_home, R.drawable.ic_mic))
             .addTab(buildTab(TabId.INBOX, R.string.aa_tab_inbox, R.drawable.ic_inbox))
-            .addTab(buildTab(TabId.SHORTCUTS, R.string.aa_tab_shortcuts, R.drawable.ic_bolt))
             .addTab(buildTab(TabId.PENDING, R.string.aa_tab_pending, R.drawable.ic_play_circle))
             .addTab(buildTab(TabId.SETTINGS, R.string.aa_tab_settings, R.drawable.ic_settings))
             .setActiveTabContentId(currentTab.value.contentId)
@@ -269,43 +265,6 @@ class MainScreen(
      */
     private fun buildInboxTabContents(): TabContents =
         TabContents.Builder(buildHomeTemplate()).build()
-
-    /**
-     * Shortcuts tab — GridTemplate of enabled quick replies. Tapping a tile
-     * sends the shortcut via [SendVoiceMtprotoUseCase.sendQuickReply] (or
-     * sendVoiceShortcut for voice). Falls back to an empty-state
-     * MessageTemplate when no shortcuts are configured.
-     */
-    private fun buildShortcutsTabContents(): TabContents {
-        val list = cachedQuickReplies.value.filter { it.isEnabled }
-        if (list.isEmpty()) {
-            return TabContents.Builder(
-                MessageTemplate.Builder(carContext.getString(R.string.aa_shortcuts_empty))
-                    .setTitle(carContext.getString(R.string.aa_tab_shortcuts))
-                    .setIcon(carIcon(R.drawable.ic_bolt, CarColor.YELLOW))
-                    .build()
-            ).build()
-        }
-        val items = ItemList.Builder()
-        val constraintManager = carContext.getCarService(ConstraintManager::class.java)
-        val maxItems = constraintManager.getContentLimit(ConstraintManager.CONTENT_LIMIT_TYPE_GRID)
-        for ((i, qr) in list.withIndex()) {
-            if (i >= maxItems) break
-            items.addItem(
-                GridItem.Builder()
-                    .setTitle(qr.label)
-                    .setImage(shortcutTileIcon(qr), GridItem.IMAGE_TYPE_LARGE)
-                    .setOnClickListener { sendShortcut(qr) }
-                    .build()
-            )
-        }
-        val grid = GridTemplate.Builder()
-            .setTitle(carContext.getString(R.string.aa_tab_shortcuts))
-            .setSingleList(items.build())
-            .setActionStrip(buildActionStrip())
-        runCatching { grid.setItemSize(GridTemplate.ITEM_SIZE_LARGE) }
-        return TabContents.Builder(grid.build()).build()
-    }
 
     /**
      * Pending tab — driver-safe ListTemplate of messages queued for
@@ -514,11 +473,19 @@ class MainScreen(
                                     .setOnClickListener { openReplyScreen(conv) }
                                     .build()
                             )
+                            val recordingThis = tileState(conv.id) == CarRecordToggle.TileState.RECORDING
                             addAction(
                                 Action.Builder()
-                                    .setTitle(carContext.getString(R.string.aa_record))
-                                    .setIcon(carIcon(R.drawable.ic_mic, CarColor.PRIMARY))
-                                    .setOnClickListener { startRecording(conv.id) }
+                                    .setTitle(
+                                        carContext.getString(
+                                            if (recordingThis) R.string.aa_stop_send else R.string.aa_record
+                                        )
+                                    )
+                                    .setIcon(
+                                        if (recordingThis) carIcon(R.drawable.ic_send, CarColor.RED)
+                                        else carIcon(R.drawable.ic_mic, CarColor.PRIMARY)
+                                    )
+                                    .setOnClickListener { toggleRecording(conv.id) }
                                     .build()
                             )
                         }
@@ -528,7 +495,7 @@ class MainScreen(
         }
 
         return ListTemplate.Builder()
-            .setTitle(carContext.getString(R.string.aa_conversations))
+            .setTitle(withStatus(carContext.getString(R.string.aa_conversations)))
             .setHeaderAction(Action.APP_ICON)
             .setActionStrip(buildActionStrip())
             .setSingleList(items.build())
@@ -564,13 +531,17 @@ class MainScreen(
             .setRead(true)
             .build()
 
+    /**
+     * Home tab (#104) — phone-like grid. Primary contact first, then the
+     * enabled quick replies, then the other pinned contacts (the old v1.17
+     * order: one-tap shortcuts beat the 7th contact), capped at the host's
+     * grid item limit. Contact tiles toggle record / send via
+     * [toggleRecording]; shortcuts that don't fit stay reachable from each
+     * contact's Reply screen.
+     */
     private fun buildMainGrid(): GridTemplate {
         val builder = GridTemplate.Builder()
-            // Empty title + no header action so AA renders the grid
-            // without the "Autogram" wordmark bar. Reclaims ~60dp of
-            // vertical space for larger tiles. A single space is safer
-            // than null across host versions.
-            .setTitle(" ")
+            .setTitle(withStatus(carContext.getString(R.string.aa_tab_home)))
             .setActionStrip(buildActionStrip())
 
         // ITEM_SIZE_LARGE = 4 — biggest tile size AA supports. Uniform
@@ -588,41 +559,33 @@ class MainScreen(
         val primary = pinned.firstOrNull()
         val secondaries = pinned.drop(1)
 
-        // 1. Primary tile first — bitmap fills the whole tile; AA's
-        // native Badge API overlays a peach mic dot at the corner.
+        // 1. Primary tile first — bitmap fills the whole tile.
         if (primary != null && itemCount < maxItems) {
-            items.addItem(
-                GridItem.Builder()
-                    .setTitle(tileTitle(primary))
-                    .setImage(
-                        avatarTileIcon(primary, isPrimary = true),
-                        GridItem.IMAGE_TYPE_LARGE,
-                        micBadge()
-                    )
-                    .setOnClickListener { startRecording(primary.id) }
-                    .build()
-            )
+            items.addItem(contactTile(primary, isPrimary = true))
             itemCount++
         }
 
-        // Fresh install with no pinned circles: single Record tile so
-        // the user isn't stuck on an empty screen.
+        // Fresh install with no pinned circles: single untargeted Record
+        // tile so the user isn't stuck on an empty screen.
         if (pinned.isEmpty() && itemCount < maxItems) {
+            val recording = tileState(null) == CarRecordToggle.TileState.RECORDING
             items.addItem(
                 GridItem.Builder()
-                    .setTitle(carContext.getString(R.string.aa_record))
-                    .setImage(carIcon(R.drawable.ic_mic, CarColor.PRIMARY), GridItem.IMAGE_TYPE_ICON)
-                    .setOnClickListener { startRecording(null) }
+                    .setTitle(carContext.getString(if (recording) R.string.aa_stop_send else R.string.aa_record))
+                    .setImage(
+                        if (recording) carIcon(R.drawable.ic_send, CarColor.RED)
+                        else carIcon(R.drawable.ic_mic, CarColor.PRIMARY),
+                        GridItem.IMAGE_TYPE_ICON
+                    )
+                    .setOnClickListener { toggleRecording(null) }
                     .build()
             )
             itemCount++
         }
 
-        // 2. Quick-reply shortcuts next. In the car, one-tap shortcuts
-        // are more urgent than the 7th pinned contact — a driver's
-        // glance sees primary-target + canned replies before having
-        // to scroll. Also matches the phone's "chips next to Merlin".
-        for (qr in cachedQuickReplies.value) {
+        // 2. Quick-reply shortcuts, like the chips next to the phone's
+        // primary circle.
+        for (qr in cachedQuickReplies.value.filter { it.isEnabled }) {
             if (itemCount >= maxItems) break
             items.addItem(
                 GridItem.Builder()
@@ -634,44 +597,69 @@ class MainScreen(
             itemCount++
         }
 
-        // 3. Secondary pinned conversations. Bitmap draws a smaller
-        // circle inside the canvas so secondaries render visibly
-        // smaller than the primary tile. Native Badge adds the same
-        // peach mic dot for affordance consistency.
+        // 3. Secondary pinned conversations (smaller circle in the bitmap).
         for (conv in secondaries) {
             if (itemCount >= maxItems) break
-            items.addItem(
-                GridItem.Builder()
-                    .setTitle(tileTitle(conv))
-                    .setImage(
-                        avatarTileIcon(conv, isPrimary = false),
-                        GridItem.IMAGE_TYPE_LARGE,
-                        micBadge()
-                    )
-                    .setOnClickListener { startRecording(conv.id) }
-                    .build()
-            )
+            items.addItem(contactTile(conv, isPrimary = false))
             itemCount++
-        }
-
-        // Pending-count tile at the very end when relevant.
-        val pendingCount = playReplyUseCase.pendingCount()
-        if (pendingCount > 0 && itemCount < maxItems) {
-            items.addItem(
-                GridItem.Builder()
-                    .setTitle(carContext.getString(R.string.aa_pending_count, pendingCount))
-                    .setImage(carIcon(R.drawable.ic_inbox, CarColor.YELLOW), GridItem.IMAGE_TYPE_ICON)
-                    .setOnClickListener {
-                        screenScope.launch { playReplyUseCase.playAllPending() }
-                        invalidate()
-                    }
-                    .build()
-            )
         }
 
         builder.setSingleList(items.build())
         return builder.build()
     }
+
+    /**
+     * One contact tile. Idle tiles show the avatar + native mic badge;
+     * the recording tile swaps to a red stop disc and "Recording · Tap to
+     * send", and the send result shows as the tile's secondary text.
+     */
+    private fun contactTile(conv: Conversation, isPrimary: Boolean): GridItem {
+        val state = tileState(conv.id)
+        val item = GridItem.Builder()
+            .setTitle(tileTitle(conv))
+            .setOnClickListener { toggleRecording(conv.id) }
+        if (state == CarRecordToggle.TileState.RECORDING) {
+            item.setImage(recordingTileIcon(isPrimary), GridItem.IMAGE_TYPE_LARGE)
+        } else {
+            item.setImage(avatarTileIcon(conv, isPrimary), GridItem.IMAGE_TYPE_LARGE, micBadge())
+        }
+        tileStatusText(state)?.let { item.setText(it) }
+        return item.build()
+    }
+
+    /** Snapshot of [CarRecordToggle.tileState] for the tile of [conversationId]. */
+    private fun tileState(conversationId: String?): CarRecordToggle.TileState =
+        CarRecordToggle.tileState(
+            status = sendMessageUseCase.status.value,
+            activeTargetId = sendMessageUseCase.activeTargetId.value,
+            lastTargetId = lastTargetId,
+            tileId = conversationId
+        )
+
+    private fun tileStatusText(state: CarRecordToggle.TileState): String? = when (state) {
+        CarRecordToggle.TileState.IDLE -> null
+        CarRecordToggle.TileState.RECORDING -> carContext.getString(R.string.aa_recording_tap_to_send)
+        else -> statusLabel()
+    }
+
+    /**
+     * Short label for the current send status, or null when idle. Also
+     * appended to the Home / Inbox titles so quick-reply sends and sends
+     * started from another tab still get on-screen feedback.
+     */
+    private fun statusLabel(): String? = when (val status = sendMessageUseCase.status.value) {
+        is SendVoiceMtprotoUseCase.SendStatus.Recording -> carContext.getString(R.string.status_recording)
+        is SendVoiceMtprotoUseCase.SendStatus.Validating,
+        is SendVoiceMtprotoUseCase.SendStatus.Sending -> carContext.getString(R.string.status_sending)
+        is SendVoiceMtprotoUseCase.SendStatus.Sent -> carContext.getString(R.string.status_sent)
+        is SendVoiceMtprotoUseCase.SendStatus.QueuedOffline -> carContext.getString(R.string.status_queued_offline)
+        is SendVoiceMtprotoUseCase.SendStatus.Discarded -> carContext.getString(R.string.status_discarded, status.reason)
+        is SendVoiceMtprotoUseCase.SendStatus.Error -> carContext.getString(R.string.status_error)
+        else -> null
+    }
+
+    private fun withStatus(title: String): String =
+        statusLabel()?.let { "$title · $it" } ?: title
 
     /**
      * Tile title that matches the phone home: forum-topic name when the
@@ -687,10 +675,30 @@ class MainScreen(
 
     private fun buildActionStrip(): ActionStrip {
         // AA rule: ActionStrip accepts at most ONE action with a custom
-        // title; rest must be icon-only.
+        // title; rest must be icon-only. Templates report taps only (no
+        // long-press like the phone circle), so while recording the mute
+        // toggle makes room for a titled Cancel and the voice-command
+        // action drops to icon-only.
+        if (sendMessageUseCase.status.value is SendVoiceMtprotoUseCase.SendStatus.Recording) {
+            return ActionStrip.Builder()
+                .addAction(
+                    Action.Builder()
+                        .setIcon(carIcon(R.drawable.ic_cancel, CarColor.RED))
+                        .setTitle(carContext.getString(R.string.aa_cancel))
+                        .setOnClickListener { cancelRecording() }
+                        .build()
+                )
+                .addAction(
+                    Action.Builder()
+                        .setIcon(carIcon(R.drawable.ic_voice_command, CarColor.BLUE))
+                        .setOnClickListener { triggerVoiceCommand() }
+                        .build()
+                )
+                .build()
+        }
         // Mute toggle = autoPlayReplies inverted. When OFF (muted),
-        // incoming replies queue up for manual drain via the pending
-        // tile / phone HeroHeader's "Play N pending" button.
+        // incoming replies queue up for manual drain via the Pending
+        // tab / phone HeroHeader's "Play N pending" button.
         val isMuted = autoPlayOff.value
         val muteIcon = if (isMuted) R.drawable.ic_silent else R.drawable.ic_volume_up
         return ActionStrip.Builder()
@@ -725,63 +733,13 @@ class MainScreen(
         Timber.d("VoiceCommand recibido: $command")
         when (command) {
             VoiceCommand.REPETIR -> screenScope.launch { playReplyUseCase.playAllPending() }
-            VoiceCommand.CANCELAR -> screenScope.launch { sendMessageUseCase.cancelRecording(); invalidate() }
+            VoiceCommand.CANCELAR -> cancelRecording()
             VoiceCommand.PAUSAR -> { playReplyUseCase.pause(); invalidate() }
             VoiceCommand.REANUDAR -> { playReplyUseCase.resume(); invalidate() }
             VoiceCommand.ENVIAR -> stopAndSend()
             VoiceCommand.SILENCIO -> toggleAutoPlay()
             VoiceCommand.UNKNOWN -> screenManager.push(VoiceCommandsHelpScreen(carContext))
         }
-    }
-
-    private fun buildRecordingTemplate(): MessageTemplate {
-        return MessageTemplate.Builder(carContext.getString(R.string.status_recording))
-            .setTitle(carContext.getString(R.string.app_name))
-            .setHeaderAction(Action.APP_ICON)
-            .setIcon(carIcon(R.drawable.ic_mic, CarColor.RED))
-            .addAction(
-                Action.Builder()
-                    .setTitle(carContext.getString(R.string.aa_stop_send))
-                    .setIcon(carIcon(R.drawable.ic_send, CarColor.DEFAULT))
-                    .setBackgroundColor(CarColor.PRIMARY)
-                    .setOnClickListener { stopAndSend() }
-                    .build()
-            )
-            .addAction(
-                Action.Builder()
-                    .setIcon(carIcon(R.drawable.ic_cancel, CarColor.DEFAULT))
-                    .setBackgroundColor(CarColor.SECONDARY)
-                    .setOnClickListener {
-                        screenScope.launch { sendMessageUseCase.cancelRecording() }
-                        invalidate()
-                    }
-                    .build()
-            )
-            .build()
-    }
-
-    private fun buildStatusTemplate(message: String): MessageTemplate {
-        val (icon, color) = when (sendMessageUseCase.status.value) {
-            is SendVoiceMtprotoUseCase.SendStatus.Sent -> R.drawable.ic_send to CarColor.GREEN
-            is SendVoiceMtprotoUseCase.SendStatus.Sending -> R.drawable.ic_send to CarColor.BLUE
-            is SendVoiceMtprotoUseCase.SendStatus.Error -> R.drawable.ic_cancel to CarColor.RED
-            is SendVoiceMtprotoUseCase.SendStatus.Discarded -> R.drawable.ic_cancel to CarColor.YELLOW
-            else -> R.drawable.ic_mic to CarColor.DEFAULT
-        }
-        return MessageTemplate.Builder(message)
-            .setTitle(carContext.getString(R.string.app_name))
-            .setHeaderAction(Action.APP_ICON)
-            .setIcon(carIcon(icon, color))
-            .addAction(
-                Action.Builder()
-                    .setTitle(carContext.getString(R.string.common_back))
-                    .setOnClickListener {
-                        sendMessageUseCase.reset()
-                        invalidate()
-                    }
-                    .build()
-            )
-            .build()
     }
 
     /**
@@ -795,14 +753,41 @@ class MainScreen(
         return true
     }
 
+    /**
+     * Tap on a contact tile, the row Record action or the Reply screen's
+     * record row: start recording, or stop and send when that contact is
+     * already recording (#104). See [CarRecordToggle.onTap].
+     */
+    private fun toggleRecording(targetId: String?) {
+        val action = CarRecordToggle.onTap(
+            status = sendMessageUseCase.status.value,
+            activeTargetId = sendMessageUseCase.activeTargetId.value,
+            tappedId = targetId
+        )
+        when (action) {
+            CarRecordToggle.TapAction.START -> startRecording(targetId)
+            CarRecordToggle.TapAction.STOP_AND_SEND -> stopAndSend()
+            CarRecordToggle.TapAction.IGNORE ->
+                Timber.d("Ignoring car record tap in state ${sendMessageUseCase.status.value}")
+        }
+    }
+
     private fun startRecording(targetId: String?) {
         if (blockCarReplyForApproval(targetId)) return
         resetJob?.cancel()
+        lastTargetId = targetId
         screenScope.launch {
             val result = sendMessageUseCase.startRecording(targetId)
             if (result.isFailure) {
                 Timber.e(result.exceptionOrNull(), "Failed to start recording")
             }
+            invalidate()
+        }
+    }
+
+    private fun cancelRecording() {
+        screenScope.launch {
+            sendMessageUseCase.cancelRecording()
             invalidate()
         }
     }
@@ -826,7 +811,7 @@ class MainScreen(
      * v1.24.1 — push the ConversationReplyScreen child for [conv], wiring
      * its onSend → [sendShortcut] (which already respects per-shortcut
      * target pinning via SendVoiceMtprotoUseCase.sendQuickReply) and
-     * onRecord → [startRecording] on the same conversation. The pop
+     * onRecord → [toggleRecording] on the same conversation. The pop
      * happens inside the child screen on tap, so MainScreen's invalidate
      * cycle picks up any state change naturally.
      */
@@ -837,7 +822,8 @@ class MainScreen(
                 conversation = conv,
                 quickReplies = cachedQuickReplies.value,
                 onSend = { qr -> sendShortcutTo(qr, conv.id) },
-                onRecord = { startRecording(conv.id) }
+                isRecording = tileState(conv.id) == CarRecordToggle.TileState.RECORDING,
+                onRecord = { toggleRecording(conv.id) }
             )
         )
     }
@@ -850,6 +836,7 @@ class MainScreen(
      */
     private fun sendShortcutTo(qr: QuickReply, conversationId: String) {
         if (blockCarReplyForApproval(conversationId)) return
+        lastTargetId = conversationId
         screenScope.launch {
             when (qr.kind) {
                 QuickReplyKind.TEXT -> sendMessageUseCase.sendQuickReply(
@@ -873,7 +860,9 @@ class MainScreen(
 
     private fun sendShortcut(qr: QuickReply) {
         // Untargeted shortcuts go to the primary (first pinned) circle.
-        if (blockCarReplyForApproval(qr.targetConversationId ?: cachedPinned.value.firstOrNull()?.id)) return
+        val targetId = qr.targetConversationId ?: cachedPinned.value.firstOrNull()?.id
+        if (blockCarReplyForApproval(targetId)) return
+        lastTargetId = targetId
         screenScope.launch {
             when (qr.kind) {
                 QuickReplyKind.TEXT -> sendMessageUseCase.sendQuickReply(qr.textContent)
@@ -948,6 +937,40 @@ class MainScreen(
         iconCache[key]?.let { return it }
         val bitmap = renderAvatarTile(conv, isPrimary = isPrimary)
         val icon = CarIcon.Builder(IconCompat.createWithBitmap(bitmap)).build()
+        iconCache[key] = icon
+        return icon
+    }
+
+    /**
+     * Cached [CarIcon] for the tile that is recording: red disc with a
+     * white stop square, sized like the avatar it replaces (the phone's
+     * red scrim + stop icon on the RecordCircle).
+     */
+    private fun recordingTileIcon(isPrimary: Boolean): CarIcon {
+        val key = "recording:${if (isPrimary) "P" else "S"}"
+        iconCache[key]?.let { return it }
+        val sizePx = AVATAR_TILE_SIZE
+        val output = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(output)
+        // Same alpha anchor + fill ratios as renderAvatarTile so the tile
+        // doesn't jump in size when it flips to the recording state.
+        canvas.drawColor(0x04000000)
+        val center = sizePx / 2f
+        val radius = (sizePx / 2f) * (if (isPrimary) 1.00f else 0.55f)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = COLOR_RECORDING_RED
+        }
+        canvas.drawCircle(center, center, radius, paint)
+        val half = radius * 0.32f
+        paint.color = Color.WHITE
+        canvas.drawRoundRect(
+            RectF(center - half, center - half, center + half, center + half),
+            half * 0.25f,
+            half * 0.25f,
+            paint
+        )
+        val icon = CarIcon.Builder(IconCompat.createWithBitmap(output)).build()
         iconCache[key] = icon
         return icon
     }
@@ -1184,5 +1207,7 @@ class MainScreen(
         // Muted grey-blue behind the person-silhouette fallback so the
         // empty avatar doesn't read as a missing-image error.
         private const val COLOR_SILHOUETTE_BG: Int = 0xFF3E4A56.toInt()
+        // Recording tile disc, close to the phone's error-red scrim.
+        private const val COLOR_RECORDING_RED: Int = 0xFFE53935.toInt()
     }
 }

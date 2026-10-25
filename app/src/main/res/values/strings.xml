@@ -139,7 +139,7 @@
     <string name="aa_voice_help_title">Voice commands</string>
     <string name="aa_voice_help_body">Say any of these commands: \n· repeat — plays the last message again\n· cancel — cancels the current recording\n· pause — pauses playback\n· resume — resumes playback\n· send — sends the current recording\n· mute — toggles silent mode</string>
     <string name="aa_tab_inbox">Inbox</string>
-    <string name="aa_tab_shortcuts">Shortcuts</string>
+    <string name="aa_tab_home">Home</string>
     <string name="aa_tab_pending">Pending</string>
     <string name="aa_tab_settings">Settings</string>
     <string name="aa_settings_autoplay">Auto-play replies</string>

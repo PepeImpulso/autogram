@@ -26,7 +26,8 @@ import com.autogram.app.domain.model.QuickReplyKind
  *     [onSend] (caller invokes `SendVoiceMtprotoUseCase.sendQuickReply`
  *     pinned to [conversation]).
  *   - One final Row "Record voice reply" → [onRecord] (caller hops
- *     back to MainScreen and starts recording on [conversation]).
+ *     back to MainScreen and starts recording on [conversation]), or
+ *     "Stop and send" when [isRecording] is true.
  *   - Back action returns to MainScreen / Inbox tab.
  *
  * Coexists with the implicit reply input AA's host renders via
@@ -39,6 +40,7 @@ class ConversationReplyScreen(
     private val conversation: Conversation,
     private val quickReplies: List<QuickReply>,
     private val onSend: (QuickReply) -> Unit,
+    private val isRecording: Boolean,
     private val onRecord: () -> Unit
 ) : Screen(carContext) {
 
@@ -66,11 +68,20 @@ class ConversationReplyScreen(
             }
         }
         // Always offer the Record-voice option at the end so the user has
-        // a reply path even when no quick replies are configured.
+        // a reply path even when no quick replies are configured. It is a
+        // toggle (#104): while this conversation is recording it stops and
+        // sends instead.
         items.addItem(
             Row.Builder()
-                .setTitle(carContext.getString(R.string.aa_detail_record))
-                .setImage(carIcon(R.drawable.ic_mic, CarColor.PRIMARY))
+                .setTitle(
+                    carContext.getString(
+                        if (isRecording) R.string.aa_stop_send else R.string.aa_detail_record
+                    )
+                )
+                .setImage(
+                    if (isRecording) carIcon(R.drawable.ic_send, CarColor.RED)
+                    else carIcon(R.drawable.ic_mic, CarColor.PRIMARY)
+                )
                 .setOnClickListener {
                     onRecord()
                     screenManager.pop()

@@ -101,6 +101,7 @@
     <string name="aa_stop_send">停止并发送</string>
     <string name="aa_recording_tap_to_send">录音中 · 轻触发送</string>
     <string name="aa_cancel">取消</string>
+    <string name="aa_tab_home">主页</string>
     <string name="aa_silent_on">静音</string>
     <string name="aa_silent_off">开启音频</string>
     <string name="aa_voice_command">语音命令</string>
