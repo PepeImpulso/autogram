@@ -25,6 +25,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # Release secrets live in the `release` environment, which only `v*`
+    # tags and `master` (workflow_dispatch) may deploy to.
+    environment: release
 
     steps:
       - name: Checkout
