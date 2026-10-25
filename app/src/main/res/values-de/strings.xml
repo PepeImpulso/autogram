@@ -303,6 +303,16 @@
     <string name="assistant_no_target_body">Wähle in den Einstellungen den Chat aus, in dem Merlín lebt, und versuche es erneut.</string>
     <string name="assistant_no_target_open_settings">Einstellungen öffnen</string>
     <string name="media_browser_pending">Ausstehend</string>
+    <string name="media_browser_record">Aufnehmen</string>
+    <string name="media_record_tap_to_record">Zum Aufnehmen tippen</string>
+    <string name="media_record_recording_title">● Aufnahme · %1$s</string>
+    <string name="media_record_recording_subtitle">Zum Senden ⏸ oder Senden tippen</string>
+    <string name="media_record_action_send">Senden</string>
+    <string name="media_record_action_cancel">Abbrechen</string>
+    <string name="media_record_sending">Wird an %1$s gesendet…</string>
+    <string name="media_record_sent">An %1$s gesendet ✓</string>
+    <string name="media_record_queued">Für %1$s in der Warteschlange (offline)</string>
+    <string name="media_record_failed">Senden an %1$s fehlgeschlagen</string>
     <string name="media_browser_history">Verlauf</string>
     <string name="media_browser_kind_voice">Sprache</string>
     <string name="media_browser_kind_text">Text</string>

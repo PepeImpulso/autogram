@@ -302,6 +302,16 @@
     <string name="assistant_no_target_body">設定で Merlín のいるチャットを選んでから、もう一度お試しください。</string>
     <string name="assistant_no_target_open_settings">設定を開く</string>
     <string name="media_browser_pending">保留中</string>
+    <string name="media_browser_record">録音</string>
+    <string name="media_record_tap_to_record">タップして録音</string>
+    <string name="media_record_recording_title">● 録音中 · %1$s</string>
+    <string name="media_record_recording_subtitle">⏸ または「送信」をタップして送信</string>
+    <string name="media_record_action_send">送信</string>
+    <string name="media_record_action_cancel">キャンセル</string>
+    <string name="media_record_sending">%1$s に送信中…</string>
+    <string name="media_record_sent">%1$s に送信しました ✓</string>
+    <string name="media_record_queued">%1$s 宛てに保留中（オフライン）</string>
+    <string name="media_record_failed">%1$s に送信できませんでした</string>
     <string name="media_browser_history">履歴</string>
     <string name="media_browser_kind_voice">音声</string>
     <string name="media_browser_kind_text">テキスト</string>

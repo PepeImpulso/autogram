@@ -1,5 +1,12 @@
 package com.autogram.app.service
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import android.graphics.Rect
 import android.os.Bundle
 import android.support.v4.media.MediaBrowserCompat.MediaItem
 import android.support.v4.media.MediaDescriptionCompat
@@ -18,6 +25,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -61,6 +69,9 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
     // singleton construction is lazy-on-first-injection — listing it
     // here forces the dependency before AA binds the browser.
     @Inject lateinit var playReplyUseCase: com.autogram.app.domain.usecase.PlayReplyUseCase
+    // Same eager-construction trick: the controller registers itself as the
+    // session's record interceptor in its init block.
+    @Inject lateinit var carMediaRecord: CarMediaRecordController
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -77,7 +88,8 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
         // hashCode here is bulletproof insurance.
         Timber.i(
             "AutogramMediaBrowserService onCreate — session attached, " +
-                "playReplyUseCase=${playReplyUseCase.hashCode()}"
+                "playReplyUseCase=${playReplyUseCase.hashCode()}, " +
+                "carMediaRecord=${carMediaRecord.hashCode()}"
         )
     }
 
@@ -110,6 +122,13 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
     override fun onLoadChildren(parentId: String, result: Result<MutableList<MediaItem>>) {
         when (parentId) {
             ROOT_ID -> result.sendResult(rootChildren())
+            RECORD_ID -> {
+                result.detach()
+                serviceScope.launch {
+                    runCatching { result.sendResult(recordChildren().toMutableList()) }
+                        .onFailure { Timber.w(it, "onLoadChildren($RECORD_ID) failed") }
+                }
+            }
             HISTORY_ID -> {
                 result.detach()
                 serviceScope.launch {
@@ -136,9 +155,63 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
     // CarAppService home's new Pending tab; users typing through the Media
     // tab were ending up in a browse-only surface with no reply path, which
     // is the whole point of the messaging template on the home screen.
+    //
+    // "Record" comes first: on real head units the media surface is the only
+    // Autogram screen, so this is where the driver taps to record (see
+    // CarMediaRecordController). Its children render as a grid of contacts.
     private fun rootChildren(): MutableList<MediaItem> = mutableListOf(
+        browseable(
+            RECORD_ID,
+            getString(com.autogram.app.R.string.media_browser_record),
+            Bundle().apply { putInt(CONTENT_STYLE_PLAYABLE_HINT, CONTENT_STYLE_GRID_ITEM) }
+        ),
         browseable(HISTORY_ID, getString(com.autogram.app.R.string.media_browser_history))
     )
+
+    private suspend fun recordChildren(): List<MediaItem> {
+        val pinned = withTimeoutOrNull(BROWSER_QUERY_TIMEOUT_MS) {
+            runCatching { conversationRepository.getPinned() }.getOrDefault(emptyList())
+        } ?: emptyList()
+        val subtitle = getString(com.autogram.app.R.string.media_record_tap_to_record)
+        return pinned.sortedBy { it.sortOrder }.map { conv ->
+            val title = conv.topicName?.takeIf { it.isNotBlank() }
+                ?: conv.targetTitle?.takeIf { it.isNotBlank() }
+                ?: "Autogram"
+            val desc = MediaDescriptionCompat.Builder()
+                .setMediaId(CarMediaRecordController.recordMediaId(conv.id))
+                .setTitle(title)
+                .setSubtitle(subtitle)
+                .setIconBitmap(circlePhoto(conv.photoLocalPath))
+                .build()
+            MediaItem(desc, MediaItem.FLAG_PLAYABLE)
+        }
+    }
+
+    /**
+     * Small circular contact photo for the record grid. Kept at
+     * [RECORD_ICON_PX] because every bitmap travels over binder with the
+     * children list; null falls back to the host's default tile.
+     */
+    private fun circlePhoto(path: String?): Bitmap? = runCatching {
+        if (path.isNullOrBlank() || !File(path).isFile) return null
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(path, bounds)
+        var sample = 1
+        while (minOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= RECORD_ICON_PX) sample *= 2
+        val src = BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })
+            ?: return null
+        val out = Bitmap.createBitmap(RECORD_ICON_PX, RECORD_ICON_PX, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(out)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { isFilterBitmap = true }
+        val side = minOf(src.width, src.height)
+        val srcRect = Rect((src.width - side) / 2, (src.height - side) / 2,
+            (src.width + side) / 2, (src.height + side) / 2)
+        canvas.drawCircle(RECORD_ICON_PX / 2f, RECORD_ICON_PX / 2f, RECORD_ICON_PX / 2f, paint)
+        paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
+        canvas.drawBitmap(src, srcRect, Rect(0, 0, RECORD_ICON_PX, RECORD_ICON_PX), paint)
+        src.recycle()
+        out
+    }.onFailure { Timber.w(it, "circlePhoto failed") }.getOrNull()
 
     private suspend fun pendingChildren(): List<MediaItem> {
         // v1.22.3 — wrap in withTimeoutOrNull so a stuck DB query doesn't
@@ -179,10 +252,11 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
         runCatching { conversationRepository.getAll().associateBy { it.id } }
             .getOrDefault(emptyMap())
 
-    private fun browseable(mediaId: String, title: String): MediaItem {
+    private fun browseable(mediaId: String, title: String, extras: Bundle? = null): MediaItem {
         val desc = MediaDescriptionCompat.Builder()
             .setMediaId(mediaId)
             .setTitle(title)
+            .setExtras(extras)
             .build()
         return MediaItem(desc, MediaItem.FLAG_BROWSABLE)
     }
@@ -214,6 +288,13 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
         const val ROOT_ID = "/"
         const val PENDING_ID = "pending"
         const val HISTORY_ID = "history"
+        const val RECORD_ID = "record"
+
+        // androidx.media MediaConstants values, inlined: render the record
+        // folder's children as a grid of contact tiles.
+        private const val CONTENT_STYLE_PLAYABLE_HINT = "android.media.browse.CONTENT_STYLE_PLAYABLE_HINT"
+        private const val CONTENT_STYLE_GRID_ITEM = 2
+        private const val RECORD_ICON_PX = 160
 
         /** Cap browser DB reads so a stuck query doesn't hang AA's UI. */
         private const val BROWSER_QUERY_TIMEOUT_MS: Long = 5_000

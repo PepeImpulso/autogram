@@ -100,8 +100,10 @@ class MtprotoReceiverService : Service() {
     // Without the flag, the onCreate here would cancel the current scope and
     // spawn a fresh one that the already-run onDestroy never cleans up.
     @Volatile private var destroyed = false
+    @Volatile private var holdsMicrophoneType = false
+    @Volatile private var lastNotificationText = "Connecting…"
 
-    // The merged manifest declares specialUse|mediaPlayback on this service.
+    // The merged manifest declares specialUse|mediaPlayback|microphone on this service.
     // Lint does not resolve the combined flavor manifest for these guarded
     // API-level branches and reports all three calls as missing a type.
     @SuppressLint("ForegroundServiceType")
@@ -118,31 +120,7 @@ class MtprotoReceiverService : Service() {
         createNotificationChannel()
         val notification = buildNotification("Connecting…")
         try {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                // v1.24.0 — combine SPECIAL_USE (continuous MTProto long-poll
-                // is the use case) with MEDIA_PLAYBACK so Android 14+'s
-                // background-audio policy doesn't suppress the playback we
-                // trigger from this service. The FOREGROUND_SERVICE_MEDIA_
-                // PLAYBACK manifest permission is already declared.
-                startForeground(
-                    NOTIFICATION_ID,
-                    notification,
-                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or
-                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-                )
-            } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                // API 29–33 only require explicit types for location, camera,
-                // and microphone. Use the declared mediaPlayback type here;
-                // specialUse was introduced in API 34 and cannot be passed to
-                // older platform versions.
-                startForeground(
-                    NOTIFICATION_ID,
-                    notification,
-                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-                )
-            } else {
-                startForeground(NOTIFICATION_ID, notification)
-            }
+            startForegroundWithTypes(notification)
         } catch (e: IllegalStateException) {
             // Android 12+ rejects FGS starts from background contexts (e.g.
             // Android Auto binding AutogramCarAppService while the app is
@@ -170,9 +148,60 @@ class MtprotoReceiverService : Service() {
                 stopSelf()
                 return START_NOT_STICKY
             }
-            else -> startSupervisor()
+            else -> {
+                // Started from a foreground screen after a background start:
+                // upgrade the service so it also holds microphone access.
+                if (!holdsMicrophoneType) {
+                    runCatching { startForegroundWithTypes(buildNotification(lastNotificationText)) }
+                        .onFailure { Timber.w(it, "FGS microphone upgrade failed") }
+                }
+                startSupervisor()
+            }
         }
         return START_STICKY
+    }
+
+    /**
+     * Starts (or re-types) the foreground service. The microphone type keeps
+     * recording working while the phone is locked and Android Auto shows the
+     * media screen (car tap-to-record); Android only grants it while the app
+     * may use the mic, so a background start falls back to the base types
+     * and onStartCommand upgrades later from a foreground entry.
+     */
+    @SuppressLint("ForegroundServiceType", "InlinedApi")
+    private fun startForegroundWithTypes(notification: android.app.Notification) {
+        val sdk = android.os.Build.VERSION.SDK_INT
+        if (sdk < android.os.Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, notification)
+            return
+        }
+        // API 29–33 only require explicit types for location, camera and
+        // microphone; specialUse was introduced in API 34.
+        val base = if (sdk >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+        } else {
+            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+        }
+        val micAllowed = sdk >= android.os.Build.VERSION_CODES.R &&
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                this, android.Manifest.permission.RECORD_AUDIO
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (micAllowed) {
+            try {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    base or android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                )
+                holdsMicrophoneType = true
+                return
+            } catch (e: SecurityException) {
+                Timber.i("FGS microphone type not allowed right now; starting without it")
+            }
+        }
+        startForeground(NOTIFICATION_ID, notification, base)
+        holdsMicrophoneType = false
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -700,6 +729,7 @@ class MtprotoReceiverService : Service() {
     }
 
     private fun updateNotification(text: String) {
+        lastNotificationText = text
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         nm.notify(NOTIFICATION_ID, buildNotification(text))
     }

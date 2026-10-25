@@ -347,6 +347,16 @@
     <string name="assistant_no_target_body">Elige en Ajustes el chat donde vive Merlín y vuelve a intentarlo.</string>
     <string name="assistant_no_target_open_settings">Abrir Ajustes</string>
     <string name="media_browser_pending">Pendientes</string>
+    <string name="media_browser_record">Grabar</string>
+    <string name="media_record_tap_to_record">Toca para grabar</string>
+    <string name="media_record_recording_title">● Grabando · %1$s</string>
+    <string name="media_record_recording_subtitle">Pulsa ⏸ o Enviar para enviarlo</string>
+    <string name="media_record_action_send">Enviar</string>
+    <string name="media_record_action_cancel">Cancelar</string>
+    <string name="media_record_sending">Enviando a %1$s…</string>
+    <string name="media_record_sent">Enviado a %1$s ✓</string>
+    <string name="media_record_queued">En cola para %1$s (sin conexión)</string>
+    <string name="media_record_failed">No se pudo enviar a %1$s</string>
     <string name="media_browser_history">Historial</string>
     <string name="media_browser_kind_voice">Voz</string>
     <string name="media_browser_kind_text">Texto</string>

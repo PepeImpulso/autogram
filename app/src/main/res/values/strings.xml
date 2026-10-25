@@ -398,6 +398,16 @@
     <string name="assistant_no_target_body">Pick the chat where Merlín lives in Settings, then come back and try again.</string>
     <string name="assistant_no_target_open_settings">Open Settings</string>
     <string name="media_browser_pending">Pending</string>
+    <string name="media_browser_record">Record</string>
+    <string name="media_record_tap_to_record">Tap to record</string>
+    <string name="media_record_recording_title">● Recording · %1$s</string>
+    <string name="media_record_recording_subtitle">Tap ⏸ or Send to send it</string>
+    <string name="media_record_action_send">Send</string>
+    <string name="media_record_action_cancel">Cancel</string>
+    <string name="media_record_sending">Sending to %1$s…</string>
+    <string name="media_record_sent">Sent to %1$s ✓</string>
+    <string name="media_record_queued">Queued for %1$s (offline)</string>
+    <string name="media_record_failed">Could not send to %1$s</string>
     <string name="media_browser_history">History</string>
     <string name="media_browser_kind_voice">Voice</string>
     <string name="media_browser_kind_text">Text</string>

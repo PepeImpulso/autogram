@@ -19,6 +19,7 @@
          actually run as a foreground service today, but the perm
          covers the case if we promote it later. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -219,7 +220,7 @@
         <service
             android:name=".service.MtprotoReceiverService"
             android:exported="false"
-            android:foregroundServiceType="specialUse|mediaPlayback">
+            android:foregroundServiceType="specialUse|mediaPlayback|microphone">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="MtprotoReceiverService continuously maintains a TDLib MTProto session for Autogram so incoming voice messages can be received, notified to Android Auto, and played aloud without requiring the user to keep the app open on the phone." />

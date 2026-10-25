@@ -302,6 +302,16 @@
     <string name="assistant_no_target_body">在设置中选择 Merlín 所在的聊天，然后重试。</string>
     <string name="assistant_no_target_open_settings">打开设置</string>
     <string name="media_browser_pending">待播放</string>
+    <string name="media_browser_record">录音</string>
+    <string name="media_record_tap_to_record">点按录音</string>
+    <string name="media_record_recording_title">● 正在录音 · %1$s</string>
+    <string name="media_record_recording_subtitle">点按 ⏸ 或“发送”即可发送</string>
+    <string name="media_record_action_send">发送</string>
+    <string name="media_record_action_cancel">取消</string>
+    <string name="media_record_sending">正在发送给 %1$s…</string>
+    <string name="media_record_sent">已发送给 %1$s ✓</string>
+    <string name="media_record_queued">已排队，稍后发送给 %1$s（离线）</string>
+    <string name="media_record_failed">无法发送给 %1$s</string>
     <string name="media_browser_history">历史</string>
     <string name="media_browser_kind_voice">语音</string>
     <string name="media_browser_kind_text">文本</string>

@@ -303,6 +303,16 @@
     <string name="assistant_no_target_body">Choisissez dans les Réglages le chat où vit Merlín, puis réessayez.</string>
     <string name="assistant_no_target_open_settings">Ouvrir les Réglages</string>
     <string name="media_browser_pending">En attente</string>
+    <string name="media_browser_record">Enregistrer</string>
+    <string name="media_record_tap_to_record">Touchez pour enregistrer</string>
+    <string name="media_record_recording_title">● Enregistrement · %1$s</string>
+    <string name="media_record_recording_subtitle">Touchez ⏸ ou Envoyer pour envoyer</string>
+    <string name="media_record_action_send">Envoyer</string>
+    <string name="media_record_action_cancel">Annuler</string>
+    <string name="media_record_sending">Envoi à %1$s…</string>
+    <string name="media_record_sent">Envoyé à %1$s ✓</string>
+    <string name="media_record_queued">En attente pour %1$s (hors ligne)</string>
+    <string name="media_record_failed">Échec de l’envoi à %1$s</string>
     <string name="media_browser_history">Historique</string>
     <string name="media_browser_kind_voice">Vocal</string>
     <string name="media_browser_kind_text">Texte</string>

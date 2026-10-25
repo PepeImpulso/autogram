@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
+import com.autogram.app.R
 import com.autogram.app.domain.model.Conversation
 import com.autogram.app.domain.model.Message
 import com.autogram.app.ui.phone.MainActivity
@@ -69,18 +70,35 @@ class AutogramMediaPlaybackController @Inject constructor(
         fun onSeekTo(positionMs: Long)
     }
 
+    /**
+     * Car tap-to-record hook ([CarMediaRecordController]). Consulted before
+     * [Listener] so a tap on a "record:" item, or ⏸ while recording, never
+     * reaches the playback pipeline.
+     */
+    interface RecordInterceptor {
+        /** True when [mediaId] was a record item and has been handled. */
+        fun onPlayFromMediaId(mediaId: String): Boolean
+        /** Play / Pause / Stop. True when a recording consumed the tap. */
+        fun onTransport(): Boolean
+        fun onCustomAction(action: String): Boolean
+    }
+
     @Volatile private var listener: Listener? = null
+    @Volatile private var recordInterceptor: RecordInterceptor? = null
 
     private val session: MediaSessionCompat by lazy {
         MediaSessionCompat(context, SESSION_TAG).apply {
             setCallback(object : MediaSessionCompat.Callback() {
                 override fun onPlay() {
+                    if (recordInterceptor?.onTransport() == true) return
                     listener?.onPlay() ?: Timber.w("MediaSession.onPlay before listener attached")
                 }
                 override fun onPause() {
+                    if (recordInterceptor?.onTransport() == true) return
                     listener?.onPause() ?: Timber.w("MediaSession.onPause before listener attached")
                 }
                 override fun onStop() {
+                    if (recordInterceptor?.onTransport() == true) return
                     listener?.onStop() ?: Timber.w("MediaSession.onStop before listener attached")
                 }
                 override fun onSkipToNext() {
@@ -91,12 +109,19 @@ class AutogramMediaPlaybackController @Inject constructor(
                 }
                 override fun onPlayFromMediaId(mediaId: String?, extras: Bundle?) {
                     if (mediaId == null) return
+                    if (recordInterceptor?.onPlayFromMediaId(mediaId) == true) return
                     listener?.onPlayFromMediaId(mediaId, extras)
                         ?: Timber.w("MediaSession.onPlayFromMediaId before listener attached")
                 }
                 override fun onPlayFromSearch(query: String?, extras: Bundle?) {
                     listener?.onPlayFromSearch(query.orEmpty(), extras)
                         ?: Timber.w("MediaSession.onPlayFromSearch before listener attached")
+                }
+                override fun onCustomAction(action: String?, extras: Bundle?) {
+                    if (action == null) return
+                    if (recordInterceptor?.onCustomAction(action) != true) {
+                        Timber.w("MediaSession.onCustomAction unhandled: $action")
+                    }
                 }
                 override fun onSeekTo(pos: Long) {
                     listener?.onSeekTo(pos)
@@ -135,6 +160,8 @@ class AutogramMediaPlaybackController @Inject constructor(
     }
 
     fun setListener(l: Listener) { listener = l }
+
+    fun setRecordInterceptor(i: RecordInterceptor) { recordInterceptor = i }
 
     /**
      * v1.23.1 — force the lazy [session] to materialize on the calling
@@ -207,6 +234,63 @@ class AutogramMediaPlaybackController @Inject constructor(
     fun markResumed(positionMs: Long = 0L) {
         if (!session.isActive) session.isActive = true
         session.setPlaybackState(playingState(positionMs))
+    }
+
+    /**
+     * Car tap-to-record: show "Recording · <contact>" in Now Playing with a
+     * running progress bar up to [maxDurationMs], ⏸ (= send) and the Send /
+     * Cancel custom actions.
+     */
+    fun markRecording(
+        title: String,
+        subtitle: String,
+        maxDurationMs: Long,
+        sendLabel: String,
+        cancelLabel: String
+    ) {
+        if (!session.isActive) session.isActive = true
+        session.setMetadata(
+            MediaMetadataCompat.Builder()
+                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
+                .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, title)
+                .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, subtitle)
+                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "Autogram")
+                .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, maxDurationMs)
+                .build()
+        )
+        session.setPlaybackState(
+            PlaybackStateCompat.Builder()
+                .setActions(
+                    PlaybackStateCompat.ACTION_PAUSE or
+                        PlaybackStateCompat.ACTION_PLAY_PAUSE or
+                        PlaybackStateCompat.ACTION_STOP or
+                        PlaybackStateCompat.ACTION_PLAY_FROM_MEDIA_ID
+                )
+                .addCustomAction(
+                    PlaybackStateCompat.CustomAction.Builder(
+                        CarMediaRecordController.ACTION_SEND, sendLabel, R.drawable.ic_send
+                    ).build()
+                )
+                .addCustomAction(
+                    PlaybackStateCompat.CustomAction.Builder(
+                        CarMediaRecordController.ACTION_CANCEL, cancelLabel, R.drawable.ic_cancel
+                    ).build()
+                )
+                .setState(PlaybackStateCompat.STATE_PLAYING, 0L, 1.0f)
+                .build()
+        )
+    }
+
+    /** Car tap-to-record: one-line status ("Sending…", "Sent") on an idle session. */
+    fun markRecordInfo(title: String) {
+        session.setMetadata(
+            MediaMetadataCompat.Builder()
+                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
+                .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, title)
+                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "Autogram")
+                .build()
+        )
+        session.setPlaybackState(idleState())
     }
 
     /** Playback fully stopped — keep the session active so AA still shows our app. */
