@@ -345,7 +345,7 @@ class QuickRepliesSettingsViewModel @Inject constructor(
     fun loadExisting(audioFilePath: String, durationMs: Long) {
         val f = File(audioFilePath)
         if (!f.exists() || f.length() == 0L) {
-            Timber.w("loadExisting: file missing or empty at $audioFilePath")
+            Timber.w("loadExisting: voice shortcut file missing or empty (${f.name})")
             return
         }
         _voiceState.value = VoiceRecordState.Recorded(f, durationMs, isEphemeral = false)

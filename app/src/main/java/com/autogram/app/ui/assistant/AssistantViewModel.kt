@@ -148,7 +148,7 @@ class AssistantViewModel @Inject constructor(
             val command = AssistantCommandParser.parse(text)
 
             if (command != null) {
-                Timber.i("assistant voice command matched: $command (transcript: '$text')")
+                Timber.i("assistant voice command matched: $command (transcriptLength=${text?.length ?: 0})")
                 runCatching { audioFile.delete() }
                 executeCommand(command)
                 _state.value = State.ActionExecuted(command)

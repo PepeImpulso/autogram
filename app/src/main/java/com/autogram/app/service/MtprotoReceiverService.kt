@@ -855,7 +855,9 @@ private fun TdApi.File.completedLocalPath(): String? {
     return path.takeIf { java.io.File(it).isFile }
 }
 
+// Logged at INFO/WARN, which become Sentry breadcrumbs: keep chat titles and
+// topic names out of it and identify the target by its local id only.
 private fun Conversation.receiverLabel(): String = buildString {
-    append(targetTitle?.takeIf { it.isNotBlank() } ?: "conversation:$id")
-    topicName?.takeIf { it.isNotBlank() }?.let { append(" › ").append(it) }
+    append("conversation:$id")
+    if (!topicName.isNullOrBlank()) append(" (topic)")
 }

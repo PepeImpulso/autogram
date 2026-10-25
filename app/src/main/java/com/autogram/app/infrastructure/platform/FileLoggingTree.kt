@@ -2,6 +2,7 @@ package com.autogram.app.infrastructure.platform
 
 import android.content.Context
 import androidx.core.content.FileProvider
+import com.autogram.app.AutogramApplication
 import android.net.Uri
 import timber.log.Timber
 import java.io.File
@@ -105,13 +106,16 @@ class FileLoggingTree(private val context: Context) : Timber.Tree() {
                 writer.println("# package=${context.packageName}")
                 writer.println("# files=[$ROTATED_NAME, $ACTIVE_NAME]")
                 writer.println()
+                // Every exported line goes through the same PII scrubber as
+                // Sentry events: this file leaves the device (Sentry
+                // attachment or share sheet). The on-device files stay raw.
                 if (rotated.exists()) {
                     writer.println("# ---- $ROTATED_NAME ----")
-                    rotated.readLines().forEach { writer.println(it) }
+                    rotated.readLines().forEach { writer.println(scrubExportLine(it)) }
                 }
                 if (active.exists()) {
                     writer.println("# ---- $ACTIVE_NAME ----")
-                    active.readLines().forEach { writer.println(it) }
+                    active.readLines().forEach { writer.println(scrubExportLine(it)) }
                 }
             }
         }
@@ -154,5 +158,16 @@ class FileLoggingTree(private val context: Context) : Timber.Tree() {
         private const val EXPORT_NAME = "autogram-export.log"
         // 1 MB per file × 2 rotation slots = 2 MB worst case.
         private const val MAX_BYTES: Long = 1L * 1024L * 1024L
+
+        // The line timestamp ("2026-10-25 12:34:56.789") looks like a phone
+        // number to the scrubber, so it is kept verbatim and only the rest
+        // of the line is scrubbed.
+        private val TIMESTAMP_PREFIX_RE =
+            Regex("""^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}""")
+
+        internal fun scrubExportLine(line: String): String {
+            val prefix = TIMESTAMP_PREFIX_RE.find(line)?.value ?: ""
+            return prefix + AutogramApplication.scrubPii(line.substring(prefix.length))
+        }
     }
 }

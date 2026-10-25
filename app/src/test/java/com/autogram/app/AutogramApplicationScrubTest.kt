@@ -88,4 +88,22 @@ class AutogramApplicationScrubTest {
         val s = "TDLib decryption failed for unknown reason"
         assertEquals(s, AutogramApplication.scrubPii(s))
     }
+    @Test fun `email address redacted`() {
+        val scrubbed = AutogramApplication.scrubPii("login as jane.doe+tg@example.co.uk failed")
+        assertFalse(scrubbed.contains("jane"))
+        assertEquals("login as [email] failed", scrubbed)
+    }
+
+    @Test fun `telegram username redacted`() {
+        val scrubbed = AutogramApplication.scrubPii("resolved @john_smith99 to chat")
+        assertFalse(scrubbed.contains("john"))
+        assertEquals("resolved [username] to chat", scrubbed)
+    }
+
+    @Test fun `object hash codes and short handles are not usernames`() {
+        // "Foo@1a2b3c" has a word char before @; "@abc" is below the
+        // 5-char Telegram minimum.
+        val s = "state=VoiceState@1a2b3c tag @abc"
+        assertEquals(s, AutogramApplication.scrubPii(s))
+    }
 }

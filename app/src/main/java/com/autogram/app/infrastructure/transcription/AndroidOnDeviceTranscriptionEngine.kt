@@ -103,7 +103,7 @@ class AndroidOnDeviceTranscriptionEngine @Inject constructor(
                 return@withContext TranscriptionEngine.Result.NotInstalled
             }
             val pcmFile = runCatching { decodeToMono16k(audioFile) }.getOrElse { e ->
-                Timber.w(e, "Opus decode failed for ${audioFile.name}")
+                Timber.w(e, "Opus decode failed (ext=${audioFile.extension})")
                 return@withContext TranscriptionEngine.Result.Error("decode: ${e.message}")
             }
             try {

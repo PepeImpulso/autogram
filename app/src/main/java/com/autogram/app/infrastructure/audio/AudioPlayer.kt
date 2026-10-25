@@ -97,7 +97,7 @@ class AudioPlayer @Inject constructor(
                 outputTypes = outputSnapshot.map { it.type }
             )
             Timber.i(
-                "AudioPlayer.play start file=${file.name} speed=$speed " +
+                "AudioPlayer.play start file=${file.logLabel()} speed=$speed " +
                     "effectiveSpeed=$effectiveSpeed " +
                     "focusMode=$focusMode navUsage=$useNavigationUsage exists=${file.exists()} " +
                     "size=${file.length()} source=${sourceFormat?.logSummary() ?: "unavailable"}"
@@ -226,7 +226,7 @@ class AudioPlayer @Inject constructor(
                 )
             } else {
                 Timber.e(
-                    "MediaPlayer error file=${file.name} attempt=$attempt " +
+                    "MediaPlayer error file=${file.logLabel()} attempt=$attempt " +
                         "what=$what extra=$extra"
                 )
                 completePlayback(
@@ -252,7 +252,7 @@ class AudioPlayer @Inject constructor(
                 attributes = playbackAttributes,
                 outputSnapshot = outputSnapshot,
                 carConnectionType = carConnectionType,
-                fileName = file.name
+                fileName = file.logLabel()
             )
         }
         // Applying PlaybackParams before start() on some OEMs silently
@@ -266,7 +266,7 @@ class AudioPlayer @Inject constructor(
         if (!isCurrentPlayback(generation, player)) return
         player.start()
         if (markStarted(generation, player)) {
-            logRoutedDevice(player, focusMode, file.name)
+            logRoutedDevice(player, focusMode, file.logLabel())
         }
     }
 
@@ -298,7 +298,7 @@ class AudioPlayer @Inject constructor(
         }
         releasePlayer(failedPlayer)
         Timber.w(
-            "MediaPlayer invalid operation file=${file.name} what=$what extra=$extra; " +
+            "MediaPlayer invalid operation file=${file.logLabel()} what=$what extra=$extra; " +
                 "retrying once at 1x with OS routing"
         )
         runCatching {
@@ -316,7 +316,7 @@ class AudioPlayer @Inject constructor(
                 allowPreferredRoute = false
             )
         }.onFailure { error ->
-            Timber.e(error, "MediaPlayer recovery failed for ${file.name}")
+            Timber.e(error, "MediaPlayer recovery failed for ${file.logLabel()}")
             completePlayback(
                 generation = generation,
                 expectedPlayer = replacement,
@@ -820,6 +820,13 @@ class AudioPlayer @Inject constructor(
             runCatching { extractor.release() }
         }
     }
+
+    /**
+     * Log-safe stand-in for [File.getName]: TDLib keeps the sender's original
+     * name for audio documents, and INFO+ logs become Sentry breadcrumbs.
+     */
+    private fun File.logLabel(): String =
+        "${Integer.toHexString(name.hashCode())}.$extension"
 
     private fun MediaFormat.intOrNull(key: String): Int? =
         if (containsKey(key)) runCatching { getInteger(key) }.getOrNull() else null

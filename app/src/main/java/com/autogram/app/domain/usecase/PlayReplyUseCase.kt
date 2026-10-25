@@ -134,7 +134,7 @@ class PlayReplyUseCase @Inject constructor(
                             title?.lowercase()?.contains(q) == true
                         }
                     if (match == null) {
-                        Timber.i("onPlayFromSearch: no convo matched '$query', draining pending")
+                        Timber.i("onPlayFromSearch: no convo matched query (length=${query.length}), draining pending")
                         playAllPending()
                         return@launch
                     }

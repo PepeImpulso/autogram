@@ -207,7 +207,7 @@ class IncomingMessageNotifier @Inject constructor(
                         File(path)
                     )
                 }.onFailure {
-                    Timber.w(it, "FileProvider couldn't expose voice note $path")
+                    Timber.w(it, "FileProvider couldn't expose voice note (ext=${File(path).extension})")
                 }.getOrNull()
             }
 

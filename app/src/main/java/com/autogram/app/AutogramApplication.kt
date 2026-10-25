@@ -158,9 +158,19 @@ class AutogramApplication : Application(), Configuration.Provider {
         // of "Call [phone] to verify".
         private val LONG_ID_RE = Regex("""(?<![\d.])-?\d{9,}\b""")
         private val PHONE_RE = Regex("""\+\d[\d\s\-()]{6,}\d|\b\d{1,4}([\s\-()]+\d{2,4}){2,}\b""")
+        // Emails run before usernames so "user@example.com" becomes
+        // "[email]" rather than "user[username]". The domain must end in a
+        // letters-only TLD, so "autogram@1.15.0+38" is left alone.
+        private val EMAIL_RE = Regex("""\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b""")
+        // Telegram @usernames: 5-32 chars, starting with a letter. The
+        // lookbehind skips "name@..." / "Object@1a2b" (word char before @).
+        private val USERNAME_RE = Regex("""(?<![\w@.])@[A-Za-z][A-Za-z0-9_]{4,31}\b""")
 
         internal fun scrubPii(s: String): String =
-            s.replace(LONG_ID_RE, "[id]").replace(PHONE_RE, "[phone]")
+            s.replace(EMAIL_RE, "[email]")
+                .replace(USERNAME_RE, "[username]")
+                .replace(LONG_ID_RE, "[id]")
+                .replace(PHONE_RE, "[phone]")
 
     }
 }
