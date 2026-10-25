@@ -28,12 +28,13 @@ import javax.inject.Singleton
 
 /**
  * Downloads an APK from the given URL via the system DownloadManager (progress
- * notification + retries + disk space handled by the OS) and launches the
- * install intent when done.
+ * notification + retries + disk space handled by the OS), verifies it with
+ * [ApkVerifier] and launches the install intent when it passes.
  */
 @Singleton
 class UpdateInstaller @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val apkVerifier: ApkVerifier
 ) {
 
     sealed class InstallEvent {
@@ -54,9 +55,10 @@ class UpdateInstaller @Inject constructor(
 
     /**
      * Enqueue a download and register a broadcast receiver that will fire the
-     * install intent when the APK lands. Returns the download id immediately.
+     * install intent when the APK lands and matches [expectedSha256] (the
+     * release asset digest). Returns the download id immediately.
      */
-    fun downloadAndInstall(apkUrl: String, filename: String) {
+    fun downloadAndInstall(apkUrl: String, filename: String, expectedSha256: String?) {
         val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         resetActiveDownload(removeDownload = true, dm = dm)
 
@@ -86,7 +88,7 @@ class UpdateInstaller @Inject constructor(
                 val completedId = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
                 if (completedId != pendingIdHolder[0]) return
                 try {
-                    completeDownload(dm, completedId, outFile)
+                    completeDownload(dm, completedId, outFile, expectedSha256)
                 } catch (e: Exception) {
                     Timber.e(e, "UpdateInstaller: onReceive")
                     failDownload(completedId, e.message ?: "Error desconocido")
@@ -113,11 +115,11 @@ class UpdateInstaller @Inject constructor(
         synchronized(lock) { currentDownloadId = id }
         events.trySend(InstallEvent.Started(id))
         monitorJob = scope.launch {
-            monitorDownload(dm, id, outFile)
+            monitorDownload(dm, id, outFile, expectedSha256)
         }
     }
 
-    private fun completeDownload(dm: DownloadManager, id: Long, fallback: File) {
+    private fun completeDownload(dm: DownloadManager, id: Long, fallback: File, expectedSha256: String?) {
         val apkFile = resolveDownloadedFile(dm, id, fallback)
         if (apkFile == null) {
             failDownload(id, "Descarga fallida")
@@ -134,11 +136,31 @@ class UpdateInstaller @Inject constructor(
         cleanupReceiver()
         monitorJob?.cancel()
         monitorJob = null
-        events.trySend(InstallEvent.Completed(apkFile))
-        launchInstall(apkFile)
+        // Hashing + parsing a ~50 MB APK is too slow for the receiver's
+        // main-thread callback, so verification runs on the IO scope.
+        scope.launch { verifyAndInstall(id, apkFile, expectedSha256) }
     }
 
-    private suspend fun monitorDownload(dm: DownloadManager, id: Long, fallback: File) {
+    private fun verifyAndInstall(id: Long, apkFile: File, expectedSha256: String?) {
+        events.trySend(InstallEvent.Progress(id, "Verificando actualización…"))
+        when (val result = apkVerifier.verify(apkFile, expectedSha256)) {
+            ApkVerifier.Result.Ok -> {
+                events.trySend(InstallEvent.Completed(apkFile))
+                launchInstall(apkFile)
+            }
+            is ApkVerifier.Result.Rejected -> {
+                Timber.e("UpdateInstaller: rejected downloaded APK: ${result.reason}")
+                runCatching { apkFile.delete() }
+                events.trySend(
+                    InstallEvent.Failed(
+                        "La actualización descargada no superó la verificación de seguridad y se ha descartado."
+                    )
+                )
+            }
+        }
+    }
+
+    private suspend fun monitorDownload(dm: DownloadManager, id: Long, fallback: File, expectedSha256: String?) {
         var lastDownloaded = -1L
         var lastStatus = -1
         var lastChange = System.currentTimeMillis()
@@ -160,7 +182,7 @@ class UpdateInstaller @Inject constructor(
 
             when (snapshot.status) {
                 DownloadManager.STATUS_SUCCESSFUL -> {
-                    completeDownload(dm, id, fallback)
+                    completeDownload(dm, id, fallback, expectedSha256)
                     return
                 }
                 DownloadManager.STATUS_FAILED -> {

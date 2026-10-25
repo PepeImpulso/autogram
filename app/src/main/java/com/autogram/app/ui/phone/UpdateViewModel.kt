@@ -85,7 +85,7 @@ class UpdateViewModel @Inject constructor(
             _state.value = State.Error("La release no tiene APK adjunto")
             return
         }
-        val filename = "autogram-${s.info.latestVersion}.apk"
-        updateInstaller.downloadAndInstall(url, filename)
+        val filename = CheckForUpdatesUseCase.apkFileName(s.info.latestVersion)
+        updateInstaller.downloadAndInstall(url, filename, s.info.apkSha256)
     }
 }

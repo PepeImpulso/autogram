@@ -2,6 +2,8 @@ package com.autogram.app.domain.usecase
 
 import com.autogram.app.BuildConfig
 import com.autogram.app.infrastructure.github.GitHubApi
+import com.autogram.app.infrastructure.github.GitHubAsset
+import com.autogram.app.infrastructure.platform.ApkVerifier
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import timber.log.Timber
@@ -15,6 +17,7 @@ data class UpdateInfo(
     val releaseNotes: String?,
     val apkUrl: String?,
     val apkSizeBytes: Long,
+    val apkSha256: String?,
     val publishedAt: String?
 )
 
@@ -24,10 +27,15 @@ class CheckForUpdatesUseCase @Inject constructor(
     suspend fun check(): Result<UpdateInfo> = withContext(Dispatchers.IO) {
         try {
             val releases = gitHubApi.listReleases(OWNER, REPO)
+            val current = BuildConfig.VERSION_NAME
+            // Stable builds only follow stable releases; a build that is
+            // itself a prerelease keeps following prereleases (issue #93).
+            val allowPrerelease = isPrerelease(current)
             // Sort releases by our semver comparator so "1.1.0-alpha.10" beats
             // "1.1.0-alpha.2" (plain string compare would get this wrong).
             val release = releases
                 .filter { !it.draft }
+                .filter { allowPrerelease || (!it.prerelease && !isPrerelease(stripLeadingV(it.tag_name))) }
                 .maxWithOrNull(Comparator { a, b ->
                     val av = stripLeadingV(a.tag_name)
                     val bv = stripLeadingV(b.tag_name)
@@ -39,15 +47,16 @@ class CheckForUpdatesUseCase @Inject constructor(
                 })
                 ?: return@withContext Result.failure(Exception("No hay releases publicadas"))
             val latest = stripLeadingV(release.tag_name)
-            val current = BuildConfig.VERSION_NAME
             val isNewer = isNewerVersion(latest, current)
 
             // Pick the APK matching the currently installed variant.
             // Debug builds can only be replaced by debug-signed APKs (different cert),
             // so we pick -debug.apk for them; release builds grab the non-debug one.
-            val apkAsset = pickApkAsset(release.assets.map { it.name to it.browser_download_url to it.size })
+            // An asset with an unexpected download URL is treated as missing.
+            val apkAsset = pickApkAsset(release.assets, latest, BuildConfig.DEBUG)
+                ?.takeIf { isTrustedDownloadUrl(it.browser_download_url) }
 
-            Timber.d("CheckForUpdates: current=$current latest=$latest newer=$isNewer apk=${apkAsset?.first}")
+            Timber.d("CheckForUpdates: current=$current latest=$latest newer=$isNewer apk=${apkAsset?.name}")
 
             Result.success(
                 UpdateInfo(
@@ -56,8 +65,9 @@ class CheckForUpdatesUseCase @Inject constructor(
                     latestVersionName = release.name ?: release.tag_name,
                     releaseUrl = release.html_url,
                     releaseNotes = release.body,
-                    apkUrl = apkAsset?.second,
-                    apkSizeBytes = apkAsset?.third ?: 0,
+                    apkUrl = apkAsset?.browser_download_url,
+                    apkSizeBytes = apkAsset?.size ?: 0,
+                    apkSha256 = ApkVerifier.parseSha256Digest(apkAsset?.digest),
                     publishedAt = release.published_at
                 )
             )
@@ -68,9 +78,31 @@ class CheckForUpdatesUseCase @Inject constructor(
     }
 
     companion object {
-        // Public binary-only repo. Source lives at PepeImpulso/autogram (private).
+        // Public binary-only repo that the in-app updater installs from.
         private const val OWNER = "PepeImpulso"
         private const val REPO = "autogram-releases"
+        private const val DOWNLOAD_PATH_PREFIX = "/$OWNER/$REPO/releases/download/"
+
+        internal fun isPrerelease(version: String): Boolean = splitPre(version).second != null
+
+        /**
+         * Only https downloads from this repo's release assets are accepted
+         * (issue #92). DownloadManager follows redirects, so the starting URL
+         * is the one we can pin.
+         */
+        internal fun isTrustedDownloadUrl(url: String): Boolean {
+            val uri = runCatching { java.net.URI(url) }.getOrNull() ?: return false
+            return uri.scheme == "https" &&
+                uri.host == "github.com" &&
+                uri.port == -1 &&
+                uri.userInfo == null &&
+                uri.rawPath.orEmpty().startsWith(DOWNLOAD_PATH_PREFIX) &&
+                ".." !in uri.rawPath
+        }
+
+        /** Local file name for a downloaded update, restricted to `[0-9A-Za-z.-]`. */
+        internal fun apkFileName(version: String): String =
+            "autogram-${version.replace(Regex("[^0-9A-Za-z.-]"), "")}.apk"
 
         internal fun stripLeadingV(tag: String): String = tag.removePrefix("v").removePrefix("V")
 
@@ -129,19 +161,10 @@ class CheckForUpdatesUseCase @Inject constructor(
             }
         }
 
-        private fun pickApkAsset(candidates: List<Triple<String, String, Long>>): Triple<String, String, Long>? {
-            val debug = BuildConfig.DEBUG
-            val apks = candidates.filter { it.first.endsWith(".apk") }
-            val matching = apks.firstOrNull {
-                val isDebugAsset = it.first.contains("-debug")
-                isDebugAsset == debug
-            }
-            return matching ?: apks.firstOrNull()
+        /** Exactly `autogram-<version>.apk` (or `-debug.apk` for debug builds); no fallback. */
+        internal fun pickApkAsset(candidates: List<GitHubAsset>, version: String, debug: Boolean): GitHubAsset? {
+            val expected = if (debug) "autogram-$version-debug.apk" else "autogram-$version.apk"
+            return candidates.firstOrNull { it.name == expected }
         }
-
-        // Infix helper so we can write `a to b to c` and read it as Triple.
-        @Suppress("NOTHING_TO_INLINE")
-        private inline infix fun <A, B, C> Pair<A, B>.to(third: C): Triple<A, B, C> =
-            Triple(first, second, third)
     }
 }

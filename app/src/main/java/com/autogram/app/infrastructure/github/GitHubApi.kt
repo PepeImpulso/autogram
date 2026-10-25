@@ -9,8 +9,9 @@ import retrofit2.http.Query
  * is plenty for a sideloaded update checker.
  *
  * Note: we deliberately do NOT use `/releases/latest` because GitHub excludes
- * prereleases from that endpoint, and every Autogram release so far has been
- * an alpha/beta. We list releases and pick the newest applicable one instead.
+ * prereleases from that endpoint, and prerelease builds must still be able to
+ * follow newer prereleases. We list releases and pick the newest applicable
+ * one instead (see CheckForUpdatesUseCase for the prerelease rule).
  */
 interface GitHubApi {
     @GET("repos/{owner}/{repo}/releases")
@@ -36,5 +37,7 @@ data class GitHubAsset(
     val name: String,
     val browser_download_url: String,
     val size: Long = 0,
-    val content_type: String? = null
+    val content_type: String? = null,
+    /** `sha256:<hex>` computed by GitHub on upload; verified before install. */
+    val digest: String? = null
 )
