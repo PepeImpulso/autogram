@@ -19,7 +19,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.autogram.app.BuildConfig
 import com.autogram.app.R
 import com.autogram.app.infrastructure.telegram.mtproto.AuthState
 import com.autogram.app.ui.theme.AutogramTheme
@@ -44,12 +43,6 @@ class TelegramLoginActivity : BaseLocaleActivity() {
                                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
                         )
                         finish()
-                    }, onReviewDemo = {
-                        startActivity(
-                            Intent().setClassName(packageName, BuildConfig.PLAY_REVIEW_ACTIVITY)
-                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                        )
-                        finish()
                     })
                 }
             }
@@ -61,7 +54,6 @@ class TelegramLoginActivity : BaseLocaleActivity() {
 @Composable
 private fun TelegramLoginScreen(
     onLoggedIn: () -> Unit,
-    onReviewDemo: () -> Unit,
     viewModel: TelegramLoginViewModel = hiltViewModel()
 ) {
     val ui by viewModel.ui.collectAsState()
@@ -69,9 +61,6 @@ private fun TelegramLoginScreen(
 
     LaunchedEffect(ui.authState) {
         if (ui.authState is AuthState.Ready) onLoggedIn()
-    }
-    LaunchedEffect(ui.reviewDemoReady) {
-        if (ui.reviewDemoReady) onReviewDemo()
     }
 
     Scaffold(

@@ -129,4 +129,4 @@
 5. Settings: bot token, target chat ID, retention period.
 6. That's it. Ship it. Iterate.
 
-**Success criteria:** While driving, Pepe can tap once, speak, and the voice note arrives in Telegram. When a reply comes, it plays automatically. No crashes, no missing messages.
+**Success criteria:** While driving, the user can tap once, speak, and the voice note arrives in Telegram. When a reply comes, it plays automatically. No crashes, no missing messages.

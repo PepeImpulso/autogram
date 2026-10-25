@@ -28,9 +28,8 @@ import javax.inject.Singleton
 
 /**
  * Posts an incoming-message notification with the reply and mark-as-read
- * actions required by Android Auto. The Google Play flavor declares the
- * production-eligible notification capability; the GitHub flavor also keeps
- * Autogram's richer templated surface.
+ * actions required by Android Auto. This complements Autogram's richer
+ * templated car surface.
  *
  * The notification ID is the absolute-value hash of the conversation id, so
  * each circle keeps its own notification row (tap to open Autogram; Android

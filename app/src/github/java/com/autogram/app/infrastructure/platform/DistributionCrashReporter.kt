@@ -12,7 +12,7 @@ import io.sentry.android.core.SentryAndroid
 import io.sentry.android.timber.SentryTimberIntegration
 import java.io.File
 
-/** Sentry adapter packaged exclusively in the standalone GitHub flavor. */
+/** Sentry adapter packaged in the GitHub flavor. */
 object DistributionCrashReporter {
     val isConfigured: Boolean
         get() = BuildConfig.SENTRY_DSN.isNotBlank() &&

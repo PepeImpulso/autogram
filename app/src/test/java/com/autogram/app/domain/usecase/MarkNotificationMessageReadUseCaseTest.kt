@@ -41,17 +41,8 @@ class MarkNotificationMessageReadUseCaseTest {
         }) }
     }
 
-    @Test fun `synthetic notifications never reach Telegram even after a real login`() = runTest {
-        listOf("store-alex", "store-family", "store-project").forEach {
-            useCase("store-message-1", it)
-        }
-        coVerify(exactly = 0) { messages.getById(any()) }
-        coVerify(exactly = 0) { conversations.getById(any()) }
-        coVerify(exactly = 0) { sender.send<TdApi.Object>(any()) }
-    }
-
     @Test fun `mismatched message and conversation never reach Telegram`() = runTest {
-        coEvery { messages.getById("message") } returns message.copy(conversationId = "store-alex")
+        coEvery { messages.getById("message") } returns message.copy(conversationId = "other-chat")
         useCase("message", "real-chat")
         coVerify(exactly = 0) { sender.send<TdApi.Object>(any()) }
     }

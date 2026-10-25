@@ -17,8 +17,8 @@ import javax.inject.Singleton
  * all, which path it took (file vs. TTS), whether audio focus was
  * granted, and which output device the OS routed it to. Without this
  * level of detail v1.24.0's "Last routed device" row stayed empty when
- * the failing path was TTS — which is exactly what happened on Pepe's
- * Seat Ateca because TtsPlayer never requested focus.
+ * the failing path was TTS — which is exactly what happened on some
+ * head units (e.g. SEAT) because TtsPlayer never requested focus.
  */
 @Singleton
 class PlaybackDiagnostics @Inject constructor() {

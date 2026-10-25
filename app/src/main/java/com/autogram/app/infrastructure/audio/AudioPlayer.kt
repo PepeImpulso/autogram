@@ -59,7 +59,7 @@ class AudioPlayer @Inject constructor(
      *   single user-facing toggle covers both engines. Without this, voice
      *   message replies were stuck on `USAGE_MEDIA` while TTS already had
      *   the nav-path escape hatch — manifested as "text replies play in
-     *   the car but voice replies don't" on Pepe's Seat Ateca.
+     *   the car but voice replies don't" on some head units (e.g. SEAT).
      * @param onComplete Callback invoked when playback finishes or errors
      */
     fun play(
@@ -667,8 +667,8 @@ class AudioPlayer @Inject constructor(
                 // sink is present. The previous logic forced BT A2DP /
                 // wired headset preferences here on the assumption that
                 // those personal outputs would reach the car's audio
-                // system. Real-world finding (Pepe, Galaxy + USB AA + BT
-                // pair to the same car): the car treats BT A2DP and USB
+                // system. Real-world finding (a Samsung phone on USB AA + BT
+                // paired to the same car): the car treats BT A2DP and USB
                 // AA media as separate sources and only renders one at a
                 // time. With USB AA active, BT A2DP is muted at the car
                 // — so forcing setPreferredDevice(BT A2DP) here sent the
@@ -728,8 +728,8 @@ class AudioPlayer @Inject constructor(
         // USAGE_ASSISTANCE_NAVIGATION_GUIDANCE + CONTENT_TYPE_SPEECH
         // pairing Google Maps directions use; that path speaks over music
         // and routes reliably to car speakers when the default USAGE_MEDIA
-        // path gets silently muted by AA's media arbiter (the symptom Pepe
-        // saw on the Seat Ateca for voice replies but not text replies).
+        // path gets silently muted by AA's media arbiter (the symptom seen
+        // on some head units, e.g. SEAT, for voice but not text replies).
         if (useNavigationUsage) {
             return AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)

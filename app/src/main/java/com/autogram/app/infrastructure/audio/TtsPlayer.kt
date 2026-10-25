@@ -58,8 +58,8 @@ class TtsPlayer @Inject constructor(
     // shape. Per-utterance acquire/release so a long idle gap between
     // queued messages doesn't strand focus held by us. Without this,
     // AA's audio policy treats USAGE_MEDIA TTS from a background app as
-    // unauthenticated and silently drops it — root cause of Pepe's
-    // "real incoming messages never play" symptom on Seat Ateca.
+    // unauthenticated and silently drops it — root cause of the
+    // "real incoming messages never play" symptom on some head units (e.g. SEAT).
     private data class FocusHandle(
         val token: String,
         val request: AudioFocusRequest

@@ -2,7 +2,6 @@ package com.autogram.app.domain.usecase
 
 import com.autogram.app.domain.model.Message
 import com.autogram.app.domain.model.MessageState
-import com.autogram.app.domain.model.SyntheticReviewIdentity
 import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.domain.repository.SettingsRepository
@@ -89,16 +88,6 @@ class OutboxRetryUseCase @Inject constructor(
     }
 
     private suspend fun sendOne(msg: Message, maxRetries: Int) {
-        // Quarantine legacy demo replies before resolving any real chat or file.
-        if (SyntheticReviewIdentity.isSynthetic(msg.conversationId)) {
-            messageRepository.update(
-                msg.copy(
-                    state = MessageState.PERMANENTLY_FAILED,
-                    errorMessage = "Synthetic review messages cannot be sent to Telegram"
-                )
-            )
-            return
-        }
         val target = conversationRepository.getById(msg.conversationId) ?: run {
             Timber.w(
                 "OutboxRetry: conversation ${msg.conversationId} gone " +

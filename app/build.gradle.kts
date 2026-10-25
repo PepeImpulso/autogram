@@ -74,31 +74,6 @@ android {
             buildConfigField("boolean", "ENABLE_AUTOMATIC_CRASH_REPORTING", "true")
             buildConfigField("boolean", "ENABLE_SENTRY_SCREENSHOTS", "true")
             buildConfigField("boolean", "ALLOW_CLEARTEXT_LLM_ENDPOINT", "true")
-            buildConfigField("boolean", "ENABLE_PLAY_REVIEW_DEMO", "false")
-            buildConfigField("String", "PLAY_REVIEW_PHONE", "\"\"")
-            buildConfigField("String", "PLAY_REVIEW_ACTIVITY", "\"\"")
-        }
-        create("play") {
-            dimension = "distribution"
-            // Google Play package names are permanent. The original
-            // com.autogram.app ID is already owned by another Play developer,
-            // so only the Play flavor uses the company-controlled ID. Keeping
-            // the Kotlin namespace unchanged avoids an unrelated source-package
-            // migration, while the GitHub flavor remains upgrade-compatible
-            // with existing standalone installations.
-            applicationId = "com.impulsotecnologico.autogram"
-            buildConfigField("String", "SENTRY_DSN", "\"\"")
-            buildConfigField("boolean", "ENABLE_SELF_UPDATE", "false")
-            buildConfigField("boolean", "ENABLE_AUTOMATIC_CRASH_REPORTING", "false")
-            buildConfigField("boolean", "ENABLE_SENTRY_SCREENSHOTS", "false")
-            buildConfigField("boolean", "ALLOW_CLEARTEXT_LLM_ENDPOINT", "false")
-            buildConfigField("boolean", "ENABLE_PLAY_REVIEW_DEMO", "true")
-            buildConfigField("String", "PLAY_REVIEW_PHONE", "\"+99900001250\"")
-            buildConfigField(
-                "String",
-                "PLAY_REVIEW_ACTIVITY",
-                "\"com.autogram.app.ui.phone.PlayReviewActivity\""
-            )
         }
     }
 
@@ -206,8 +181,7 @@ dependencies {
     // Logging
     implementation(libs.timber)
 
-    // Crash reporting is packaged only in the standalone GitHub flavor. The
-    // Play bundle contains no Sentry code or native libraries.
+    // Crash reporting is packaged in the GitHub flavor.
     "githubImplementation"(libs.sentry.android)
     "githubImplementation"(libs.sentry.timber)
 

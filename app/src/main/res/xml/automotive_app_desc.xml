@@ -9,7 +9,7 @@
          media tab AND so AA observes our MediaSessionCompat and routes
          our audio through its media stream on USB AA. v1.24.1 tried to
          drop this for discoverability reasons, but the in-car test on a
-         Seat Ateca proved the trade-off: focus was granted but the OS
+         SEAT head unit proved the trade-off: focus was granted but the OS
          couldn't route the audio anywhere (MediaPlayer.routedDevice
          came back null in the diagnostics) because AA stopped
          observing our session. v1.24.2 restores the capability — the

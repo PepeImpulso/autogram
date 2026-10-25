@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<automotiveApp>
-    <!-- Notification-powered messaging is eligible for production tracks.
-         The GitHub flavor retains the richer templated experience. -->
-    <uses name="notification" />
-</automotiveApp>

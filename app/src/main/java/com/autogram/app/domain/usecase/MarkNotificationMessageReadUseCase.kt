@@ -1,6 +1,5 @@
 package com.autogram.app.domain.usecase
 
-import com.autogram.app.domain.model.SyntheticReviewIdentity
 import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.MessageRepository
 import com.autogram.app.infrastructure.telegram.mtproto.TdLibSender
@@ -14,9 +13,7 @@ class MarkNotificationMessageReadUseCase @Inject constructor(
     private val sender: TdLibSender
 ) {
     suspend operator fun invoke(messageId: String?, conversationId: String?) {
-        if (messageId == null || conversationId == null ||
-            SyntheticReviewIdentity.isSynthetic(conversationId)
-        ) return
+        if (messageId == null || conversationId == null) return
         val message = messages.getById(messageId) ?: return
         // A stale or mismatched notification must not mark a different chat read.
         if (message.conversationId != conversationId) return

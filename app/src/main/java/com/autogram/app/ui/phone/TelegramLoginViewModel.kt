@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.autogram.app.infrastructure.telegram.mtproto.AuthState
 import com.autogram.app.infrastructure.telegram.mtproto.TdLibClient
-import com.autogram.app.infrastructure.review.PlayReviewModeStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,8 +15,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class TelegramLoginViewModel @Inject constructor(
-    private val tdLibClient: TdLibClient,
-    private val playReviewModeStore: PlayReviewModeStore
+    private val tdLibClient: TdLibClient
 ) : ViewModel() {
 
     data class UiState(
@@ -26,16 +24,13 @@ class TelegramLoginViewModel @Inject constructor(
         val passwordInput: String = "",
         val busy: Boolean = false,
         val errorMessage: String? = null,
-        val authState: AuthState = AuthState.Uninitialized,
-        val reviewDemoReady: Boolean = false
+        val authState: AuthState = AuthState.Uninitialized
     )
 
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui.asStateFlow()
 
     init {
-        // A fresh normal sign-in screen always leaves any previous demo session.
-        playReviewModeStore.deactivate()
         // Kick the client off. If a session already exists TDLib transitions
         // straight through to Ready and we never show any login UI.
         tdLibClient.ensureStarted()
@@ -58,16 +53,6 @@ class TelegramLoginViewModel @Inject constructor(
 
     fun submitPhone() {
         val phone = _ui.value.phoneInput.trim()
-        if (isPlayReviewPhone(phone)) {
-            tdLibClient.clearLastAuthError()
-            playReviewModeStore.activate()
-            _ui.value = _ui.value.copy(
-                busy = false,
-                errorMessage = null,
-                reviewDemoReady = true
-            )
-            return
-        }
         if (!phone.startsWith("+") || phone.length < 8) {
             _ui.value = _ui.value.copy(errorMessage = "Número inválido. Formato internacional: +34…")
             return

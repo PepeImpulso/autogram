@@ -25,7 +25,6 @@ import com.autogram.app.domain.usecase.TranscribeVoiceUseCase
 import com.autogram.app.infrastructure.platform.CallStateMonitor
 import com.autogram.app.infrastructure.platform.IncomingMessageNotifier
 import com.autogram.app.infrastructure.privacy.AcceptableUseConsentStore
-import com.autogram.app.infrastructure.review.PlayReviewModeStore
 import com.autogram.app.infrastructure.telegram.mtproto.ApprovalPromptDetector
 import com.autogram.app.infrastructure.telegram.mtproto.AuthState
 import com.autogram.app.infrastructure.telegram.mtproto.TdLibClient
@@ -88,7 +87,6 @@ class MtprotoReceiverService : Service() {
     @Inject lateinit var summarizeMessageUseCase: SummarizeMessageUseCase
     @Inject lateinit var settingsRepository: SettingsRepository
     @Inject lateinit var acceptableUseConsentStore: AcceptableUseConsentStore
-    @Inject lateinit var playReviewModeStore: PlayReviewModeStore
 
     private var scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var supervisorJob: Job? = null
@@ -161,7 +159,7 @@ class MtprotoReceiverService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (!acceptableUseConsentStore.isAccepted() && !playReviewModeStore.isActive()) {
+        if (!acceptableUseConsentStore.isAccepted()) {
             Timber.i("MtprotoReceiverService stopped until messaging terms are accepted")
             stopSelf()
             return START_NOT_STICKY
@@ -199,10 +197,6 @@ class MtprotoReceiverService : Service() {
     private fun startSupervisor() {
         if (supervisorJob?.isActive == true) return
         supervisorJob = scope.launch {
-            if (playReviewModeStore.isActive()) {
-                updateNotification("Review demo: listening to 3 synthetic shortcuts")
-                return@launch
-            }
             tdLibClient.ensureStarted()
             tdLibClient.authState.first { it is AuthState.Ready }
             startCallStateObserver()
@@ -462,8 +456,7 @@ class MtprotoReceiverService : Service() {
                 .onFailure { Timber.w(it, "Deferred autoDelete cleanup failed") }
         }
         // Surface a phone notification with listen, reply, and mark-as-read
-        // actions. The Play flavor uses this production-eligible Android Auto
-        // path; the GitHub flavor also exposes the richer template UI.
+        // actions alongside the richer Android Auto template UI.
         incomingMessageNotifier.postVoiceReceived(
             conversation = target,
             timestampMs = message.createdAt,

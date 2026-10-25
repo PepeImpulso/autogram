@@ -116,7 +116,7 @@ class PendingQueueViewModel @Inject constructor(
      * usually because the process was killed mid-playback and the row
      * survived in a stale state). Without this branch the panel's Play
      * button is a no-op on the stale-state case, which is exactly the
-     * "play does nothing the first time" bug Pepe hit in v1.24.3.
+     * "play does nothing the first time" bug reported in v1.24.3.
      */
     fun playOrResumeNowPlaying() = viewModelScope.launch {
         val msg = nowPlaying.value ?: return@launch
