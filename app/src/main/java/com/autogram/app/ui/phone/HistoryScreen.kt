@@ -7,6 +7,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -42,6 +43,7 @@ fun HistoryWithPendingTabsScreen(
     // Badge count is the unfiltered total so the tab bar reflects the
     // whole pending queue rather than the user's current contact filter.
     val totalPending by pendingViewModel.totalQueue.collectAsState()
+    var confirmMarkAll by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -59,6 +61,19 @@ fun HistoryWithPendingTabsScreen(
                             Icon(
                                 Icons.AutoMirrored.Filled.ArrowBack,
                                 stringResource(R.string.common_back)
+                            )
+                        }
+                    },
+                    // Quick access from either tab: marking everything as
+                    // listened is the most common action on this screen.
+                    actions = {
+                        IconButton(
+                            onClick = { confirmMarkAll = true },
+                            enabled = totalPending.isNotEmpty()
+                        ) {
+                            Icon(
+                                Icons.Filled.DoneAll,
+                                stringResource(R.string.pending_queue_mark_all_listened)
                             )
                         }
                     },
@@ -98,6 +113,27 @@ fun HistoryWithPendingTabsScreen(
                 HistoryTab.HISTORY -> HistoryTabContent(viewModel = historyViewModel)
             }
         }
+    }
+
+    if (confirmMarkAll) {
+        AlertDialog(
+            onDismissRequest = { confirmMarkAll = false },
+            title = { Text(stringResource(R.string.pending_queue_mark_all_confirm_title)) },
+            text = { Text(stringResource(R.string.pending_queue_mark_all_confirm_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmMarkAll = false
+                    pendingViewModel.markAllAsListened()
+                }) {
+                    Text(stringResource(R.string.pending_queue_mark_all_confirm_ok))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmMarkAll = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        )
     }
 }
 
