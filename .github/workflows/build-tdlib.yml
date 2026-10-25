@@ -14,6 +14,9 @@ on:
         default: "8921c22f0f85"
         required: true
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -35,10 +38,12 @@ jobs:
           gperf --version
 
       - name: Clone TDLib
+        env:
+          TD_REF: ${{ inputs.td_ref }}
         run: |
           git clone https://github.com/tdlib/td.git
           cd td
-          git checkout ${{ inputs.td_ref }}
+          git checkout "$TD_REF"
           git rev-parse HEAD
 
       - name: Patch build scripts to only target arm64-v8a + x86_64
@@ -73,7 +78,7 @@ jobs:
           ls -lah tdlib/java/ || true
 
       - name: Upload tdlib.zip
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: tdlib-android
           path: td/example/android/tdlib/tdlib.zip
@@ -83,7 +88,7 @@ jobs:
 
       - name: Upload raw tdlib directory (fallback)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: tdlib-raw
           path: td/example/android/tdlib/

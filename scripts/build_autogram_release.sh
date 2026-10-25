@@ -23,7 +23,7 @@ for f in keystore.properties local.properties gradlew; do
 done
 if [[ ${#missing[@]} -gt 0 ]]; then
     echo "ERROR: missing required files: ${missing[*]}" >&2
-    echo "See docs/RELEASE_OPS.md for expected content and locations." >&2
+    echo "See docs/BUILDING.md for the expected content." >&2
     exit 1
 fi
 

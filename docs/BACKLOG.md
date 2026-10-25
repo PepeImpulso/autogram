@@ -156,7 +156,7 @@ Tests written for v1.15.0+WIP surfaced and fixed:
 
 ## How to resume
 
-1. Read this file + [docs/RELEASE_OPS.md](RELEASE_OPS.md) + the
+1. Read this file + [docs/BUILDING.md](BUILDING.md) + the
    memory under `.claude/projects/.../memory/MEMORY.md`.
 2. Current state: **v1.16.0 published** on
    `PepeImpulso/autogram-releases`. Clean master, nothing pending.

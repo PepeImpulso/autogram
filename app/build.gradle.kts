@@ -84,6 +84,10 @@ android {
                 storePassword = keystoreProperties["storePassword"] as String
                 keyAlias = keystoreProperties["keyAlias"] as String
                 keyPassword = keystoreProperties["keyPassword"] as String
+                // v3 lets the signing key be rotated later without breaking
+                // in-place upgrades; v2 stays on for older verifiers.
+                enableV2Signing = true
+                enableV3Signing = true
             }
         }
     }
@@ -120,6 +124,26 @@ android {
         disable += "MissingTranslation"
     }
 }
+
+// Release builds must carry real Telegram credentials: an api_id of 0 or an
+// empty api_hash produces an APK that cannot log in. Debug builds and unit
+// tests keep working without them. Forks must register their own api_id at
+// my.telegram.org (see docs/BUILDING.md).
+val verifyTelegramCredentials by tasks.registering {
+    val apiId = telegramApiId
+    val apiHash = telegramApiHash
+    doLast {
+        if ((apiId.trim().toIntOrNull() ?: 0) <= 0 || apiHash.isBlank()) {
+            throw GradleException(
+                "Release builds need telegram.apiId and telegram.apiHash in " +
+                    "local.properties. Register your own app at " +
+                    "https://my.telegram.org and see docs/BUILDING.md."
+            )
+        }
+    }
+}
+tasks.matching { it.name.startsWith("pre") && it.name.endsWith("ReleaseBuild") }
+    .configureEach { dependsOn(verifyTelegramCredentials) }
 
 dependencies {
     // AndroidX Core

@@ -10,7 +10,8 @@
 #
 #   2. Manual mode (--manual) — requires local keystore:
 #        - runs scripts/build_autogram_release.sh to produce signed APK
-#        - gh release create directly on PepeImpulso/autogram-releases
+#        - gh release create directly on PepeImpulso/autogram-releases,
+#          uploading the APK plus its autogram-<ver>.apk.sha256 checksum
 #        - pushes a source tag by default; pass --no-tag to skip it
 #        Use: scripts/publish_autogram_release.sh --manual 1.2.3
 #
@@ -106,6 +107,16 @@ if [[ ! -f "$STAGED" ]]; then
     echo "ERROR: staged APK not found at $STAGED" >&2
     exit 1
 fi
+# Checksum next to the APK, in `sha256sum -c` format with a bare filename so
+# users can verify the download from any directory.
+CHECKSUM="$STAGED.sha256"
+(cd "$(dirname "$STAGED")" && sha256sum "$(basename "$STAGED")") > "$CHECKSUM"
+
+# Semver pre-release tags are published as GitHub pre-releases, like release.yml.
+PRERELEASE_ARGS=()
+case "$TAG" in
+    *-alpha*|*-beta*|*-rc*) PRERELEASE_ARGS=(--prerelease) ;;
+esac
 
 if [[ "$PUSH_TAG" == "1" ]]; then
     git push origin "$BRANCH"
@@ -144,13 +155,15 @@ fi
 
 if gh release view "$TAG" --repo PepeImpulso/autogram-releases >/dev/null 2>&1; then
     echo "[publish] release $TAG already exists — uploading APK as asset update + refreshing notes"
-    gh release upload "$TAG" "$STAGED" --repo PepeImpulso/autogram-releases --clobber
-    gh release edit "$TAG" --repo PepeImpulso/autogram-releases --notes-file "$NOTES_FILE"
+    gh release upload "$TAG" "$STAGED" "$CHECKSUM" --repo PepeImpulso/autogram-releases --clobber
+    gh release edit "$TAG" --repo PepeImpulso/autogram-releases --notes-file "$NOTES_FILE" \
+        ${PRERELEASE_ARGS[@]+"${PRERELEASE_ARGS[@]}"}
 else
-    gh release create "$TAG" "$STAGED" \
+    gh release create "$TAG" "$STAGED" "$CHECKSUM" \
         --repo PepeImpulso/autogram-releases \
         --title "$TITLE" \
-        --notes-file "$NOTES_FILE"
+        --notes-file "$NOTES_FILE" \
+        ${PRERELEASE_ARGS[@]+"${PRERELEASE_ARGS[@]}"}
 fi
 
 [[ "$CLEANUP_NOTES" == "1" ]] && rm -f "$NOTES_FILE"
