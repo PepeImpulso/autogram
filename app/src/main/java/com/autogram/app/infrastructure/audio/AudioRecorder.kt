@@ -27,7 +27,7 @@ class AudioRecorder @Inject constructor(
      * @param outputFile Archivo de salida (debe tener extensión .ogg)
      * @param maxDurationMs Duración máxima en milisegundos (0 = sin límite)
      */
-    fun start(outputFile: File, maxDurationMs: Long = 60000): Result<Unit> {
+    fun start(outputFile: File, maxDurationMs: Long = MAX_RECORDING_MS): Result<Unit> {
         if (isRecording) {
             return Result.failure(IllegalStateException("Ya hay una grabación en curso"))
         }
@@ -149,5 +149,10 @@ class AudioRecorder @Inject constructor(
         }
         recorder = null
         isRecording = false
+    }
+
+    companion object {
+        /** Hard cap for a voice message (3 min), shared with the car's progress bar. */
+        const val MAX_RECORDING_MS = 180_000L
     }
 }

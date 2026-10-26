@@ -402,6 +402,9 @@
     <string name="media_record_tap_to_record">Tap to record</string>
     <string name="media_record_recording_title">● Recording · %1$s</string>
     <string name="media_record_recording_subtitle">Tap ⏸ or Send to send it</string>
+    <string name="media_record_tile_recording">● Recording — tap ➤ to send</string>
+    <string name="media_shortcut_subtitle">Tap to send</string>
+    <string name="media_shortcut_sent_toast">Shortcut sent</string>
     <string name="media_record_action_send">Send</string>
     <string name="media_record_action_cancel">Cancel</string>
     <string name="media_record_sending">Sending to %1$s…</string>

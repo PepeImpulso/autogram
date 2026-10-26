@@ -307,6 +307,9 @@
     <string name="media_record_tap_to_record">Zum Aufnehmen tippen</string>
     <string name="media_record_recording_title">● Aufnahme · %1$s</string>
     <string name="media_record_recording_subtitle">Zum Senden ⏸ oder Senden tippen</string>
+    <string name="media_record_tile_recording">● Aufnahme — zum Senden ➤ tippen</string>
+    <string name="media_shortcut_subtitle">Zum Senden tippen</string>
+    <string name="media_shortcut_sent_toast">Kurzbefehl gesendet</string>
     <string name="media_record_action_send">Senden</string>
     <string name="media_record_action_cancel">Abbrechen</string>
     <string name="media_record_sending">Wird an %1$s gesendet…</string>

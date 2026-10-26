@@ -307,6 +307,9 @@
     <string name="media_record_tap_to_record">Touchez pour enregistrer</string>
     <string name="media_record_recording_title">● Enregistrement · %1$s</string>
     <string name="media_record_recording_subtitle">Touchez ⏸ ou Envoyer pour envoyer</string>
+    <string name="media_record_tile_recording">● Enregistrement — touchez ➤ pour envoyer</string>
+    <string name="media_shortcut_subtitle">Touchez pour envoyer</string>
+    <string name="media_shortcut_sent_toast">Raccourci envoyé</string>
     <string name="media_record_action_send">Envoyer</string>
     <string name="media_record_action_cancel">Annuler</string>
     <string name="media_record_sending">Envoi à %1$s…</string>

@@ -306,6 +306,9 @@
     <string name="media_record_tap_to_record">点按录音</string>
     <string name="media_record_recording_title">● 正在录音 · %1$s</string>
     <string name="media_record_recording_subtitle">点按 ⏸ 或“发送”即可发送</string>
+    <string name="media_record_tile_recording">● 正在录音 — 点按 ➤ 发送</string>
+    <string name="media_shortcut_subtitle">点按发送</string>
+    <string name="media_shortcut_sent_toast">快捷回复已发送</string>
     <string name="media_record_action_send">发送</string>
     <string name="media_record_action_cancel">取消</string>
     <string name="media_record_sending">正在发送给 %1$s…</string>

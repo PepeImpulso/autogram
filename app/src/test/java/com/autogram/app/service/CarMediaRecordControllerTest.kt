@@ -18,4 +18,12 @@ class CarMediaRecordControllerTest {
         assertNull(CarMediaRecordController.recordTargetOf("b3f1-message-uuid"))
         assertNull(CarMediaRecordController.recordTargetOf("record:"))
     }
+
+    @Test
+    fun `shortcut ids are kept apart from record ids`() {
+        val id = CarMediaRecordController.shortcutMediaId("qr-7")
+        assertEquals("qr-7", CarMediaRecordController.shortcutIdOf(id))
+        assertNull(CarMediaRecordController.recordTargetOf(id))
+        assertNull(CarMediaRecordController.shortcutIdOf(CarMediaRecordController.recordMediaId("conv-1")))
+    }
 }
