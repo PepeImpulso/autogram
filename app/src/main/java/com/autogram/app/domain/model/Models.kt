@@ -234,7 +234,11 @@ data class AppSettings(
     // the car speakers reliably — at the cost of being routed to a possibly
     // quieter channel on some head units. OFF by default; turn ON only if
     // the default playback doesn't reach the car speakers.
-    val ttsAsNavigationPrompt: Boolean = false
+    val ttsAsNavigationPrompt: Boolean = false,
+    // v1.29.0 — experimental in-grid record/send/cancel buttons on the car's
+    // media grid (Android Auto custom browse actions). OFF by default: in
+    // v1.28.0 they left the car grid empty on a real head unit.
+    val carGridButtons: Boolean = false
 )
 
 data class DeliveryAttempt(

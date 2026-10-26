@@ -459,4 +459,6 @@
     <string name="acceptable_use_rules_confirm">Autogram の利用規約とメッセージ利用規則に同意します。</string>
     <string name="acceptable_use_accept">同意して続行</string>
     <string name="acceptable_use_exit">Autogram を終了</string>
+    <string name="settings_aa_car_grid_buttons">車のグリッドのボタン（試験運用）</string>
+    <string name="settings_aa_car_grid_buttons_sub">車で各連絡先のマイク / 送信ボタンを使い、プレーヤーを開かずに録音・送信します。車の画面が空になる場合はオフにしてください。Android Auto の再接続後に反映されます。</string>
 </resources>

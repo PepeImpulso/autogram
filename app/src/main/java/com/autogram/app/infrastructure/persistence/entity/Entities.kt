@@ -186,5 +186,6 @@ data class SettingsEntity(
     // v1.24.0 — see [AppSettings.audioFocusMode]. Persisted as enum name
     // so adding a new mode is backward-compatible.
     val audioFocusMode: String = "TRANSIENT_MAY_DUCK",
-    val ttsAsNavigationPrompt: Boolean = false
+    val ttsAsNavigationPrompt: Boolean = false,
+    val carGridButtons: Boolean = false
 )

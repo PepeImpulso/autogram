@@ -87,7 +87,8 @@ class SettingsViewModel @Inject constructor(
                 keepScreenOn = settings.keepScreenOn,
                 developerMode = settings.developerMode,
                 audioFocusMode = settings.audioFocusMode,
-                ttsAsNavigationPrompt = settings.ttsAsNavigationPrompt
+                ttsAsNavigationPrompt = settings.ttsAsNavigationPrompt,
+                carGridButtons = settings.carGridButtons
             )
         }
         viewModelScope.launch {
@@ -272,6 +273,14 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             val s = settingsRepository.get()
             settingsRepository.update(s.copy(ttsAsNavigationPrompt = enabled))
+        }
+    }
+
+    fun updateCarGridButtons(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(carGridButtons = enabled)
+        viewModelScope.launch {
+            val s = settingsRepository.get()
+            settingsRepository.update(s.copy(carGridButtons = enabled))
         }
     }
 
@@ -494,6 +503,7 @@ data class SettingsUiState(
     val targetTopicName: String? = null,
     val audioFocusMode: AudioFocusMode = AudioFocusMode.TRANSIENT_MAY_DUCK,
     val ttsAsNavigationPrompt: Boolean = false,
+    val carGridButtons: Boolean = false,
     // v1.24.1 — the last playback attempt (file or TTS), with source +
     // focus result + routed device + focus mode + timestamp. Null = no
     // playback yet this session.

@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 import java.io.File
@@ -132,14 +133,21 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
     ): BrowserRoot? {
         return if (callerValidator.isTrustedCaller(clientPackageName, clientUid)) {
             val limit = rootHints?.getInt(MediaConstants.BROWSER_ROOT_HINTS_KEY_CUSTOM_BROWSER_ACTION_LIMIT, 0) ?: 0
-            // v1.28.1 — in-grid buttons disabled: with them on, the car
-            // showed an empty Autogram screen on a real head unit (v1.28.0).
-            browseActionsSupported = BROWSE_ACTIONS_ENABLED && limit > 0
+            // In-grid buttons left the car grid empty on a real head unit in
+            // v1.28.0, so they are opt-in (Settings → Android Auto). Read on
+            // every connection: toggling applies after Android Auto reconnects.
+            browseActionsSupported = limit > 0 && carGridButtonsEnabled()
             BrowserRoot(ROOT_ID, if (browseActionsSupported) browseActionsRootExtras() else null)
         } else {
             null
         }
     }
+
+    private fun carGridButtonsEnabled(): Boolean = runCatching {
+        runBlocking(Dispatchers.IO) {
+            withTimeoutOrNull(500) { settingsRepository.get().carGridButtons } ?: false
+        }
+    }.getOrDefault(false)
 
     override fun onLoadChildren(parentId: String, result: Result<MutableList<MediaItem>>) {
         when (parentId) {
@@ -487,7 +495,6 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
         private const val CONTENT_STYLE_PLAYABLE_HINT = "android.media.browse.CONTENT_STYLE_PLAYABLE_HINT"
         private const val CONTENT_STYLE_GRID_ITEM = 2
         private const val RECORD_ICON_PX = 128
-        private const val BROWSE_ACTIONS_ENABLED = false
 
         private const val BROWSE_ACTION_RECORD = "com.autogram.app.browse.RECORD"
         private const val BROWSE_ACTION_SEND = "com.autogram.app.browse.SEND"

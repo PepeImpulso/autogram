@@ -459,4 +459,6 @@
     <string name="acceptable_use_rules_confirm">我接受 Autogram 使用条款和消息使用规则。</string>
     <string name="acceptable_use_accept">接受并继续</string>
     <string name="acceptable_use_exit">退出 Autogram</string>
+    <string name="settings_aa_car_grid_buttons">车载网格按钮（实验性）</string>
+    <string name="settings_aa_car_grid_buttons_sub">在车上使用每个联系人的麦克风 / 发送按钮录音和发送，无需打开播放器。如果车载屏幕显示为空，请关闭此项。Android Auto 重新连接后生效。</string>
 </resources>

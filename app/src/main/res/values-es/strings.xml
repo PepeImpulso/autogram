@@ -510,4 +510,6 @@
     <string name="acceptable_use_rules_confirm">Acepto las Condiciones de uso y las normas de mensajería de Autogram.</string>
     <string name="acceptable_use_accept">Aceptar y continuar</string>
     <string name="acceptable_use_exit">Salir de Autogram</string>
+    <string name="settings_aa_car_grid_buttons">Botones en la cuadrícula del coche (experimental)</string>
+    <string name="settings_aa_car_grid_buttons_sub">Graba y envía con los botones de micro / enviar de cada contacto en el coche, sin abrir el reproductor. Si la pantalla del coche sale vacía, desactívalo. Se aplica cuando Android Auto se vuelve a conectar.</string>
 </resources>

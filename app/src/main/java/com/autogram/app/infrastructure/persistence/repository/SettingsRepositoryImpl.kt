@@ -84,7 +84,8 @@ class SettingsRepositoryImpl @Inject constructor(
         developerMode = developerMode,
         audioFocusMode = runCatching { AudioFocusMode.valueOf(audioFocusMode) }
             .getOrDefault(AudioFocusMode.TRANSIENT_MAY_DUCK),
-        ttsAsNavigationPrompt = ttsAsNavigationPrompt
+        ttsAsNavigationPrompt = ttsAsNavigationPrompt,
+        carGridButtons = carGridButtons
     )
 
     private fun AppSettings.toEntity() = SettingsEntity(
@@ -111,6 +112,7 @@ class SettingsRepositoryImpl @Inject constructor(
         keepScreenOn = keepScreenOn,
         developerMode = developerMode,
         audioFocusMode = audioFocusMode.name,
-        ttsAsNavigationPrompt = ttsAsNavigationPrompt
+        ttsAsNavigationPrompt = ttsAsNavigationPrompt,
+        carGridButtons = carGridButtons
     )
 }

@@ -420,6 +420,13 @@ fun SettingsScreen(
                     onCheckedChange = viewModel::updateTtsAsNavigationPrompt
                 )
                 SettingsDivider()
+                SwitchRow(
+                    label = stringResource(R.string.settings_aa_car_grid_buttons),
+                    supporting = stringResource(R.string.settings_aa_car_grid_buttons_sub),
+                    checked = state.carGridButtons,
+                    onCheckedChange = viewModel::updateCarGridButtons
+                )
+                SettingsDivider()
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
