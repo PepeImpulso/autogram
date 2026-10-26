@@ -182,9 +182,9 @@ class CarMediaRecordController @Inject constructor(
             SendStatus.Sending -> mediaPlayback.markRecordInfo(
                 context.getString(R.string.media_record_sending, name)
             )
-            is SendStatus.Sent -> mediaPlayback.markRecordInfo(
-                context.getString(R.string.media_record_sent, name)
-            )
+            // No "Sent" screen: clear the player so the car can go back to
+            // the grid, where the contact tile shows "Sent".
+            is SendStatus.Sent -> mediaPlayback.markRecordDone()
             SendStatus.QueuedOffline -> mediaPlayback.markRecordInfo(
                 context.getString(R.string.media_record_queued, name)
             )

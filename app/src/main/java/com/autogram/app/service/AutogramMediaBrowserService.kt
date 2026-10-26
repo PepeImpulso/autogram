@@ -133,6 +133,10 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
     ): BrowserRoot? {
         return if (callerValidator.isTrustedCaller(clientPackageName, clientUid)) {
             val limit = rootHints?.getInt(MediaConstants.BROWSER_ROOT_HINTS_KEY_CUSTOM_BROWSER_ACTION_LIMIT, 0) ?: 0
+            if (clientPackageName == ANDROID_AUTO_PACKAGE) {
+                Timber.i("MediaBrowser: Android Auto browse action limit=%d", limit)
+                CarBrowseActionSupport.record(this, limit)
+            }
             // In-grid buttons left the car grid empty on a real head unit in
             // v1.28.0, so they are opt-in (Settings → Android Auto). Read on
             // every connection: toggling applies after Android Auto reconnects.
@@ -495,6 +499,7 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
         private const val CONTENT_STYLE_PLAYABLE_HINT = "android.media.browse.CONTENT_STYLE_PLAYABLE_HINT"
         private const val CONTENT_STYLE_GRID_ITEM = 2
         private const val RECORD_ICON_PX = 128
+        private const val ANDROID_AUTO_PACKAGE = "com.google.android.projection.gearhead"
 
         private const val BROWSE_ACTION_RECORD = "com.autogram.app.browse.RECORD"
         private const val BROWSE_ACTION_SEND = "com.autogram.app.browse.SEND"

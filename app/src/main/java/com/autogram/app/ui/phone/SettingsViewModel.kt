@@ -88,7 +88,8 @@ class SettingsViewModel @Inject constructor(
                 developerMode = settings.developerMode,
                 audioFocusMode = settings.audioFocusMode,
                 ttsAsNavigationPrompt = settings.ttsAsNavigationPrompt,
-                carGridButtons = settings.carGridButtons
+                carGridButtons = settings.carGridButtons,
+                carBrowseActionLimit = com.autogram.app.service.CarBrowseActionSupport.lastLimit(getApplication())
             )
         }
         viewModelScope.launch {
@@ -504,6 +505,9 @@ data class SettingsUiState(
     val audioFocusMode: AudioFocusMode = AudioFocusMode.TRANSIENT_MAY_DUCK,
     val ttsAsNavigationPrompt: Boolean = false,
     val carGridButtons: Boolean = false,
+    // Buttons per tile Android Auto said it can draw on its last connection;
+    // -1 = not connected since install, 0 = not supported by this car.
+    val carBrowseActionLimit: Int = -1,
     // v1.24.1 — the last playback attempt (file or TTS), with source +
     // focus result + routed device + focus mode + timestamp. Null = no
     // playback yet this session.

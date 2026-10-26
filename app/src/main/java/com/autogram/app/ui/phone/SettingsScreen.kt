@@ -422,7 +422,11 @@ fun SettingsScreen(
                 SettingsDivider()
                 SwitchRow(
                     label = stringResource(R.string.settings_aa_car_grid_buttons),
-                    supporting = stringResource(R.string.settings_aa_car_grid_buttons_sub),
+                    supporting = stringResource(R.string.settings_aa_car_grid_buttons_sub) + "\n" + when {
+                        state.carBrowseActionLimit < 0 -> stringResource(R.string.settings_aa_car_grid_buttons_unknown)
+                        state.carBrowseActionLimit == 0 -> stringResource(R.string.settings_aa_car_grid_buttons_unsupported)
+                        else -> stringResource(R.string.settings_aa_car_grid_buttons_supported, state.carBrowseActionLimit)
+                    },
                     checked = state.carGridButtons,
                     onCheckedChange = viewModel::updateCarGridButtons
                 )

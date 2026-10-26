@@ -461,5 +461,8 @@
     <string name="acceptable_use_accept">Akzeptieren und fortfahren</string>
     <string name="acceptable_use_exit">Autogram beenden</string>
     <string name="settings_aa_car_grid_buttons">Schaltflächen im Auto-Raster (experimentell)</string>
+    <string name="settings_aa_car_grid_buttons_unknown">Noch nicht geprüft: einmal mit Android Auto verbinden.</string>
+    <string name="settings_aa_car_grid_buttons_unsupported">Android Auto in deinem Auto unterstützt diese Schaltflächen nicht.</string>
+    <string name="settings_aa_car_grid_buttons_supported">Android Auto in deinem Auto unterstützt bis zu %1$d Schaltflächen pro Kontakt.</string>
     <string name="settings_aa_car_grid_buttons_sub">Mit den Mikrofon- / Senden-Schaltflächen jedes Kontakts im Auto aufnehmen und senden, ohne den Player zu öffnen. Wenn der Autobildschirm leer bleibt, schalte dies aus. Gilt nach dem erneuten Verbinden von Android Auto.</string>
 </resources>

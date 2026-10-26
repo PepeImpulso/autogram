@@ -293,6 +293,20 @@ class AutogramMediaPlaybackController @Inject constructor(
         session.setPlaybackState(idleState())
     }
 
+    /**
+     * Car tap-to-record finished sending: clear the player so Android Auto
+     * has nothing to show in Now Playing and can drop back to the grid.
+     */
+    fun markRecordDone() {
+        session.setMetadata(null)
+        session.setPlaybackState(
+            PlaybackStateCompat.Builder()
+                .setActions(TRANSPORT_ACTIONS)
+                .setState(PlaybackStateCompat.STATE_NONE, 0L, 0f)
+                .build()
+        )
+    }
+
     /** Playback fully stopped — keep the session active so AA still shows our app. */
     fun markStopped() {
         session.setPlaybackState(idleState())

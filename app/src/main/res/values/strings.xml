@@ -175,6 +175,9 @@
     <string name="settings_aa_tts_nav_prompt">Use navigation-prompt audio path</string>
     <string name="settings_aa_tts_nav_prompt_sub">Routes BOTH TTS and incoming voice replies through the same audio path as Google Maps directions. Turn ON if voice replies don\'t reach the car speakers while text replies do.</string>
     <string name="settings_aa_car_grid_buttons">Car grid buttons (experimental)</string>
+    <string name="settings_aa_car_grid_buttons_unknown">Not checked yet: connect to Android Auto once.</string>
+    <string name="settings_aa_car_grid_buttons_unsupported">Your car\'s Android Auto does not support these buttons.</string>
+    <string name="settings_aa_car_grid_buttons_supported">Your car\'s Android Auto supports up to %1$d buttons per contact.</string>
     <string name="settings_aa_car_grid_buttons_sub">Record and send from the mic / send buttons on each contact in the car, without opening the player. If the car screen comes up empty, turn this off. Applies after Android Auto reconnects.</string>
     <string name="settings_aa_test_playback">Test playback in car</string>
     <string name="settings_aa_test_playback_sub">Plays a short tone + a TTS sample using the settings above. Park, tap, listen — switch mode if you didn\'t hear it through the speakers.</string>

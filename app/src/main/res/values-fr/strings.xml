@@ -461,5 +461,8 @@
     <string name="acceptable_use_accept">Accepter et continuer</string>
     <string name="acceptable_use_exit">Quitter Autogram</string>
     <string name="settings_aa_car_grid_buttons">Boutons dans la grille de la voiture (expérimental)</string>
+    <string name="settings_aa_car_grid_buttons_unknown">Pas encore vérifié : connectez Android Auto une fois.</string>
+    <string name="settings_aa_car_grid_buttons_unsupported">Android Auto dans votre voiture ne prend pas en charge ces boutons.</string>
+    <string name="settings_aa_car_grid_buttons_supported">Android Auto dans votre voiture prend en charge jusqu’à %1$d boutons par contact.</string>
     <string name="settings_aa_car_grid_buttons_sub">Enregistrez et envoyez avec les boutons micro / envoyer de chaque contact dans la voiture, sans ouvrir le lecteur. Si l\'écran de la voiture reste vide, désactivez cette option. S\'applique après la reconnexion d\'Android Auto.</string>
 </resources>
