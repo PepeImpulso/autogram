@@ -132,7 +132,9 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
     ): BrowserRoot? {
         return if (callerValidator.isTrustedCaller(clientPackageName, clientUid)) {
             val limit = rootHints?.getInt(MediaConstants.BROWSER_ROOT_HINTS_KEY_CUSTOM_BROWSER_ACTION_LIMIT, 0) ?: 0
-            browseActionsSupported = limit > 0
+            // v1.28.1 — in-grid buttons disabled: with them on, the car
+            // showed an empty Autogram screen on a real head unit (v1.28.0).
+            browseActionsSupported = BROWSE_ACTIONS_ENABLED && limit > 0
             BrowserRoot(ROOT_ID, if (browseActionsSupported) browseActionsRootExtras() else null)
         } else {
             null
@@ -239,7 +241,9 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
                 .setExtras(extras)
                 .build()
             MediaItem(desc, MediaItem.FLAG_PLAYABLE)
-        } + shortcutChildren()
+        } + runCatching { shortcutChildren() }
+            .onFailure { Timber.w(it, "shortcutChildren failed") }
+            .getOrDefault(emptyList())
     }
 
     /** The phone's shortcut chips (Correo, Tiempo, ...) as tiles after the contacts. */
@@ -482,7 +486,8 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
         // folder's children as a grid of contact tiles.
         private const val CONTENT_STYLE_PLAYABLE_HINT = "android.media.browse.CONTENT_STYLE_PLAYABLE_HINT"
         private const val CONTENT_STYLE_GRID_ITEM = 2
-        private const val RECORD_ICON_PX = 160
+        private const val RECORD_ICON_PX = 128
+        private const val BROWSE_ACTIONS_ENABLED = false
 
         private const val BROWSE_ACTION_RECORD = "com.autogram.app.browse.RECORD"
         private const val BROWSE_ACTION_SEND = "com.autogram.app.browse.SEND"
