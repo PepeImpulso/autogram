@@ -305,7 +305,7 @@
     <string name="media_browser_record">録音</string>
     <string name="media_record_tap_to_record">タップして録音</string>
     <string name="media_record_recording_title">● 録音中 · %1$s</string>
-    <string name="media_record_recording_subtitle">⏸ または「送信」をタップして送信</string>
+    <string name="media_record_recording_subtitle">大きな ⏸ ボタンをタップして送信</string>
     <string name="media_record_tile_recording">● 録音中 — ➤ をタップして送信</string>
     <string name="media_shortcut_subtitle">タップして送信</string>
     <string name="media_shortcut_sent_toast">ショートカットを送信しました</string>

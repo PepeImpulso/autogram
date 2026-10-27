@@ -350,7 +350,7 @@
     <string name="media_browser_record">Grabar</string>
     <string name="media_record_tap_to_record">Toca para grabar</string>
     <string name="media_record_recording_title">● Grabando · %1$s</string>
-    <string name="media_record_recording_subtitle">Pulsa ⏸ o Enviar para enviarlo</string>
+    <string name="media_record_recording_subtitle">Pulsa el botón grande ⏸ para enviarlo</string>
     <string name="media_record_tile_recording">● Grabando — pulsa ➤ para enviar</string>
     <string name="media_shortcut_subtitle">Toca para enviar</string>
     <string name="media_shortcut_sent_toast">Atajo enviado</string>

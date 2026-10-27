@@ -8,6 +8,8 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
 import android.os.Bundle
+import android.content.Context
+import com.autogram.app.infrastructure.platform.LocaleHelper
 import android.support.v4.media.MediaBrowserCompat.MediaItem
 import android.support.v4.media.MediaDescriptionCompat
 import androidx.media.MediaBrowserServiceCompat
@@ -84,6 +86,11 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     @Volatile private var browseActionsSupported = false
+
+    // Car text follows the in-app language, like the player and the phone.
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(LocaleHelper.wrap(base))
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -246,7 +253,11 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
                 .setIconBitmap(
                     circlePhoto(
                         conv.photoLocalPath,
-                        recording = state == CarRecordToggle.TileState.RECORDING,
+                        // The stop badge only helps when recording happens on the
+                        // grid (in-grid buttons). Without them recording happens in
+                        // the player, and the badge only flashed on the way back.
+                        recording = browseActionsSupported &&
+                            state == CarRecordToggle.TileState.RECORDING,
                         unread = unread[conv.id] ?: 0
                     )
                 )
