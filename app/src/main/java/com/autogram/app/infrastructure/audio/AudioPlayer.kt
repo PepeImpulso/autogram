@@ -175,14 +175,18 @@ class AudioPlayer @Inject constructor(
             Timber.d("Playing: ${file.name} (speed=${effectiveSpeed}x)")
             Result.success(Unit)
         } catch (e: Exception) {
-            Timber.e(e, "Failed to play audio")
             // If focus loss or an explicit stop already completed/invalidated
             // this generation, its callback/state owner has handled the event.
             // Returning success prevents callers from processing it twice.
             val generation = startedGeneration
             if (generation == null || cancelStart(generation)) {
+                Timber.e(e, "Failed to play audio")
                 Result.failure(e)
             } else {
+                // Superseded: a stop or a newer message released this player
+                // mid-prepare, so MediaPlayer threw IllegalStateException.
+                // Expected, not an error (Sentry 304c077f).
+                Timber.i("Playback start superseded: %s", e.javaClass.simpleName)
                 Result.success(Unit)
             }
         }

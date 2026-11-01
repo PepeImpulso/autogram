@@ -25,7 +25,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.merge
@@ -86,12 +88,18 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     @Volatile private var browseActionsSupported = false
+    // Last good answers for the record grid. A slow or failed reload (the
+    // database is busy right after a send) reuses them, so the car never
+    // shows an empty or "can't load" grid until the next refresh.
+    @Volatile private var lastPinned: List<com.autogram.app.domain.model.Conversation> = emptyList()
+    @Volatile private var lastRecordItems: List<MediaItem> = emptyList()
 
     // Car text follows the in-app language, like the player and the phone.
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(LocaleHelper.wrap(base))
     }
 
+    @OptIn(FlowPreview::class)
     override fun onCreate() {
         super.onCreate()
         sessionToken = mediaPlayback.sessionToken()
@@ -102,7 +110,11 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
                 carMediaRecord.tileChanges.drop(1),
                 messageRepository.observePendingReplyCounts().distinctUntilChanged().drop(1),
                 quickReplyRepository.observeAll().distinctUntilChanged().drop(1)
-            ).collect { notifyChildrenChanged(RECORD_ID) }
+            )
+                // A send changes state several times in a second (sending,
+                // sent, unread count); reload the car grid once per burst.
+                .debounce(GRID_REFRESH_DEBOUNCE_MS)
+                .collect { notifyChildrenChanged(RECORD_ID) }
         }
         // v1.22.3 — explicitly read playReplyUseCase so R8's "remove unused
         // fields" optimization can't strip the @Inject lateinit var. The
@@ -166,8 +178,14 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
             RECORD_ID -> {
                 result.detach()
                 serviceScope.launch {
-                    runCatching { result.sendResult(recordChildren().toMutableList()) }
-                        .onFailure { Timber.w(it, "onLoadChildren($RECORD_ID) failed") }
+                    val items = runCatching { recordChildren() }
+                        .onSuccess { if (it.isNotEmpty()) lastRecordItems = it }
+                        .getOrElse {
+                            Timber.e(it, "onLoadChildren($RECORD_ID) failed; reusing last grid")
+                            lastRecordItems
+                        }
+                    runCatching { result.sendResult(items.toMutableList()) }
+                        .onFailure { Timber.e(it, "onLoadChildren($RECORD_ID) sendResult failed") }
                 }
             }
             HISTORY_ID -> {
@@ -210,9 +228,14 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
     )
 
     private suspend fun recordChildren(): List<MediaItem> {
-        val pinned = withTimeoutOrNull(BROWSER_QUERY_TIMEOUT_MS) {
-            runCatching { conversationRepository.getPinned() }.getOrDefault(emptyList())
-        } ?: emptyList()
+        val fresh = withTimeoutOrNull(BROWSER_QUERY_TIMEOUT_MS) {
+            runCatching { conversationRepository.getPinned() }
+                .onFailure { Timber.e(it, "Car grid: contacts query failed") }
+                .getOrNull()
+        }
+        if (fresh == null) Timber.e("Car grid: contacts query failed or timed out; reusing last list")
+        val pinned = fresh ?: lastPinned
+        if (fresh != null) lastPinned = fresh
         val unread = withTimeoutOrNull(BROWSER_QUERY_TIMEOUT_MS) {
             runCatching { messageRepository.observePendingReplyCounts().first() }.getOrDefault(emptyMap())
         } ?: emptyMap()
@@ -518,6 +541,7 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
 
         /** Cap browser DB reads so a stuck query doesn't hang AA's UI. */
         private const val BROWSER_QUERY_TIMEOUT_MS: Long = 5_000
+        private const val GRID_REFRESH_DEBOUNCE_MS: Long = 400
 
         private val ROW_TIME_FORMAT = SimpleDateFormat("HH:mm", Locale.getDefault())
     }
