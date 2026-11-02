@@ -141,6 +141,12 @@ class MainViewModel @Inject constructor(
      * target. No-op when there's no audio to play AND nothing to
      * stop (button is disabled in that combined state).
      */
+    fun togglePause() = playReplyUseCase.togglePause()
+
+    fun skipNext() {
+        viewModelScope.launch { playReplyUseCase.skipNext() }
+    }
+
     fun toggleLastOriginal() {
         // Mirrors the header's Stop-icon gating: only treat actively-Playing
         // as "stop". Paused (e.g. user paused a message from History) is

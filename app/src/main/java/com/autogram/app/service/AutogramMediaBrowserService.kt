@@ -20,6 +20,7 @@ import com.autogram.app.domain.model.Conversation
 import com.autogram.app.domain.model.Message
 import com.autogram.app.domain.repository.ConversationRepository
 import com.autogram.app.domain.repository.MessageRepository
+import com.autogram.app.domain.usecase.PlayReplyUseCase
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -32,6 +33,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
@@ -109,7 +111,10 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
             merge(
                 carMediaRecord.tileChanges.drop(1),
                 messageRepository.observePendingReplyCounts().distinctUntilChanged().drop(1),
-                quickReplyRepository.observeAll().distinctUntilChanged().drop(1)
+                quickReplyRepository.observeAll().distinctUntilChanged().drop(1),
+                // Show, hide or flip the pause / next tiles.
+                playReplyUseCase.playbackStatus.map { playbackControlState(it) }
+                    .distinctUntilChanged().drop(1)
             )
                 // A send changes state several times in a second (sending,
                 // sent, unread count); reload the car grid once per burst.
@@ -287,9 +292,38 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
                 .setExtras(extras)
                 .build()
             MediaItem(desc, MediaItem.FLAG_PLAYABLE)
-        } + runCatching { shortcutChildren() }
+        } + playbackControlChildren() + runCatching { shortcutChildren() }
             .onFailure { Timber.w(it, "shortcutChildren failed") }
             .getOrDefault(emptyList())
+    }
+
+    /** 1 = playing, 2 = paused, 0 = nothing to control. */
+    private fun playbackControlState(status: PlayReplyUseCase.PlaybackStatus): Int = when (status) {
+        is PlayReplyUseCase.PlaybackStatus.Playing -> 1
+        is PlayReplyUseCase.PlaybackStatus.Paused -> 2
+        else -> 0
+    }
+
+    /**
+     * Pause / resume and next tiles, after the contacts so the contacts keep
+     * their places. Shown only while a message is playing or paused.
+     */
+    private fun playbackControlChildren(): List<MediaItem> {
+        val state = playbackControlState(playReplyUseCase.playbackStatus.value)
+        if (state == 0) return emptyList()
+        fun tile(id: String, title: Int, icon: Int) = MediaItem(
+            MediaDescriptionCompat.Builder()
+                .setMediaId(id)
+                .setTitle(getString(title))
+                .setIconBitmap(shortcutIcon(icon))
+                .build(),
+            MediaItem.FLAG_PLAYABLE
+        )
+        return listOf(
+            if (state == 1) tile(PlayReplyUseCase.PAUSE_RESUME_MEDIA_ID, R.string.main_pause_playback, R.drawable.ic_pause)
+            else tile(PlayReplyUseCase.PAUSE_RESUME_MEDIA_ID, R.string.main_resume_playback, R.drawable.ic_play_arrow),
+            tile(PlayReplyUseCase.SKIP_NEXT_MEDIA_ID, R.string.main_skip_next, R.drawable.ic_skip_next)
+        )
     }
 
     /** The phone's shortcut chips (Correo, Tiempo, ...) as tiles after the contacts. */

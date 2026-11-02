@@ -44,6 +44,8 @@ import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -502,8 +504,11 @@ internal fun MainScreen(
                 online = isOnline,
                 hasLastOriginal = lastIncoming != null,
                 isPlayingLast = isAnyPlaying,
+                isPaused = playback is PlayReplyUseCase.PlaybackStatus.Paused,
                 pendingCount = pendingPlaybackCount,
                 onToggleLastOriginal = viewModel::toggleLastOriginal,
+                onTogglePause = viewModel::togglePause,
+                onSkipNext = viewModel::skipNext,
                 // v1.20.23 — opens the new Pending Queue screen instead
                 // of draining immediately, so the user sees what's
                 // queued and can choose Play All from inside.
@@ -660,8 +665,11 @@ private fun HeroHeader(
     online: Boolean,
     hasLastOriginal: Boolean,
     isPlayingLast: Boolean,
+    isPaused: Boolean,
     pendingCount: Int,
     onToggleLastOriginal: () -> Unit,
+    onTogglePause: () -> Unit,
+    onSkipNext: () -> Unit,
     onDrainPending: () -> Unit
 ) {
     Row(
@@ -705,11 +713,47 @@ private fun HeroHeader(
         // while playback is in flight so a single tap kills it. Plays
         // ONLY the most-recent message — distinct from the pending-queue
         // drainer above which plays every parked message.
+        // Pause / resume and skip to the next message, while a message is
+        // playing or paused.
+        if (isPlayingLast || isPaused) {
+            HeaderIconButton(
+                icon = if (isPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
+                description = stringResource(
+                    if (isPaused) R.string.main_resume_playback else R.string.main_pause_playback
+                ),
+                onClick = onTogglePause
+            )
+            HeaderIconButton(
+                icon = Icons.Filled.SkipNext,
+                description = stringResource(R.string.main_skip_next),
+                onClick = onSkipNext
+            )
+        }
         PlayLastOriginalToggle(
             enabled = hasLastOriginal,
             isPlaying = isPlayingLast,
             onClick = onToggleLastOriginal
         )
+    }
+}
+
+/** 40 dp round header button, same size as [PlayLastOriginalToggle]. */
+@Composable
+private fun HeaderIconButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    description: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        modifier = Modifier.size(40.dp)
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            Icon(imageVector = icon, contentDescription = description, modifier = Modifier.size(20.dp))
+        }
     }
 }
 

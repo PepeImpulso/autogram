@@ -92,6 +92,11 @@ class PlayReplyUseCase @Inject constructor(
             }
             override fun onPlayFromMediaId(mediaId: String, extras: android.os.Bundle?) {
                 playbackScope.launch {
+                    // Pause / next tiles on the car grid.
+                    when (mediaId) {
+                        PAUSE_RESUME_MEDIA_ID -> { togglePause(); return@launch }
+                        SKIP_NEXT_MEDIA_ID -> { skipNext(); return@launch }
+                    }
                     val msg = messageRepository.getById(mediaId)
                     if (msg == null) {
                         // Message was deleted between catalog load and AA tap.
@@ -821,6 +826,15 @@ class PlayReplyUseCase @Inject constructor(
      * whatever it was when we paused — we're resuming the same message,
      * no re-fetch needed.
      */
+    /** Pause what is playing, or resume what is paused (Home and car grid button). */
+    fun togglePause() {
+        when (playbackStatus.value) {
+            is PlaybackStatus.Playing -> pause()
+            is PlaybackStatus.Paused -> resume()
+            else -> Unit
+        }
+    }
+
     fun resume() {
         audioPlayer.resume()
         currentPlayingId?.let { id ->
@@ -1393,6 +1407,10 @@ class PlayReplyUseCase @Inject constructor(
     }
 
     companion object {
+        /** Media IDs of the car grid's pause / resume and next tiles. */
+        const val PAUSE_RESUME_MEDIA_ID = "control:pause_resume"
+        const val SKIP_NEXT_MEDIA_ID = "control:skip_next"
+
         /**
          * v1.23.0-rc.6 — beat between the mic releasing and the auto-play
          * drain kicking in. 2 s is long enough to feel like a deliberate
