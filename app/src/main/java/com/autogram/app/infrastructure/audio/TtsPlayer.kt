@@ -69,8 +69,23 @@ class TtsPlayer @Inject constructor(
         val token: String,
         val remainingUtteranceIds: MutableSet<String>,
         val onDone: () -> Unit,
-        val onError: ((Throwable) -> Unit)?
-    )
+        val onError: ((Throwable) -> Unit)?,
+        val chunks: List<String>,
+        val locale: Locale?,
+        val speed: Float?
+    ) {
+        // Word the engine is speaking (chunk + char offset), so a resume
+        // after [pause] continues from there.
+        @Volatile var chunkIndex = 0
+        @Volatile var charOffset = 0
+
+        fun remainingText(): String {
+            if (chunks.isEmpty()) return ""
+            val index = chunkIndex.coerceIn(0, chunks.lastIndex)
+            val first = chunks[index].let { it.substring(charOffset.coerceIn(0, it.length)) }
+            return (listOf(first) + chunks.drop(index + 1)).joinToString(" ")
+        }
+    }
 
     private data class TtsRequestFailure(
         val description: String,
@@ -79,6 +94,7 @@ class TtsPlayer @Inject constructor(
 
     @Volatile private var audioFocusHandle: FocusHandle? = null
     @Volatile private var activeSpeech: ActiveSpeech? = null
+    @Volatile private var pausedSpeech: ActiveSpeech? = null
 
     /**
      * Reads [text] aloud. By default picks the voice for the UI locale, but
@@ -124,7 +140,10 @@ class TtsPlayer @Inject constructor(
                             token = token,
                             remainingUtteranceIds = utteranceIds.toMutableSet(),
                             onDone = onDone,
-                            onError = onError
+                            onError = onError,
+                            chunks = chunks,
+                            locale = locale,
+                            speed = speed
                         )
                         true
                     }
@@ -191,7 +210,13 @@ class TtsPlayer @Inject constructor(
 
                 val speechRate = PlaybackSpeed.coerce(speed ?: settings.playbackSpeed)
                 val progressListener = object : UtteranceProgressListener() {
-                    override fun onStart(id: String?) = Unit
+                    override fun onStart(id: String?) {
+                        if (id != null) markProgress(token, id, 0)
+                    }
+
+                    override fun onRangeStart(id: String?, start: Int, end: Int, frame: Int) {
+                        if (id != null) markProgress(token, id, start)
+                    }
 
                     override fun onDone(id: String?) {
                         if (id != null) completeChunk(token, id)
@@ -273,7 +298,30 @@ class TtsPlayer @Inject constructor(
         }
     }
 
+    /**
+     * Stop speaking but keep the callbacks and the position, so [resume]
+     * continues from the word being spoken. Android's TextToSpeech has no
+     * real pause: resume speaks the rest of the text as a new request.
+     * False when nothing had started speaking yet.
+     */
+    fun pause(): Boolean {
+        val speech = invalidateSpeechRequests() ?: return false
+        stopEngineSafely()
+        abandonAudioFocus(speech.token)
+        pausedSpeech = speech
+        return true
+    }
+
+    /** Speaks the rest of the paused text; false when nothing is paused. */
+    suspend fun resume(): Boolean {
+        val speech = pausedSpeech ?: return false
+        pausedSpeech = null
+        speak(speech.remainingText(), speech.locale, speech.onDone, speech.speed, speech.onError)
+        return true
+    }
+
     fun stop() {
+        pausedSpeech = null
         val speech = invalidateSpeechRequests()
         stopEngineSafely()
         abandonAudioFocus(speech?.token)
@@ -288,6 +336,7 @@ class TtsPlayer @Inject constructor(
      * stop() but drops the pending onDone instead of invoking it.
      */
     fun cancel() {
+        pausedSpeech = null
         val speech = invalidateSpeechRequests()
         stopEngineSafely()
         abandonAudioFocus(speech?.token)
@@ -609,6 +658,13 @@ class TtsPlayer @Inject constructor(
             speech.remainingUtteranceIds.addAll(utteranceIds)
             true
         }
+
+    private fun markProgress(token: String, utteranceId: String, offset: Int) {
+        val speech = activeSpeech ?: return
+        if (speech.token != token) return
+        speech.chunkIndex = utteranceId.substringAfterLast(':').toIntOrNull() ?: return
+        speech.charOffset = offset
+    }
 
     private fun completeChunk(token: String, utteranceId: String) {
         val completed = synchronized(speechStateLock) {

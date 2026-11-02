@@ -13,8 +13,6 @@
     <string name="main_pause_playback">一時停止</string>
     <string name="main_resume_playback">再開</string>
     <string name="main_skip_next">次のメッセージ</string>
-    <string name="main_playback_playing">再生中</string>
-    <string name="main_playback_paused">一時停止中</string>
     <string name="tile_record_label">Merlin に音声</string>
     <string name="tile_no_primary">先に設定でメイン送信先を選んでください</string>
     <string name="common_cancel">キャンセル</string>

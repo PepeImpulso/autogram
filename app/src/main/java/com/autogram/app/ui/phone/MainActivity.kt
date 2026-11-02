@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.SkipNext
@@ -384,7 +385,6 @@ internal fun MainScreen(
     val sendStatus by viewModel.sendStatus.collectAsState()
     val playback by viewModel.playbackStatus.collectAsState()
     val playingConversationId by viewModel.currentlyPlayingConversationId.collectAsState()
-    val controlledConversationId by viewModel.controlledConversationId.collectAsState()
     val quickReplies by viewModel.quickReplies.collectAsState()
     val pinned by viewModel.pinned.collectAsState()
     val activeTargetId by viewModel.activeTargetId.collectAsState()
@@ -450,18 +450,6 @@ internal fun MainScreen(
 
     Scaffold(
         bottomBar = {
-          Column {
-            val controlled = playback is PlayReplyUseCase.PlaybackStatus.Playing ||
-                playback is PlayReplyUseCase.PlaybackStatus.Paused
-            if (controlled) {
-                val conv = pinned.firstOrNull { it.id == controlledConversationId }
-                NowPlayingBar(
-                    title = conv?.let { it.topicName ?: it.targetTitle }.orEmpty(),
-                    isPaused = playback is PlayReplyUseCase.PlaybackStatus.Paused,
-                    onTogglePause = viewModel::togglePause,
-                    onSkipNext = viewModel::skipNext
-                )
-            }
             NavigationBar {
                 NavigationBarItem(
                     selected = true,
@@ -494,7 +482,6 @@ internal fun MainScreen(
                     label = { Text(ctx.getString(R.string.settings_title)) }
                 )
             }
-          }
         }
     ) { padding ->
         Column(
@@ -518,8 +505,11 @@ internal fun MainScreen(
                 online = isOnline,
                 hasLastOriginal = lastIncoming != null,
                 isPlayingLast = isAnyPlaying,
+                isPaused = playback is PlayReplyUseCase.PlaybackStatus.Paused,
                 pendingCount = pendingPlaybackCount,
                 onToggleLastOriginal = viewModel::toggleLastOriginal,
+                onTogglePause = viewModel::togglePause,
+                onSkipNext = viewModel::skipNext,
                 // v1.20.23 — opens the new Pending Queue screen instead
                 // of draining immediately, so the user sees what's
                 // queued and can choose Play All from inside.
@@ -676,10 +666,14 @@ private fun HeroHeader(
     online: Boolean,
     hasLastOriginal: Boolean,
     isPlayingLast: Boolean,
+    isPaused: Boolean,
     pendingCount: Int,
     onToggleLastOriginal: () -> Unit,
+    onTogglePause: () -> Unit,
+    onSkipNext: () -> Unit,
     onDrainPending: () -> Unit
 ) {
+    val showPlaybackControls = isPlayingLast || isPaused
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -692,17 +686,21 @@ private fun HeroHeader(
             contentDescription = null,
             modifier = Modifier.size(32.dp)
         )
-        Text(
-            stringResource(R.string.app_name),
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onBackground
-        )
-        Text(
-            "v${BuildConfig.VERSION_NAME}",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.weight(1f))
+        Column(Modifier.weight(1f)) {
+            Text(
+                stringResource(R.string.app_name),
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                "v${BuildConfig.VERSION_NAME}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
+        }
         StatusPill(sendStatus, outboxCount, online)
         // v1.20.15: debug screenshot button moved out of the header into
         // a global FAB (DebugScreenshotOverlay) so it's available on
@@ -714,7 +712,27 @@ private fun HeroHeader(
         // last" toggle so the most-actionable affordance is closer to
         // the user's thumb.
         if (pendingCount > 0) {
-            DrainPendingButton(count = pendingCount, onClick = onDrainPending)
+            DrainPendingButton(
+                count = pendingCount,
+                compact = showPlaybackControls,
+                onClick = onDrainPending
+            )
+        }
+        // Pause / resume and next, while a message is playing or paused.
+        // Right of the pending pill so it never moves them.
+        if (showPlaybackControls) {
+            HeaderIconButton(
+                icon = if (isPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
+                description = stringResource(
+                    if (isPaused) R.string.main_resume_playback else R.string.main_pause_playback
+                ),
+                onClick = onTogglePause
+            )
+            HeaderIconButton(
+                icon = Icons.Filled.SkipNext,
+                description = stringResource(R.string.main_skip_next),
+                onClick = onSkipNext
+            )
         }
         // Always-visible "play last original" toggle. Disabled when the
         // active target has no incoming audio to play back; shows Stop
@@ -729,55 +747,9 @@ private fun HeroHeader(
     }
 }
 
-/**
- * Mini-player above the bottom bar while a message is playing or paused.
- * Fixed place and size so the buttons never move under the thumb (in the
- * header they shifted whenever the pending pill came or went).
- */
+/** 40 dp round header button, same size as [PlayLastOriginalToggle]. */
 @Composable
-private fun NowPlayingBar(
-    title: String,
-    isPaused: Boolean,
-    onTogglePause: () -> Unit,
-    onSkipNext: () -> Unit
-) {
-    Surface(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.padding(start = 20.dp, end = 12.dp, top = 8.dp, bottom = 8.dp)
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    stringResource(if (isPaused) R.string.main_playback_paused else R.string.main_playback_playing),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    title,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            NowPlayingButton(
-                icon = if (isPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
-                description = stringResource(
-                    if (isPaused) R.string.main_resume_playback else R.string.main_pause_playback
-                ),
-                onClick = onTogglePause
-            )
-            NowPlayingButton(
-                icon = Icons.Filled.SkipNext,
-                description = stringResource(R.string.main_skip_next),
-                onClick = onSkipNext
-            )
-        }
-    }
-}
-
-@Composable
-private fun NowPlayingButton(
+private fun HeaderIconButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     description: String,
     onClick: () -> Unit
@@ -787,16 +759,16 @@ private fun NowPlayingButton(
         shape = CircleShape,
         color = MaterialTheme.colorScheme.primaryContainer,
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        modifier = Modifier.size(56.dp)
+        modifier = Modifier.size(40.dp)
     ) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-            Icon(imageVector = icon, contentDescription = description, modifier = Modifier.size(30.dp))
+            Icon(imageVector = icon, contentDescription = description, modifier = Modifier.size(22.dp))
         }
     }
 }
 
 @Composable
-private fun DrainPendingButton(count: Int, onClick: () -> Unit) {
+private fun DrainPendingButton(count: Int, compact: Boolean, onClick: () -> Unit) {
     val container = MaterialTheme.colorScheme.primaryContainer
     val content = MaterialTheme.colorScheme.onPrimaryContainer
     // Pill is the single surface for the pending-queue count. Height is
@@ -818,7 +790,9 @@ private fun DrainPendingButton(count: Int, onClick: () -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Icon(
-                imageVector = Icons.Filled.PlayArrow,
+                // Queue icon next to the playback buttons, so it is not a
+                // second play icon beside Resume.
+                imageVector = if (compact) Icons.AutoMirrored.Filled.QueueMusic else Icons.Filled.PlayArrow,
                 contentDescription = null,
                 modifier = Modifier.size(22.dp)
             )
@@ -827,12 +801,15 @@ private fun DrainPendingButton(count: Int, onClick: () -> Unit) {
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
-            Text(
-                stringResource(R.string.main_drain_pending_label),
-                style = MaterialTheme.typography.labelLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            // Label dropped while the playback buttons share the row.
+            if (!compact) {
+                Text(
+                    stringResource(R.string.main_drain_pending_label),
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }

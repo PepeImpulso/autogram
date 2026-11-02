@@ -194,11 +194,11 @@ class PlayReplyUseCase @Inject constructor(
     // cancel the only durable requeue after Pause/Stop.
     private val playbackScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    /** Includes TTS requests accepted by the engine but not audible yet. */
-    // Text message paused while being read aloud: back in the pending queue,
-    // shown as Paused until resumed (re-read) or skipped.
+    // Message paused while being read aloud (text, summary, transcription).
+    // Resume continues from the paused word through the TTS player.
     @Volatile private var pausedTtsId: String? = null
 
+    /** Includes TTS requests accepted by the engine but not audible yet. */
     private fun isPlaybackActive(): Boolean =
         currentPlayingId != null || audioPlayer.isPlaying() || ttsPlayer.isSpeaking()
 
@@ -239,6 +239,7 @@ class PlayReplyUseCase @Inject constructor(
             nextPlaybackSessionToken++
             currentPlaybackSession = null
             currentPlayingId = null
+            pausedTtsId = null
             current?.messageId
         }
 
@@ -785,17 +786,24 @@ class PlayReplyUseCase @Inject constructor(
      * engine but still flipped _playbackStatus to Paused — the row's
      * Pause button toggled to Play visually, but the voice kept
      * speaking and the user couldn't silence it. Now we route TTS
-     * through ttsPlayer.cancel() (which stops the engine WITHOUT
-     * firing the pending onDone, so the autoplay-drain speak()
-     * callbacks don't advance the queue under us — a "pause" tap
-     * shouldn't auto-skip to the next message), null out the playing
-     * id, return the row to the durable pending queue, and flip the session
-     * to STOPPED. A re-tap on Play restarts a fresh utterance from the
-     * beginning, which is the only sensible "resume" semantic for TTS —
-     * Android's TextToSpeech engine has no genuine pause/resume.
+     * through ttsPlayer.pause(), which stops the engine WITHOUT firing
+     * the pending onDone (a "pause" tap shouldn't auto-skip to the next
+     * message) and keeps the spoken position, so resume() continues from
+     * that word in the same playback session.
+     *
+     * If the engine had not started yet there is nothing to keep: the row
+     * goes back to the durable pending queue and resume() reads it again
+     * from the start.
      */
     fun pause() {
         if (ttsPlayer.isSpeaking()) {
+            val speakingId = currentPlayingId
+            if (speakingId != null && ttsPlayer.pause()) {
+                pausedTtsId = speakingId
+                _playbackStatus.value = PlaybackStatus.Paused(speakingId)
+                mediaPlayback.markPaused(0L)
+                return
+            }
             val pausedId = invalidatePlaybackSession()
             ttsPlayer.cancel()
             _playbackStatus.value = PlaybackStatus.Idle
@@ -806,8 +814,7 @@ class PlayReplyUseCase @Inject constructor(
                         val msg = messageRepository.getById(pausedId)
                             ?: return@launch
                         enqueuePending(msg, PendingReason.USER_PAUSED)
-                        // Show it as paused so Home / car offer Resume, which
-                        // reads it again from the start (TTS can't resume).
+                        // Show it as paused so Home / car offer Resume.
                         pausedTtsId = pausedId
                         _playbackStatus.value = PlaybackStatus.Paused(pausedId)
                         mediaPlayback.markPaused(0L)
@@ -853,7 +860,11 @@ class PlayReplyUseCase @Inject constructor(
     fun resume() {
         pausedTtsId?.let { id ->
             pausedTtsId = null
-            playbackScope.launch { messageRepository.getById(id)?.let { playFromHere(it) } }
+            _playbackStatus.value = PlaybackStatus.Playing(id)
+            mediaPlayback.markResumed(0L)
+            playbackScope.launch {
+                if (!ttsPlayer.resume()) messageRepository.getById(id)?.let { playFromHere(it) }
+            }
             return
         }
         audioPlayer.resume()
@@ -884,7 +895,6 @@ class PlayReplyUseCase @Inject constructor(
         // have claimed/cleared the active session while its DB work is still
         // running; Stop must still suppress that callback's later drain.
         val interruptedId = invalidatePlaybackSession()
-        pausedTtsId = null
         audioPlayer.stop()
         // Also stop TTS — a summary/transcription TTS in flight when
         // the user starts recording would otherwise keep speaking into
@@ -1207,10 +1217,11 @@ class PlayReplyUseCase @Inject constructor(
      * in the Pending Queue screen's Now Playing panel.
      */
     suspend fun skipNext() {
+        // Paused before the engine started: the row is back in the queue.
         pausedTtsId?.let { id ->
             pausedTtsId = null
-            synchronized(pendingQueue) { pendingQueue.removeAll { it.id == id } }
-            messageRepository.getById(id)?.let { markPlaybackCompleted(it) }
+            val requeued = synchronized(pendingQueue) { pendingQueue.removeAll { it.id == id } }
+            if (requeued) messageRepository.getById(id)?.let { markPlaybackCompleted(it) }
         }
         val skippedId = invalidatePlaybackSession()
         audioPlayer.stop()

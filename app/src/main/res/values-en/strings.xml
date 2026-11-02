@@ -13,8 +13,6 @@
     <string name="main_pause_playback">Pause</string>
     <string name="main_resume_playback">Resume</string>
     <string name="main_skip_next">Next message</string>
-    <string name="main_playback_playing">Playing</string>
-    <string name="main_playback_paused">Paused</string>
     <string name="main_drain_pending_label">Pending</string>
     <string name="tile_record_label">Voice to Merlin</string>
     <string name="tile_no_primary">Pick a primary target first in Settings</string>
