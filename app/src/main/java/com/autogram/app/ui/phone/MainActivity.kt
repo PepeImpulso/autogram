@@ -1298,8 +1298,7 @@ private fun SecondaryCirclesRow(
         val columns = circles.size.coerceAtMost(4)
         val totalSpacing = 16.dp * (columns - 1).toFloat()
         // RecordCircle is 24 dp wider than its circle (the playing / recording
-        // ring). Without this, 3 contacts did not fit in one row and the
-        // third wrapped onto a row with no room, so it was not shown.
+        // ring).
         val ring = 24.dp
         val labelHeightAllowance = 28.dp
         val verticalSafePadding = 12.dp
@@ -1315,7 +1314,15 @@ private fun SecondaryCirclesRow(
                 val heightBound = usableHeight * 0.92f
                 minDp(widthBound, heightBound).coerceIn(128.dp, primaryCircleSize)
             }
-            else -> ((maxWidth - totalSpacing) / columns.toFloat() - ring).coerceIn(56.dp, 132.dp)
+            // As large as fits: 2 per row (third below) on tall screens, one
+            // row on short ones, where a wrapped row would be cut off.
+            else -> (2..columns).maxOf { cols ->
+                val rows = (circles.size + cols - 1) / cols
+                val widthBound = (maxWidth - 16.dp * (cols - 1).toFloat()) / cols.toFloat() - ring
+                val heightBound = (maxHeight - verticalSafePadding - 16.dp * (rows - 1).toFloat()) /
+                    rows.toFloat() - ring - labelHeightAllowance
+                minDp(widthBound, heightBound)
+            }.coerceIn(56.dp, primaryCircleSize)
         }
 
         if (circles.size == 1) {

@@ -462,7 +462,7 @@ class PlayReplyUseCase @Inject constructor(
                     )
                 }
                 if (isPlaybackTransitionCurrent(sessionToken) && !isPlaybackActive()) {
-                    if (pendingCount() == 0) _playbackStatus.value = PlaybackStatus.Idle
+                    _playbackStatus.value = idleOrPendingStatus()
                     mediaPlayback.markStopped()
                 }
             }
@@ -474,7 +474,7 @@ class PlayReplyUseCase @Inject constructor(
                 result.exceptionOrNull() ?: IllegalStateException("Unknown playback failure")
             )
             if (isPlaybackTransitionCurrent(sessionToken) && !isPlaybackActive()) {
-                if (pendingCount() == 0) _playbackStatus.value = PlaybackStatus.Idle
+                _playbackStatus.value = idleOrPendingStatus()
                 mediaPlayback.markStopped()
             }
         }
@@ -528,9 +528,7 @@ class PlayReplyUseCase @Inject constructor(
                     }
                     handlePlaybackFailure(message, error)
                     if (isPlaybackTransitionCurrent(sessionToken) && !isPlaybackActive()) {
-                        if (pendingCount() == 0) {
-                            _playbackStatus.value = PlaybackStatus.Idle
-                        }
+                        _playbackStatus.value = idleOrPendingStatus()
                         mediaPlayback.markStopped()
                     }
                 }
@@ -937,8 +935,20 @@ class PlayReplyUseCase @Inject constructor(
             errorMessage = null
         ))
         pendingPlaybackDao.deleteByMessageId(message.id)
+        // Heard outside the queue (replay button, History): drop it from the
+        // queue too, or the pending pill keeps counting it.
+        val dequeued = synchronized(pendingQueue) { pendingQueue.removeAll { it.id == message.id } }
+        if (dequeued) {
+            pendingRevision.value++
+            val remaining = pendingCount()
+            if (remaining > 0) pendingReplyNotifier.notifyPending(remaining) else pendingReplyNotifier.cancel()
+        }
         pushPlayedHistory(message)
     }
+
+    /** Status once a manual playback ends: queued messages keep their count. */
+    private fun idleOrPendingStatus(): PlaybackStatus =
+        pendingCount().let { if (it > 0) PlaybackStatus.PendingCount(it) else PlaybackStatus.Idle }
 
     /** Stop a different current item without acknowledging unheard content. */
     private suspend fun interruptForReplacement(replacementMessageId: String) {
