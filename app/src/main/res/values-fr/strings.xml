@@ -13,6 +13,8 @@
     <string name="main_pause_playback">Pause</string>
     <string name="main_resume_playback">Reprendre</string>
     <string name="main_skip_next">Message suivant</string>
+    <string name="main_playback_playing">Lecture</string>
+    <string name="main_playback_paused">En pause</string>
     <string name="tile_record_label">Vocal pour Merlin</string>
     <string name="tile_no_primary">Choisissez d\'abord un destinataire principal dans les Réglages</string>
     <string name="common_cancel">Annuler</string>

@@ -13,6 +13,8 @@
     <string name="main_pause_playback">暂停</string>
     <string name="main_resume_playback">继续</string>
     <string name="main_skip_next">下一条消息</string>
+    <string name="main_playback_playing">正在播放</string>
+    <string name="main_playback_paused">已暂停</string>
     <string name="tile_record_label">向 Merlin 发语音</string>
     <string name="tile_no_primary">请先在设置中选择主要对象</string>
     <string name="common_cancel">取消</string>

@@ -13,6 +13,8 @@
     <string name="main_pause_playback">Pause</string>
     <string name="main_resume_playback">Fortsetzen</string>
     <string name="main_skip_next">Nächste Nachricht</string>
+    <string name="main_playback_playing">Wird abgespielt</string>
+    <string name="main_playback_paused">Pausiert</string>
     <string name="tile_record_label">Sprache an Merlin</string>
     <string name="tile_no_primary">Wählen Sie zuerst ein Hauptziel in den Einstellungen</string>
     <string name="common_cancel">Abbrechen</string>

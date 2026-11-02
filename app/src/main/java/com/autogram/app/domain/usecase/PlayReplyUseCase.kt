@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
@@ -64,7 +65,7 @@ class PlayReplyUseCase @Inject constructor(
         mediaPlayback.setListener(object : com.autogram.app.service.AutogramMediaPlaybackController.Listener {
             override fun onPlay() {
                 playbackScope.launch {
-                    if (isPlaybackActive()) {
+                    if (isPlaybackActive() || pausedTtsId != null) {
                         // Already playing — treat the tap as resume after a paused-by-OS state.
                         resume()
                     } else if (pendingCount() > 0) {
@@ -166,6 +167,10 @@ class PlayReplyUseCase @Inject constructor(
     private val playedHistoryLock = Any()
     private val _canSkipPrevious = MutableStateFlow(false)
     val canSkipPrevious: StateFlow<Boolean> = _canSkipPrevious.asStateFlow()
+
+    // Bumped when a message is queued without changing [playbackStatus]
+    // (something is playing), so [pendingCountFlow] still re-counts.
+    private val pendingRevision = MutableStateFlow(0)
     // Audit-HIGH-4: serializes the "start playing" critical section so two
     // concurrent playVoiceMessage() calls can't both see isPlaying==false
     // and race to start MediaPlayer twice, dropping the first message.
@@ -190,6 +195,10 @@ class PlayReplyUseCase @Inject constructor(
     private val playbackScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     /** Includes TTS requests accepted by the engine but not audible yet. */
+    // Text message paused while being read aloud: back in the pending queue,
+    // shown as Paused until resumed (re-read) or skipped.
+    @Volatile private var pausedTtsId: String? = null
+
     private fun isPlaybackActive(): Boolean =
         currentPlayingId != null || audioPlayer.isPlaying() || ttsPlayer.isSpeaking()
 
@@ -197,6 +206,7 @@ class PlayReplyUseCase @Inject constructor(
         val token = ++nextPlaybackSessionToken
         currentPlaybackSession = PlaybackSession(token, messageId)
         currentPlayingId = messageId
+        pausedTtsId = null
         token
     }
 
@@ -796,6 +806,11 @@ class PlayReplyUseCase @Inject constructor(
                         val msg = messageRepository.getById(pausedId)
                             ?: return@launch
                         enqueuePending(msg, PendingReason.USER_PAUSED)
+                        // Show it as paused so Home / car offer Resume, which
+                        // reads it again from the start (TTS can't resume).
+                        pausedTtsId = pausedId
+                        _playbackStatus.value = PlaybackStatus.Paused(pausedId)
+                        mediaPlayback.markPaused(0L)
                     }
                 }
             }
@@ -816,6 +831,15 @@ class PlayReplyUseCase @Inject constructor(
         }
     }
 
+    /** Pause what is playing, or resume what is paused (Home and car grid button). */
+    fun togglePause() {
+        when (playbackStatus.value) {
+            is PlaybackStatus.Playing -> pause()
+            is PlaybackStatus.Paused -> resume()
+            else -> Unit
+        }
+    }
+
     /**
      * Reanuda la reproducción pausada.
      *
@@ -826,16 +850,12 @@ class PlayReplyUseCase @Inject constructor(
      * whatever it was when we paused — we're resuming the same message,
      * no re-fetch needed.
      */
-    /** Pause what is playing, or resume what is paused (Home and car grid button). */
-    fun togglePause() {
-        when (playbackStatus.value) {
-            is PlaybackStatus.Playing -> pause()
-            is PlaybackStatus.Paused -> resume()
-            else -> Unit
-        }
-    }
-
     fun resume() {
+        pausedTtsId?.let { id ->
+            pausedTtsId = null
+            playbackScope.launch { messageRepository.getById(id)?.let { playFromHere(it) } }
+            return
+        }
         audioPlayer.resume()
         currentPlayingId?.let { id ->
             _playbackStatus.value = PlaybackStatus.Playing(id)
@@ -864,6 +884,7 @@ class PlayReplyUseCase @Inject constructor(
         // have claimed/cleared the active session while its DB work is still
         // running; Stop must still suppress that callback's later drain.
         val interruptedId = invalidatePlaybackSession()
+        pausedTtsId = null
         audioPlayer.stop()
         // Also stop TTS — a summary/transcription TTS in flight when
         // the user starts recording would otherwise keep speaking into
@@ -989,7 +1010,11 @@ class PlayReplyUseCase @Inject constructor(
                 playedAt = null
             ))
         }
-        _playbackStatus.value = PlaybackStatus.PendingCount(pendingCount())
+        // A message queued while another plays (or is paused) must not
+        // replace Playing / Paused: Home and the car would then hide their
+        // stop, pause and next buttons for the rest of that message.
+        if (isPlaybackActive()) pendingRevision.value++
+        else _playbackStatus.value = PlaybackStatus.PendingCount(pendingCount())
         pendingReplyNotifier.notifyPending(pendingCount())
         Timber.d("Message ${message.id} enqueued (reason=$reason, pending=${pendingCount()})")
     }
@@ -1182,6 +1207,11 @@ class PlayReplyUseCase @Inject constructor(
      * in the Pending Queue screen's Now Playing panel.
      */
     suspend fun skipNext() {
+        pausedTtsId?.let { id ->
+            pausedTtsId = null
+            synchronized(pendingQueue) { pendingQueue.removeAll { it.id == id } }
+            messageRepository.getById(id)?.let { markPlaybackCompleted(it) }
+        }
         val skippedId = invalidatePlaybackSession()
         audioPlayer.stop()
         ttsPlayer.cancel()
@@ -1367,7 +1397,7 @@ class PlayReplyUseCase @Inject constructor(
      * to [pendingCount] for the initial value.
      */
     val pendingCountFlow: Flow<Int>
-        get() = playbackStatus.map { status ->
+        get() = combine(playbackStatus, pendingRevision) { status, _ ->
             when (status) {
                 is PlaybackStatus.PendingCount -> status.count
                 else -> pendingCount()

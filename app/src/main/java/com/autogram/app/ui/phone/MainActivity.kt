@@ -384,6 +384,7 @@ internal fun MainScreen(
     val sendStatus by viewModel.sendStatus.collectAsState()
     val playback by viewModel.playbackStatus.collectAsState()
     val playingConversationId by viewModel.currentlyPlayingConversationId.collectAsState()
+    val controlledConversationId by viewModel.controlledConversationId.collectAsState()
     val quickReplies by viewModel.quickReplies.collectAsState()
     val pinned by viewModel.pinned.collectAsState()
     val activeTargetId by viewModel.activeTargetId.collectAsState()
@@ -449,6 +450,18 @@ internal fun MainScreen(
 
     Scaffold(
         bottomBar = {
+          Column {
+            val controlled = playback is PlayReplyUseCase.PlaybackStatus.Playing ||
+                playback is PlayReplyUseCase.PlaybackStatus.Paused
+            if (controlled) {
+                val conv = pinned.firstOrNull { it.id == controlledConversationId }
+                NowPlayingBar(
+                    title = conv?.let { it.topicName ?: it.targetTitle }.orEmpty(),
+                    isPaused = playback is PlayReplyUseCase.PlaybackStatus.Paused,
+                    onTogglePause = viewModel::togglePause,
+                    onSkipNext = viewModel::skipNext
+                )
+            }
             NavigationBar {
                 NavigationBarItem(
                     selected = true,
@@ -481,6 +494,7 @@ internal fun MainScreen(
                     label = { Text(ctx.getString(R.string.settings_title)) }
                 )
             }
+          }
         }
     ) { padding ->
         Column(
@@ -504,11 +518,8 @@ internal fun MainScreen(
                 online = isOnline,
                 hasLastOriginal = lastIncoming != null,
                 isPlayingLast = isAnyPlaying,
-                isPaused = playback is PlayReplyUseCase.PlaybackStatus.Paused,
                 pendingCount = pendingPlaybackCount,
                 onToggleLastOriginal = viewModel::toggleLastOriginal,
-                onTogglePause = viewModel::togglePause,
-                onSkipNext = viewModel::skipNext,
                 // v1.20.23 — opens the new Pending Queue screen instead
                 // of draining immediately, so the user sees what's
                 // queued and can choose Play All from inside.
@@ -665,11 +676,8 @@ private fun HeroHeader(
     online: Boolean,
     hasLastOriginal: Boolean,
     isPlayingLast: Boolean,
-    isPaused: Boolean,
     pendingCount: Int,
     onToggleLastOriginal: () -> Unit,
-    onTogglePause: () -> Unit,
-    onSkipNext: () -> Unit,
     onDrainPending: () -> Unit
 ) {
     Row(
@@ -713,22 +721,6 @@ private fun HeroHeader(
         // while playback is in flight so a single tap kills it. Plays
         // ONLY the most-recent message — distinct from the pending-queue
         // drainer above which plays every parked message.
-        // Pause / resume and skip to the next message, while a message is
-        // playing or paused.
-        if (isPlayingLast || isPaused) {
-            HeaderIconButton(
-                icon = if (isPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
-                description = stringResource(
-                    if (isPaused) R.string.main_resume_playback else R.string.main_pause_playback
-                ),
-                onClick = onTogglePause
-            )
-            HeaderIconButton(
-                icon = Icons.Filled.SkipNext,
-                description = stringResource(R.string.main_skip_next),
-                onClick = onSkipNext
-            )
-        }
         PlayLastOriginalToggle(
             enabled = hasLastOriginal,
             isPlaying = isPlayingLast,
@@ -737,9 +729,55 @@ private fun HeroHeader(
     }
 }
 
-/** 40 dp round header button, same size as [PlayLastOriginalToggle]. */
+/**
+ * Mini-player above the bottom bar while a message is playing or paused.
+ * Fixed place and size so the buttons never move under the thumb (in the
+ * header they shifted whenever the pending pill came or went).
+ */
 @Composable
-private fun HeaderIconButton(
+private fun NowPlayingBar(
+    title: String,
+    isPaused: Boolean,
+    onTogglePause: () -> Unit,
+    onSkipNext: () -> Unit
+) {
+    Surface(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(start = 20.dp, end = 12.dp, top = 8.dp, bottom = 8.dp)
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    stringResource(if (isPaused) R.string.main_playback_paused else R.string.main_playback_playing),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            NowPlayingButton(
+                icon = if (isPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
+                description = stringResource(
+                    if (isPaused) R.string.main_resume_playback else R.string.main_pause_playback
+                ),
+                onClick = onTogglePause
+            )
+            NowPlayingButton(
+                icon = Icons.Filled.SkipNext,
+                description = stringResource(R.string.main_skip_next),
+                onClick = onSkipNext
+            )
+        }
+    }
+}
+
+@Composable
+private fun NowPlayingButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     description: String,
     onClick: () -> Unit
@@ -747,12 +785,12 @@ private fun HeaderIconButton(
     Surface(
         onClick = onClick,
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.tertiaryContainer,
-        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-        modifier = Modifier.size(40.dp)
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        modifier = Modifier.size(56.dp)
     ) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-            Icon(imageVector = icon, contentDescription = description, modifier = Modifier.size(20.dp))
+            Icon(imageVector = icon, contentDescription = description, modifier = Modifier.size(30.dp))
         }
     }
 }
@@ -1282,6 +1320,10 @@ private fun SecondaryCirclesRow(
 
         val columns = circles.size.coerceAtMost(4)
         val totalSpacing = 16.dp * (columns - 1).toFloat()
+        // RecordCircle is 24 dp wider than its circle (the playing / recording
+        // ring). Without this, 3 contacts did not fit in one row and the
+        // third wrapped onto a row with no room, so it was not shown.
+        val ring = 24.dp
         val labelHeightAllowance = 28.dp
         val verticalSafePadding = 12.dp
         val usableHeight = (maxHeight - labelHeightAllowance - verticalSafePadding).coerceAtLeast(72.dp)
@@ -1292,11 +1334,11 @@ private fun SecondaryCirclesRow(
                 minDp(primaryCircleSize, minDp(widthBound, heightBound)).coerceIn(128.dp, primaryCircleSize)
             }
             circles.size == 2 -> {
-                val widthBound = (maxWidth - totalSpacing) / 2f
+                val widthBound = (maxWidth - totalSpacing) / 2f - ring
                 val heightBound = usableHeight * 0.92f
                 minDp(widthBound, heightBound).coerceIn(128.dp, primaryCircleSize)
             }
-            else -> ((maxWidth - totalSpacing) / columns.toFloat()).coerceIn(72.dp, 132.dp)
+            else -> ((maxWidth - totalSpacing) / columns.toFloat() - ring).coerceIn(56.dp, 132.dp)
         }
 
         if (circles.size == 1) {

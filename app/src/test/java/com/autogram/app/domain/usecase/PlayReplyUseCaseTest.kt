@@ -26,12 +26,14 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -147,10 +149,10 @@ class PlayReplyUseCaseTest {
         every { audioPlayer.isPlaying() } returns true
         val msg = voiceMessage()
         useCase.playVoiceMessage(msg, isCallActive = false)
-        // Status flips to PendingCount(1).
-        val s = useCase.playbackStatus.value
-        assertTrue(s is PlayReplyUseCase.PlaybackStatus.PendingCount)
-        assertEquals(1, (s as PlayReplyUseCase.PlaybackStatus.PendingCount).count)
+        // The queued message must not replace what is playing (Home and the
+        // car would hide stop / pause / next); the pending count still updates.
+        assertFalse(useCase.playbackStatus.value is PlayReplyUseCase.PlaybackStatus.PendingCount)
+        assertEquals(1, useCase.pendingCountFlow.first())
         verify(exactly = 0) { audioPlayer.play(any(), any(), any(), any(), any()) }
     }
 

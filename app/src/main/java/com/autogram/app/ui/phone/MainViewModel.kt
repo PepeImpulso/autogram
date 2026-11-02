@@ -111,6 +111,20 @@ class MainViewModel @Inject constructor(
             .map { messageId -> messageId?.let { messageRepository.getById(it)?.conversationId } }
             .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
+    /** Contact of the message playing or paused; names the Home mini-player. */
+    val controlledConversationId: StateFlow<String?> =
+        playReplyUseCase.playbackStatus
+            .map { st ->
+                when (st) {
+                    is PlayReplyUseCase.PlaybackStatus.Playing -> st.messageId
+                    is PlayReplyUseCase.PlaybackStatus.Paused -> st.messageId
+                    else -> null
+                }
+            }
+            .distinctUntilChanged()
+            .map { messageId -> messageId?.let { messageRepository.getById(it)?.conversationId } }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
     /**
      * Most-recent incoming message — voice with audio OR text — across ALL
      * conversations. Feeds the always-visible top-right "Replay last" toggle
