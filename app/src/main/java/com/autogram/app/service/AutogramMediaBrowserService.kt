@@ -305,8 +305,9 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
     }
 
     /**
-     * Pause / resume and next tiles, after the contacts so the contacts keep
-     * their places. Shown only while a message is playing or paused.
+     * Pause / resume and next rows, after the contacts so the contacts keep
+     * their places. Shown only while a message is playing or paused. Drawn
+     * as compact list rows: as grid tiles they were as big as the contacts.
      */
     private fun playbackControlChildren(): List<MediaItem> {
         val state = playbackControlState(playReplyUseCase.playbackStatus.value)
@@ -316,6 +317,14 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
                 .setMediaId(id)
                 .setTitle(getString(title))
                 .setIconBitmap(shortcutIcon(icon))
+                .setExtras(
+                    Bundle().apply {
+                        putInt(
+                            MediaConstants.DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_SINGLE_ITEM,
+                            MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM
+                        )
+                    }
+                )
                 .build(),
             MediaItem.FLAG_PLAYABLE
         )
