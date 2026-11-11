@@ -97,6 +97,11 @@ class PlayReplyUseCase @Inject constructor(
                     when (mediaId) {
                         PAUSE_RESUME_MEDIA_ID -> { togglePause(); return@launch }
                         SKIP_NEXT_MEDIA_ID -> { skipNext(); return@launch }
+                        PLAY_LAST_MEDIA_ID -> {
+                            val last = messageRepository.observeLatestIncoming().first()
+                            if (last != null) playManually(last) else mediaPlayback.markStopped()
+                            return@launch
+                        }
                     }
                     val msg = messageRepository.getById(mediaId)
                     if (msg == null) {
@@ -1458,9 +1463,10 @@ class PlayReplyUseCase @Inject constructor(
     }
 
     companion object {
-        /** Media IDs of the car grid's pause / resume and next tiles. */
+        /** Media IDs of the car grid's pause / resume, next and play-last rows. */
         const val PAUSE_RESUME_MEDIA_ID = "control:pause_resume"
         const val SKIP_NEXT_MEDIA_ID = "control:skip_next"
+        const val PLAY_LAST_MEDIA_ID = "control:play_last"
 
         /**
          * v1.23.0-rc.6 — beat between the mic releasing and the auto-play

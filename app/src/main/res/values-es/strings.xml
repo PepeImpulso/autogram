@@ -14,6 +14,7 @@
     <string name="main_pause_playback">Pausar</string>
     <string name="main_resume_playback">Reanudar</string>
     <string name="main_skip_next">Siguiente mensaje</string>
+    <string name="main_play_last_message">Reproducir último mensaje</string>
     <string name="main_drain_pending_label">Pendientes</string>
     <string name="tile_record_label">Voz a Merlin</string>
     <string name="tile_no_primary">Elige un destinatario principal en Ajustes</string>

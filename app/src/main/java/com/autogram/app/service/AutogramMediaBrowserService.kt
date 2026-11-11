@@ -114,6 +114,9 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
                 quickReplyRepository.observeAll().distinctUntilChanged().drop(1),
                 // Show, hide or flip the pause / next tiles.
                 playReplyUseCase.playbackStatus.map { playbackControlState(it) }
+                    .distinctUntilChanged().drop(1),
+                // Show the play-last row once there is a message to play.
+                messageRepository.observeLatestIncoming().map { it != null }
                     .distinctUntilChanged().drop(1)
             )
                 // A send changes state several times in a second (sending,
@@ -305,13 +308,14 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
     }
 
     /**
-     * Pause / resume and next rows, after the contacts so the contacts keep
-     * their places. Shown only while a message is playing or paused. Drawn
-     * as compact list rows: as grid tiles they were as big as the contacts.
+     * Playback rows, after the contacts so the contacts keep their places:
+     * pause / resume and next while a message is playing or paused, and
+     * "play last message" (the phone's headphones button) while nothing is
+     * playing. Drawn as compact list rows: as grid tiles they were as big as
+     * the contacts.
      */
-    private fun playbackControlChildren(): List<MediaItem> {
+    private suspend fun playbackControlChildren(): List<MediaItem> {
         val state = playbackControlState(playReplyUseCase.playbackStatus.value)
-        if (state == 0) return emptyList()
         fun tile(id: String, title: Int, icon: Int) = MediaItem(
             MediaDescriptionCompat.Builder()
                 .setMediaId(id)
@@ -328,11 +332,18 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
                 .build(),
             MediaItem.FLAG_PLAYABLE
         )
-        return listOf(
+        val controls = if (state == 0) emptyList() else listOf(
             if (state == 1) tile(PlayReplyUseCase.PAUSE_RESUME_MEDIA_ID, R.string.main_pause_playback, R.drawable.ic_pause)
             else tile(PlayReplyUseCase.PAUSE_RESUME_MEDIA_ID, R.string.main_resume_playback, R.drawable.ic_play_arrow),
             tile(PlayReplyUseCase.SKIP_NEXT_MEDIA_ID, R.string.main_skip_next, R.drawable.ic_skip_next)
         )
+        if (state == 1) return controls
+        val hasLast = withTimeoutOrNull(BROWSER_QUERY_TIMEOUT_MS) {
+            runCatching { messageRepository.observeLatestIncoming().first() }.getOrNull()
+        } != null
+        return if (hasLast) {
+            controls + tile(PlayReplyUseCase.PLAY_LAST_MEDIA_ID, R.string.main_play_last_message, R.drawable.ic_headphones)
+        } else controls
     }
 
     /** The phone's shortcut chips (Correo, Tiempo, ...) as tiles after the contacts. */
