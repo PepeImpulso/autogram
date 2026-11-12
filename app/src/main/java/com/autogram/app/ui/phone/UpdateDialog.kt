@@ -26,10 +26,13 @@ fun UpdateDialog(
         icon = { Icon(Icons.Filled.SystemUpdate, contentDescription = null) },
         title = { Text(ctx.getString(R.string.update_dialog_title)) },
         text = {
+            // Cap the height first, then scroll inside it. The other order
+            // capped the content itself, so long notes were cut off with
+            // nothing to scroll.
             Column(
                 modifier = Modifier
-                    .verticalScroll(rememberScrollState())
                     .heightIn(max = 380.dp)
+                    .verticalScroll(rememberScrollState())
             ) {
                 Text(
                     ctx.getString(
@@ -54,7 +57,7 @@ fun UpdateDialog(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            notes.take(800) + if (notes.length > 800) "…" else "",
+                            readableReleaseNotes(notes),
                             modifier = Modifier.padding(8.dp),
                             style = MaterialTheme.typography.bodySmall
                         )
@@ -73,4 +76,42 @@ fun UpdateDialog(
             }
         }
     )
+}
+
+/**
+ * Release notes are Markdown written for GitHub, hard-wrapped at ~75
+ * columns. Shown as-is in the dialog they broke mid-sentence and showed
+ * `#`, `**` and `-` markers. Joins wrapped lines back into paragraphs and
+ * turns headings and bullets into plain text.
+ */
+internal fun readableReleaseNotes(markdown: String): String {
+    val paragraphs = mutableListOf<String>()
+    var current = StringBuilder()
+    fun flush() {
+        if (current.isNotBlank()) paragraphs += current.toString()
+        current = StringBuilder()
+    }
+    for (raw in markdown.lines()) {
+        val line = raw.trim()
+        when {
+            line.isEmpty() -> flush()
+            line.startsWith("#") -> {
+                flush()
+                current.append(line.trimStart('#').trim())
+                flush()
+            }
+            line.startsWith("- ") || line.startsWith("* ") || line.matches(Regex("\\d+\\.\\s.*")) -> {
+                flush()
+                current.append(if (line[0].isDigit()) line else "• " + line.drop(2))
+            }
+            else -> {
+                if (current.isNotEmpty()) current.append(' ')
+                current.append(line)
+            }
+        }
+    }
+    flush()
+    return paragraphs.joinToString("\n\n")
+        .replace("**", "")
+        .replace("`", "")
 }
