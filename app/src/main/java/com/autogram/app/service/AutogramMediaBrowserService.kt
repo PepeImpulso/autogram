@@ -53,7 +53,7 @@ import javax.inject.Inject
  *
  *   /            — root, lists "Pending" and "History"
  *   /pending     — current pending playback queue, newest first
- *   /history     — recent incoming voice messages, newest first
+ *   /history     — recent incoming voice and text messages, newest first
  *
  * Tapping a [MediaItem] in the car routes through
  * [AutogramMediaPlaybackController]'s session callback to
@@ -123,6 +123,14 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
                 // sent, unread count); reload the car grid once per burst.
                 .debounce(GRID_REFRESH_DEBOUNCE_MS)
                 .collect { notifyChildrenChanged(RECORD_ID) }
+        }
+        // Media browsers cache subscribed folders. Invalidate History whenever
+        // its bounded Room result changes, including text-only arrivals.
+        serviceScope.launch {
+            messageRepository.observeCarHistory()
+                .distinctUntilChanged()
+                .debounce(GRID_REFRESH_DEBOUNCE_MS)
+                .collect { notifyChildrenChanged(HISTORY_ID) }
         }
         // v1.22.3 — explicitly read playReplyUseCase so R8's "remove unused
         // fields" optimization can't strip the @Inject lateinit var. The
@@ -496,15 +504,7 @@ class AutogramMediaBrowserService : MediaBrowserServiceCompat() {
     private suspend fun historyChildren(): List<MediaItem> {
         val recent = withTimeoutOrNull(BROWSER_QUERY_TIMEOUT_MS) {
             runCatching {
-                messageRepository.getAll()
-                    .asSequence()
-                    .filter {
-                        it.direction == com.autogram.app.domain.model.MessageDirection.INCOMING &&
-                            !it.audioFilePath.isNullOrBlank()
-                    }
-                    .sortedByDescending { it.createdAt }
-                    .take(50)
-                    .toList()
+                messageRepository.observeCarHistory().first()
             }.getOrDefault(emptyList())
         } ?: emptyList()
         val convos = conversationsById()

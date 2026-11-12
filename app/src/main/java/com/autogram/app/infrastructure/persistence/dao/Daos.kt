@@ -54,6 +54,22 @@ interface MessageDao {
     """)
     fun observeLatestIncoming(): Flow<MessageEntity?>
 
+    // Filter before LIMIT so outgoing traffic cannot hide recent incoming items.
+    @Query("""
+        SELECT * FROM messages
+        WHERE direction = 'INCOMING'
+          AND (
+                (audioFilePath IS NOT NULL AND TRIM(audioFilePath) != '')
+             OR (textContent IS NOT NULL AND TRIM(textContent) != '')
+             OR (transcription IS NOT NULL AND TRIM(transcription) != '')
+             OR (summary IS NOT NULL AND TRIM(summary) != '')
+             OR (spokenText IS NOT NULL AND TRIM(spokenText) != '')
+          )
+        ORDER BY createdAt DESC, id DESC
+        LIMIT :limit
+    """)
+    fun observeCarHistory(limit: Int): Flow<List<MessageEntity>>
+
     @Query("SELECT * FROM messages WHERE id = :id LIMIT 1")
     suspend fun getById(id: String): MessageEntity?
 

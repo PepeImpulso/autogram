@@ -30,6 +30,9 @@ class MessageRepositoryImpl @Inject constructor(
         return messageDao.observeLatestIncoming().map { it?.toDomain() }
     }
 
+    override fun observeCarHistory(limit: Int): Flow<List<Message>> =
+        messageDao.observeCarHistory(limit).map { entities -> entities.map { it.toDomain() } }
+
     override suspend fun getAll(): List<Message> {
         return messageDao.getAll().map { it.toDomain() }
     }

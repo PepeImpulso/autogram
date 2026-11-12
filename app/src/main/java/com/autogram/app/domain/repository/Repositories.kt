@@ -8,6 +8,8 @@ interface MessageRepository {
     fun observeAllAcrossConversations(): Flow<List<Message>>
     /** Latest incoming message (voice with audio, or text) — targeted query for the replay button. */
     fun observeLatestIncoming(): Flow<Message?>
+    /** Latest playable incoming messages for Android Auto History, newest first. */
+    fun observeCarHistory(limit: Int = 50): Flow<List<Message>>
     /** Unbounded one-shot snapshot for retention + lifetime stats. */
     suspend fun getAll(): List<Message>
     suspend fun getById(id: String): Message?
