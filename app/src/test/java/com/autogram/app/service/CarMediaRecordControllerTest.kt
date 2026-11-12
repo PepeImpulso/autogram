@@ -1,7 +1,10 @@
 package com.autogram.app.service
 
+import com.autogram.app.domain.usecase.SendVoiceMtprotoUseCase.SendStatus
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CarMediaRecordControllerTest {
@@ -25,5 +28,13 @@ class CarMediaRecordControllerTest {
         assertEquals("qr-7", CarMediaRecordController.shortcutIdOf(id))
         assertNull(CarMediaRecordController.recordTargetOf(id))
         assertNull(CarMediaRecordController.shortcutIdOf(CarMediaRecordController.recordMediaId("conv-1")))
+    }
+
+    @Test
+    fun `loaded recipient artwork is only applied to its active recording`() {
+        assertTrue(CarMediaRecordController.shouldUpdateRecordingCard(SendStatus.Recording, "recipient", "recipient"))
+        assertFalse(CarMediaRecordController.shouldUpdateRecordingCard(SendStatus.Recording, "other", "recipient"))
+        assertFalse(CarMediaRecordController.shouldUpdateRecordingCard(SendStatus.Recording, null, "recipient"))
+        assertFalse(CarMediaRecordController.shouldUpdateRecordingCard(SendStatus.Sending, "recipient", "recipient"))
     }
 }

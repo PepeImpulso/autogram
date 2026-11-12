@@ -293,15 +293,7 @@ class AutogramMediaPlaybackController @Inject constructor(
     ) {
         leaveIdle()
         if (!session.isActive) session.isActive = true
-        session.setMetadata(
-            MediaMetadataCompat.Builder()
-                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
-                .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, title)
-                .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, subtitle)
-                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "Autogram")
-                .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, maxDurationMs)
-                .build()
-        )
+        session.setMetadata(recordingMetadata(title, subtitle, maxDurationMs, null))
         session.setPlaybackState(
             PlaybackStateCompat.Builder()
                 .setActions(
@@ -324,6 +316,26 @@ class AutogramMediaPlaybackController @Inject constructor(
                 .build()
         )
     }
+
+    /** Replace the temporary recording card without resetting its running timer. */
+    fun updateRecordingMetadata(title: String, subtitle: String, maxDurationMs: Long, artwork: Bitmap?) {
+        session.setMetadata(recordingMetadata(title, subtitle, maxDurationMs, artwork))
+    }
+
+    private fun recordingMetadata(title: String, subtitle: String, maxDurationMs: Long, artwork: Bitmap?) =
+        MediaMetadataCompat.Builder()
+            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
+            .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, title)
+            .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, subtitle)
+            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "Autogram")
+            .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, maxDurationMs)
+            .apply {
+                artwork?.let {
+                    putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, it)
+                    putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, it)
+                }
+            }
+            .build()
 
     /** Car tap-to-record: one-line status ("Sending…", "Sent") on an idle session. */
     fun markRecordInfo(title: String) {

@@ -368,6 +368,11 @@ class PlayReplyUseCase @Inject constructor(
             _playbackStatus.value = PlaybackStatus.Playing(message.id)
             markMediaSessionPlaying(message, sessionToken)
 
+            Timber.i(
+                "Playback path=original-audio message=${message.id} " +
+                    "requestedSpeed=${settings.playbackSpeed} " +
+                    "summaryMode=${settings.summarizeLongMessages}"
+            )
             val result = audioPlayer.play(
                 audioFile,
                 speed = settings.playbackSpeed,
@@ -644,6 +649,11 @@ class PlayReplyUseCase @Inject constructor(
             // Content-based override wins over UI locale if the script doesn't
             // match (e.g. UI is English but the summary came out in Spanish).
             val detected = ttsLocaleFor(message, text, uiLocale)
+            Timber.i(
+                "Playback path=summary-tts message=${message.id} " +
+                    "requestedSpeed=${settings.playbackSpeed} locale=${detected.toLanguageTag()} " +
+                    "hasOriginalAudio=${!message.audioFilePath.isNullOrBlank()}"
+            )
             ttsPlayer.speak(
                 text,
                 locale = detected,
@@ -750,6 +760,10 @@ class PlayReplyUseCase @Inject constructor(
             else java.util.Locale.getDefault()
             val detected = ttsLocaleFor(message, text, uiLocale)
 
+            Timber.i(
+                "Playback path=text-tts message=${message.id} " +
+                    "requestedSpeed=${settings.playbackSpeed} locale=${detected.toLanguageTag()}"
+            )
             ttsPlayer.speak(
                 text,
                 locale = detected,

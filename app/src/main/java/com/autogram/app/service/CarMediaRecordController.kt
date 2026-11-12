@@ -211,27 +211,52 @@ class CarMediaRecordController @Inject constructor(
     }
 
     private suspend fun publish(previous: SendStatus, status: SendStatus) {
-        val name = contactName(lastTargetId)
         when (status) {
-            SendStatus.Recording -> mediaPlayback.markRecording(
-                title = context.getString(R.string.media_record_recording_title, name),
-                subtitle = context.getString(R.string.media_record_recording_subtitle),
-                maxDurationMs = AudioRecorder.MAX_RECORDING_MS,
-                sendLabel = context.getString(R.string.media_record_action_send),
-                cancelLabel = context.getString(R.string.media_record_action_cancel)
-            )
+            SendStatus.Recording -> {
+                val targetId = sendVoice.activeTargetId.value ?: lastTargetId
+                val subtitle = context.getString(R.string.media_record_recording_subtitle)
+                // Replace the idle last-sender card immediately. Its avatar
+                // otherwise lingers while the selected contact is loaded.
+                mediaPlayback.markRecording(
+                    title = context.getString(R.string.media_record_recording_title, "Autogram"),
+                    subtitle = subtitle,
+                    maxDurationMs = AudioRecorder.MAX_RECORDING_MS,
+                    sendLabel = context.getString(R.string.media_record_action_send),
+                    cancelLabel = context.getString(R.string.media_record_action_cancel)
+                )
+                val conv = targetId?.let { runCatching { conversationRepository.getById(it) }.getOrNull() }
+                val name = conv?.topicName?.takeIf { it.isNotBlank() }
+                    ?: conv?.targetTitle?.takeIf { it.isNotBlank() }
+                    ?: "Autogram"
+                val artwork = withContext(Dispatchers.IO) {
+                    ContactArtwork.build(conv?.photoLocalPath, name)
+                }
+                // A slow artwork decode must not restore a recording card
+                // after the user has already sent or cancelled the message.
+                if (shouldUpdateRecordingCard(
+                        sendVoice.status.value, sendVoice.activeTargetId.value, targetId
+                    )
+                ) {
+                    mediaPlayback.updateRecordingMetadata(
+                        title = context.getString(R.string.media_record_recording_title, name),
+                        subtitle = subtitle,
+                        maxDurationMs = AudioRecorder.MAX_RECORDING_MS,
+                        artwork = artwork
+                    )
+                }
+            }
             SendStatus.Validating,
             SendStatus.Sending -> mediaPlayback.markRecordInfo(
-                context.getString(R.string.media_record_sending, name)
+                context.getString(R.string.media_record_sending, contactName(lastTargetId))
             )
             // No "Sent" screen: clear the player so the car can go back to
             // the grid, where the contact tile shows "Sent".
             is SendStatus.Sent -> mediaPlayback.markRecordDone()
             SendStatus.QueuedOffline -> mediaPlayback.markRecordInfo(
-                context.getString(R.string.media_record_queued, name)
+                context.getString(R.string.media_record_queued, contactName(lastTargetId))
             )
             is SendStatus.Error -> mediaPlayback.markRecordInfo(
-                context.getString(R.string.media_record_failed, name)
+                context.getString(R.string.media_record_failed, contactName(lastTargetId))
             )
             // Only reset the session when leaving a recording state, so an
             // idle status at startup never clobbers a voice message that is
@@ -256,6 +281,13 @@ class CarMediaRecordController @Inject constructor(
         const val ACTION_SEND = "com.autogram.app.action.CAR_SEND_RECORDING"
         const val ACTION_CANCEL = "com.autogram.app.action.CAR_CANCEL_RECORDING"
         private val OWN_ACTIONS = setOf(ACTION_SEND, ACTION_CANCEL)
+
+        internal fun shouldUpdateRecordingCard(
+            status: SendStatus,
+            activeTargetId: String?,
+            loadedTargetId: String?
+        ): Boolean = status == SendStatus.Recording &&
+            loadedTargetId != null && activeTargetId == loadedTargetId
 
         fun recordMediaId(conversationId: String) = RECORD_PREFIX + conversationId
 
