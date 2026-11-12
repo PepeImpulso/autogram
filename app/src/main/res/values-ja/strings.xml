@@ -319,6 +319,10 @@
     <string name="media_record_sent">%1$s に送信しました ✓</string>
     <string name="media_record_queued">%1$s 宛てに保留中（オフライン）</string>
     <string name="media_record_failed">%1$s に送信できませんでした</string>
+    <!-- Issue #3: last-sender card on the Android Auto Now Playing / dashboard tile -->
+    <string name="media_last_sender_voice">ボイスメッセージ · 「返信」をタップ</string>
+    <string name="media_last_sender_text">メッセージ · 「返信」をタップ</string>
+    <string name="media_last_sender_reply">返信</string>
     <string name="media_browser_history">履歴</string>
     <string name="media_browser_kind_voice">音声</string>
     <string name="media_browser_kind_text">テキスト</string>

@@ -10,6 +10,8 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaPlayer
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import androidx.car.app.connection.CarConnection
 import com.autogram.app.domain.model.AudioFocusMode
 import com.autogram.app.infrastructure.platform.CarConnectionMonitor
@@ -42,6 +44,10 @@ class AudioPlayer @Inject constructor(
     private var audioFocusRequest: AudioFocusRequest? = null
     private var completionHandler: ((Result<Unit>) -> Unit)? = null
     private var playbackGeneration: Long = 0L
+    // Generation whose player we paused because another app asked us to
+    // duck (issue #2). -1 = not duck-paused. Guarded by [stateLock].
+    private var duckPausedGeneration: Long = -1L
+    private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
 
     /**
      * Play an audio file. Requests audio focus per [focusMode] before
@@ -119,6 +125,10 @@ class AudioPlayer @Inject constructor(
                 outputTypes = outputSnapshot.map { it.type }
             )
             val playbackAttributes = buildPlaybackAttributes(effectiveNavigationUsage)
+            val leadInMs = carOutputLeadInMs(
+                carConnectionType = carConnectionType,
+                outputTypes = outputSnapshot.map { it.type }
+            )
             Timber.d(
                 "AudioPlayer.play attrs " +
                     "usage=${playbackAttributes.usage} contentType=${playbackAttributes.contentType} " +
@@ -170,7 +180,8 @@ class AudioPlayer @Inject constructor(
                 focusMode = focusMode,
                 speed = effectiveSpeed,
                 attempt = 0,
-                allowPreferredRoute = true
+                allowPreferredRoute = true,
+                leadInMs = leadInMs
             )
             Timber.d("Playing: ${file.name} (speed=${effectiveSpeed}x)")
             Result.success(Unit)
@@ -203,7 +214,8 @@ class AudioPlayer @Inject constructor(
         focusMode: AudioFocusMode,
         speed: Float,
         attempt: Int,
-        allowPreferredRoute: Boolean
+        allowPreferredRoute: Boolean,
+        leadInMs: Long = 0L
     ) {
         player.setDataSource(file.absolutePath)
         player.setAudioAttributes(playbackAttributes)
@@ -268,9 +280,35 @@ class AudioPlayer @Inject constructor(
             }.onFailure { Timber.w(it, "setSpeed($speed) failed — playing at 1x") }
         }
         if (!isCurrentPlayback(generation, player)) return
+        // Issue #4: a car head unit opens its audio channel only once data
+        // flows, and swallows whatever plays while it does (most noticeable
+        // right after recording, when the route is switching back from
+        // capture). Start muted, let the channel open on silence, then rewind
+        // and unmute so the first words are heard.
+        val useLeadIn = leadInMs > 0L && runCatching { player.setVolume(0f, 0f) }.isSuccess
         player.start()
         if (markStarted(generation, player)) {
             logRoutedDevice(player, focusMode, file.logLabel())
+            if (useLeadIn) finishLeadInLater(generation, player, leadInMs)
+        }
+    }
+
+    private fun finishLeadInLater(generation: Long, player: MediaPlayer, leadInMs: Long) {
+        val finish = Runnable {
+            synchronized(operationLock) {
+                if (!isCurrentPlayback(generation, player)) return@synchronized
+                runCatching {
+                    player.seekTo(0)
+                    player.setVolume(1f, 1f)
+                }.onFailure {
+                    Timber.w(it, "AudioPlayer lead-in finish failed; restoring volume")
+                    runCatching { player.setVolume(1f, 1f) }
+                }
+                Timber.d("AudioPlayer lead-in of ${leadInMs}ms finished; rewound to start")
+            }
+        }
+        if (!mainHandler.postDelayed(finish, leadInMs)) {
+            runCatching { player.setVolume(1f, 1f) }
         }
     }
 
@@ -330,7 +368,10 @@ class AudioPlayer @Inject constructor(
     }
 
     fun pause() {
-        val player = synchronized(stateLock) { mediaPlayer }
+        val player = synchronized(stateLock) {
+            duckPausedGeneration = -1L
+            mediaPlayer
+        }
         player?.let {
             runCatching {
                 if (it.isPlaying) it.pause()
@@ -344,7 +385,10 @@ class AudioPlayer @Inject constructor(
 
     fun resume() {
         try {
-            val player = synchronized(stateLock) { mediaPlayer }
+            val player = synchronized(stateLock) {
+                duckPausedGeneration = -1L
+                mediaPlayer
+            }
             player?.let {
                 it.start()
                 synchronized(stateLock) {
@@ -533,6 +577,57 @@ class AudioPlayer @Inject constructor(
     }
 
     /**
+     * Another app (typically a navigation prompt) asked us to duck. Speech
+     * is not attenuated by the platform, so pause the message and keep the
+     * focus request alive so GAIN tells us when to continue. A safety timer
+     * resumes anyway in case the host never sends GAIN back.
+     */
+    private fun onDuckRequested(generation: Long) {
+        val player = synchronized(stateLock) {
+            if (generation != playbackGeneration || completionHandler == null) return
+            mediaPlayer
+        } ?: return
+        val paused = runCatching {
+            if (player.isPlaying) {
+                player.pause()
+                true
+            } else {
+                false
+            }
+        }.getOrDefault(false)
+        if (!paused) {
+            Timber.d("Audio focus duck requested while not playing; nothing to pause")
+            return
+        }
+        synchronized(stateLock) {
+            if (generation == playbackGeneration && mediaPlayer === player) {
+                duckPausedGeneration = generation
+            }
+        }
+        Timber.i("Audio focus duck requested; voice playback paused for the other prompt")
+        mainHandler.postDelayed(
+            { resumeAfterDuck(generation, reason = "duck timeout") },
+            DUCK_PAUSE_MAX_MS
+        )
+    }
+
+    private fun resumeAfterDuck(generation: Long, reason: String) {
+        val player = synchronized(stateLock) {
+            if (duckPausedGeneration != generation ||
+                generation != playbackGeneration ||
+                completionHandler == null
+            ) {
+                return
+            }
+            duckPausedGeneration = -1L
+            mediaPlayer
+        } ?: return
+        runCatching { player.start() }
+            .onSuccess { Timber.i("Voice playback resumed after duck ($reason)") }
+            .onFailure { Timber.w(it, "Voice playback resume after duck failed") }
+    }
+
+    /**
      * Request temporary audio focus for voice reply playback. Uses
      * AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK so the Android Auto host / Google
      * Maps navigation prompts are more likely to grant it — the "may duck"
@@ -540,9 +635,9 @@ class AudioPlayer @Inject constructor(
      * volume instead of having to stop, which AA permits freely where
      * full-exclusive TRANSIENT gets denied.
      *
-     * AUDIOFOCUS_LOSS still pauses us (permanent loss means someone took
-     * over, e.g. a phone call); transient losses are ignored so navigation
-     * blurbs don't chop our message in half.
+     * AUDIOFOCUS_LOSS and AUDIOFOCUS_LOSS_TRANSIENT end the playback (the
+     * caller re-queues it); LOSS_TRANSIENT_CAN_DUCK pauses it until focus
+     * comes back, so a navigation prompt is never talked over.
      */
     // BUG-38: minSdk=29, so we always have API O. Removed dead < O branches.
     private fun requestAudioFocus(
@@ -573,12 +668,15 @@ class AudioPlayer @Inject constructor(
                             )
                         }
                         focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-                            // The user chose a mode that permits ducking. Keep
-                            // playing; Android owns the temporary attenuation.
-                            Timber.d("Audio focus duck requested; voice playback continues")
+                            // Issue #2: Android never auto-ducks
+                            // CONTENT_TYPE_SPEECH, so carrying on at full
+                            // volume talked over Waze / Maps prompts. Pause
+                            // instead and pick up where we left off on GAIN.
+                            onDuckRequested(generation)
                         }
                         focusChange == AudioManager.AUDIOFOCUS_GAIN -> {
                             Timber.d("Audio focus gained for voice playback")
+                            resumeAfterDuck(generation, reason = "focus regained")
                         }
                     }
                 }
@@ -935,6 +1033,24 @@ class AudioPlayer @Inject constructor(
             val carPresent = isConnectedCarConnectionType(carConnectionType) ||
                 outputTypes.any(::isProjectedCarOutputType)
             return if (carPresent) 1f else requested
+        }
+
+        /**
+         * Muted lead-in before a message starts on a car output (issue #4),
+         * so the head unit has opened its channel by the time words play.
+         */
+        internal const val CAR_OUTPUT_LEAD_IN_MS: Long = 700L
+
+        /** Longest we stay paused for another app's prompt without GAIN. */
+        internal const val DUCK_PAUSE_MAX_MS: Long = 15_000L
+
+        internal fun carOutputLeadInMs(
+            carConnectionType: Int,
+            outputTypes: List<Int> = emptyList()
+        ): Long {
+            val carPresent = isConnectedCarConnectionType(carConnectionType) ||
+                outputTypes.any(::isProjectedCarOutputType)
+            return if (carPresent) CAR_OUTPUT_LEAD_IN_MS else 0L
         }
 
         internal fun shouldTerminateForFocusChange(focusChange: Int): Boolean =

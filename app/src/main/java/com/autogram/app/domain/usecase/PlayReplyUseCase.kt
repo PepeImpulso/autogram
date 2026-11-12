@@ -15,6 +15,7 @@ import com.autogram.app.infrastructure.persistence.entity.PendingPlaybackEntity
 import com.autogram.app.infrastructure.platform.PendingReplyNotifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -194,6 +195,14 @@ class PlayReplyUseCase @Inject constructor(
     // reply can begin playback in that startup window and talk over the
     // outgoing voice note the user is trying to record.
     @Volatile private var userRecordingGateActive: Boolean = false
+    // End of the quiet window opened by [clearUserRecordingGate], on the
+    // [elapsedRealtimeMs] clock. 0 = no window.
+    @Volatile private var postRecordingQuietUntilMs: Long = 0L
+    private val quietWindowDrainLock = Any()
+    private var quietWindowDrainJob: Job? = null
+
+    /** Monotonic clock; tests replace it with the coroutine test scheduler's. */
+    internal var elapsedRealtimeMs: () -> Long = { System.nanoTime() / 1_000_000L }
     // Stable scope for engine callbacks. Playback sessions, not scope
     // cancellation, suppress late callbacks; cancelling this scope could also
     // cancel the only durable requeue after Pause/Stop.
@@ -285,9 +294,8 @@ class PlayReplyUseCase @Inject constructor(
         // is hot, so any output would (a) talk over the user mid-thought
         // and (b) leak into the recording's audio. Defer to the queue;
         // [drainPendingIfAutoPlay] resumes after stopAndSend / cancel.
-        if (respectUserGates && isUserRecordingOrStarting()) {
-            Timber.i("playVoiceMessage ${message.id} → enqueue (user recording)")
-            enqueuePending(message, PendingReason.USER_RECORDING)
+        if (respectUserGates && shouldDeferForRecording()) {
+            deferForRecording(message, "playVoiceMessage")
             return
         }
 
@@ -592,9 +600,8 @@ class PlayReplyUseCase @Inject constructor(
             Timber.i("playSummaryOrTranscription ${message.id} → enqueue (in-call)")
             enqueuePending(message, PendingReason.IN_CALL); return
         }
-        if (respectUserGates && isUserRecordingOrStarting()) {
-            Timber.i("playSummaryOrTranscription ${message.id} → enqueue (user recording)")
-            enqueuePending(message, PendingReason.USER_RECORDING); return
+        if (respectUserGates && shouldDeferForRecording()) {
+            deferForRecording(message, "playSummaryOrTranscription"); return
         }
         // v1.20.11: silentMode + autoPlayReplies collapsed — !autoPlay = queue.
         if (respectUserGates && !settings.autoPlayReplies) {
@@ -693,9 +700,8 @@ class PlayReplyUseCase @Inject constructor(
             enqueuePending(message, PendingReason.IN_CALL)
             return
         }
-        if (respectUserGates && isUserRecordingOrStarting()) {
-            Timber.i("playTextMessage ${message.id} → enqueue (user recording)")
-            enqueuePending(message, PendingReason.USER_RECORDING)
+        if (respectUserGates && shouldDeferForRecording()) {
+            deferForRecording(message, "playTextMessage")
             return
         }
         // v1.20.11: silentMode + autoPlayReplies collapsed — !autoPlay = queue
@@ -929,8 +935,44 @@ class PlayReplyUseCase @Inject constructor(
         userRecordingGateActive = true
     }
 
+    /**
+     * Releases the recording gate and opens the post-recording quiet window.
+     * Until the window ends, auto-played incoming messages keep going to the
+     * queue instead of starting straight away (issue #4): a message that
+     * arrived a moment after the mic closed used to start immediately and
+     * lose its first second or two to the audio route switching back from
+     * capture to playback.
+     */
     fun clearUserRecordingGate() {
+        postRecordingQuietUntilMs = elapsedRealtimeMs() + POST_RECORDING_DRAIN_DELAY_MS
         userRecordingGateActive = false
+    }
+
+    private fun remainingPostRecordingQuietMs(): Long =
+        (postRecordingQuietUntilMs - elapsedRealtimeMs()).coerceAtLeast(0L)
+
+    /** Recording (or about to record), or still inside the quiet window. */
+    private fun shouldDeferForRecording(): Boolean =
+        isUserRecordingOrStarting() || remainingPostRecordingQuietMs() > 0L
+
+    private suspend fun deferForRecording(message: Message, caller: String) {
+        val recording = isUserRecordingOrStarting()
+        Timber.i(
+            "$caller ${message.id} → enqueue (" +
+                (if (recording) "user recording" else "post-recording quiet window") + ")"
+        )
+        enqueuePending(message, PendingReason.USER_RECORDING)
+        // While recording, stopAndSend / cancel drain the queue themselves.
+        // Inside the quiet window that drain may already have returned (the
+        // queue was empty when it looked), so schedule one for this message.
+        if (!recording) scheduleQuietWindowDrain()
+    }
+
+    private fun scheduleQuietWindowDrain() = synchronized(quietWindowDrainLock) {
+        if (quietWindowDrainJob?.isActive == true) return@synchronized
+        quietWindowDrainJob = playbackScope.launch {
+            drainPendingIfAutoPlay(minDelayMs = 0L)
+        }
     }
 
     private suspend fun markPlaybackCompleted(message: Message) {
@@ -1198,7 +1240,7 @@ class PlayReplyUseCase @Inject constructor(
      * is the resume point. No-op when autoplay is off (queue stays parked
      * for manual drain via the home banner) or when nothing is in flight.
      */
-    suspend fun drainPendingIfAutoPlay() {
+    suspend fun drainPendingIfAutoPlay(minDelayMs: Long = POST_RECORDING_DRAIN_DELAY_MS) {
         if (pendingCount() == 0) return
         if (!settingsRepository.get().autoPlayReplies) return
         // v1.23.0-rc.6 — extend the busy check to include the recorder.
@@ -1218,7 +1260,15 @@ class PlayReplyUseCase @Inject constructor(
         // delay we re-evaluate the guards: if a new recording started,
         // playback already began from another path, or autoplay was
         // toggled off, we abort the drain.
-        delay(POST_RECORDING_DRAIN_DELAY_MS)
+        if (minDelayMs > 0L) delay(minDelayMs)
+        // A recording that ended while we waited opens a fresh quiet window;
+        // honour it in full so the next item never starts on a route that is
+        // still switching back from capture.
+        while (true) {
+            val remaining = remainingPostRecordingQuietMs()
+            if (remaining <= 0L) break
+            delay(remaining)
+        }
         if (pendingCount() == 0) return
         if (!settingsRepository.get().autoPlayReplies) return
         if (isUserRecordingOrStarting() || isPlaybackActive()) return

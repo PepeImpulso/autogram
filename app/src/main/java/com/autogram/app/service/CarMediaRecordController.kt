@@ -2,6 +2,7 @@ package com.autogram.app.service
 
 import android.content.Context
 import com.autogram.app.R
+import com.autogram.app.domain.model.Message
 import com.autogram.app.domain.model.QuickReplyKind
 import com.autogram.app.domain.model.approvalPendingIn
 import com.autogram.app.domain.repository.ConversationRepository
@@ -16,7 +17,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -64,6 +67,34 @@ class CarMediaRecordController @Inject constructor(
                     previous = status
                 }
         }
+        // Issue #3 — keep the last-sender card on the idle session in step
+        // with the newest incoming message.
+        scope.launch {
+            messageRepository.observeLatestIncoming()
+                .distinctUntilChanged { a, b -> a?.id == b?.id }
+                .collect { latest -> mediaPlayback.setLastSenderCard(buildLastSenderCard(latest)) }
+        }
+    }
+
+    private suspend fun buildLastSenderCard(message: Message?): AutogramMediaPlaybackController.LastSenderCard? {
+        if (message == null) return null
+        val conv = runCatching { conversationRepository.getById(message.conversationId) }.getOrNull()
+            ?: return null
+        val name = conv.topicName?.takeIf { it.isNotBlank() }
+            ?: conv.targetTitle?.takeIf { it.isNotBlank() }
+            ?: return null
+        val artwork = withContext(Dispatchers.IO) { ContactArtwork.build(conv.photoLocalPath, name) }
+        return AutogramMediaPlaybackController.LastSenderCard(
+            messageId = message.id,
+            conversationId = conv.id,
+            title = name,
+            subtitle = context.getString(
+                if (message.audioFilePath.isNullOrBlank()) R.string.media_last_sender_text
+                else R.string.media_last_sender_voice
+            ),
+            replyLabel = context.getString(R.string.media_last_sender_reply),
+            artwork = artwork
+        )
     }
 
     override fun onPlayFromMediaId(mediaId: String): Boolean {
@@ -151,6 +182,17 @@ class CarMediaRecordController @Inject constructor(
     }
 
     override fun onCustomAction(action: String): Boolean {
+        if (action == AutogramMediaPlaybackController.ACTION_REPLY_LAST_SENDER) {
+            // Reply to the contact on the card the driver tapped, not to
+            // whoever happens to be newest by the time this runs.
+            val target = mediaPlayback.shownLastSenderCard()?.conversationId
+            if (target == null) {
+                Timber.i("CarMediaRecord: reply-last tapped with no card on screen")
+            } else if (sendVoice.status.value != SendStatus.Recording) {
+                toggle(target)
+            }
+            return true
+        }
         if (sendVoice.status.value != SendStatus.Recording) return action in OWN_ACTIONS
         when (action) {
             ACTION_SEND -> sendNow()

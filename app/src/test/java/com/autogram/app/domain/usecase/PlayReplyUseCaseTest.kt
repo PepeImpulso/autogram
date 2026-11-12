@@ -219,6 +219,7 @@ class PlayReplyUseCaseTest {
     }
 
     @Test fun `recording drain waits two seconds after gate clears`() = runTest {
+        useCase.elapsedRealtimeMs = { testScheduler.currentTime }
         useCase.markUserRecordingStarting()
         useCase.playVoiceMessage(voiceMessage("queued"), isCallActive = false)
         useCase.clearUserRecordingGate()
@@ -232,6 +233,56 @@ class PlayReplyUseCaseTest {
         verify(exactly = 0) { audioPlayer.play(any(), any(), any(), any(), any()) }
 
         advanceTimeBy(1)
+        runCurrent()
+        verify { audioPlayer.play(any(), any(), any(), any(), any()) }
+        drainJob.cancel()
+    }
+
+    @Test fun `message arriving in the post-recording quiet window is queued`() = runTest {
+        // Issue #4: the gate used to clear before the 2 s beat, so a message
+        // arriving right after the mic closed started at once and lost its
+        // first second or two to the audio route switching back.
+        useCase.elapsedRealtimeMs = { testScheduler.currentTime }
+        useCase.markUserRecordingStarting()
+        useCase.clearUserRecordingGate()
+
+        useCase.playVoiceMessage(voiceMessage("late"), isCallActive = false)
+        useCase.playTextMessage(textMessage("late-text"), isCallActive = false)
+
+        coVerify { pendingPlaybackDao.insert(match { it.messageId == "late" && it.reason == PendingReason.USER_RECORDING }) }
+        coVerify { pendingPlaybackDao.insert(match { it.messageId == "late-text" && it.reason == PendingReason.USER_RECORDING }) }
+        verify(exactly = 0) { audioPlayer.play(any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { ttsPlayer.speak(any(), any(), any(), any(), any()) }
+    }
+
+    @Test fun `message after the quiet window plays immediately`() = runTest {
+        useCase.elapsedRealtimeMs = { testScheduler.currentTime }
+        useCase.markUserRecordingStarting()
+        useCase.clearUserRecordingGate()
+        advanceTimeBy(2_001)
+
+        useCase.playVoiceMessage(voiceMessage("later"), isCallActive = false)
+
+        verify { audioPlayer.play(any(), any(), any(), any(), any()) }
+    }
+
+    @Test fun `drain honours a quiet window reopened while it waited`() = runTest {
+        useCase.elapsedRealtimeMs = { testScheduler.currentTime }
+        useCase.markUserRecordingStarting()
+        useCase.playVoiceMessage(voiceMessage("queued"), isCallActive = false)
+        useCase.clearUserRecordingGate()
+
+        val drainJob = launch { useCase.drainPendingIfAutoPlay() }
+        advanceTimeBy(1_000)
+        // A second, very short recording ends 1 s into the first beat.
+        useCase.markUserRecordingStarting()
+        useCase.clearUserRecordingGate()
+
+        advanceTimeBy(1_500)
+        runCurrent()
+        verify(exactly = 0) { audioPlayer.play(any(), any(), any(), any(), any()) }
+
+        advanceTimeBy(600)
         runCurrent()
         verify { audioPlayer.play(any(), any(), any(), any(), any()) }
         drainJob.cancel()

@@ -3,13 +3,18 @@ package com.autogram.app.service
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import com.autogram.app.R
 import com.autogram.app.domain.model.Conversation
 import com.autogram.app.domain.model.Message
+import com.autogram.app.domain.usecase.PlayReplyUseCase
+import com.autogram.app.infrastructure.platform.CarConnectionMonitor
 import com.autogram.app.ui.phone.MainActivity
 import dagger.hilt.android.qualifiers.ApplicationContext
 import timber.log.Timber
@@ -40,8 +45,27 @@ import javax.inject.Singleton
  */
 @Singleton
 class AutogramMediaPlaybackController @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val carConnectionMonitor: CarConnectionMonitor
 ) {
+
+    /**
+     * Issue #3 — the latest contact who wrote to us, shown on Android Auto's
+     * Now Playing card (including the compact dashboard tile next to the
+     * map) whenever nothing is playing or recording. It is a real, playable
+     * item: Play plays that last message, and the Reply custom action starts
+     * a voice reply to exactly this conversation (the target is taken from
+     * the card on screen, so a message arriving meanwhile cannot silently
+     * change who receives the reply).
+     */
+    data class LastSenderCard(
+        val messageId: String,
+        val conversationId: String,
+        val title: String,
+        val subtitle: String,
+        val replyLabel: String,
+        val artwork: Bitmap?
+    )
 
     /**
      * Surface for AA's transport-control taps — implemented by
@@ -85,12 +109,27 @@ class AutogramMediaPlaybackController @Inject constructor(
 
     @Volatile private var listener: Listener? = null
     @Volatile private var recordInterceptor: RecordInterceptor? = null
+    @Volatile private var lastSenderCard: LastSenderCard? = null
+    // True while the session shows nothing of its own (stopped / record
+    // done), i.e. while the last-sender card may be shown.
+    @Volatile private var idle: Boolean = true
+    @Volatile private var cardShown: Boolean = false
+    // Bumped on every state change so a delayed card publish cannot
+    // overwrite a newer state.
+    @Volatile private var stateRevision: Long = 0L
+    private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
 
     private val session: MediaSessionCompat by lazy {
         MediaSessionCompat(context, SESSION_TAG).apply {
             setCallback(object : MediaSessionCompat.Callback() {
                 override fun onPlay() {
                     if (recordInterceptor?.onTransport() == true) return
+                    if (cardShown) {
+                        // Play on the last-sender card plays that message.
+                        listener?.onPlayFromMediaId(PlayReplyUseCase.PLAY_LAST_MEDIA_ID, null)
+                            ?: Timber.w("MediaSession.onPlay before listener attached")
+                        return
+                    }
                     listener?.onPlay() ?: Timber.w("MediaSession.onPlay before listener attached")
                 }
                 override fun onPause() {
@@ -200,6 +239,7 @@ class AutogramMediaPlaybackController @Inject constructor(
         durationMs: Long? = null,
         positionMs: Long = 0L
     ) {
+        leaveIdle()
         if (!session.isActive) session.isActive = true
         session.setMetadata(metadataFor(message, conversation, durationMs))
         session.setPlaybackState(playingState(positionMs))
@@ -216,10 +256,12 @@ class AutogramMediaPlaybackController @Inject constructor(
      * to 0 every time we enrich metadata.
      */
     fun updateMetadata(message: Message, conversation: Conversation?, durationMs: Long? = null) {
+        if (idle) return
         session.setMetadata(metadataFor(message, conversation, durationMs))
     }
 
     fun markPaused(positionMs: Long = 0L) {
+        leaveIdle()
         session.setPlaybackState(pausedState(positionMs))
     }
 
@@ -232,6 +274,7 @@ class AutogramMediaPlaybackController @Inject constructor(
      * not after a Room round-trip.
      */
     fun markResumed(positionMs: Long = 0L) {
+        leaveIdle()
         if (!session.isActive) session.isActive = true
         session.setPlaybackState(playingState(positionMs))
     }
@@ -248,6 +291,7 @@ class AutogramMediaPlaybackController @Inject constructor(
         sendLabel: String,
         cancelLabel: String
     ) {
+        leaveIdle()
         if (!session.isActive) session.isActive = true
         session.setMetadata(
             MediaMetadataCompat.Builder()
@@ -283,6 +327,7 @@ class AutogramMediaPlaybackController @Inject constructor(
 
     /** Car tap-to-record: one-line status ("Sending…", "Sent") on an idle session. */
     fun markRecordInfo(title: String) {
+        leaveIdle()
         session.setMetadata(
             MediaMetadataCompat.Builder()
                 .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
@@ -298,6 +343,7 @@ class AutogramMediaPlaybackController @Inject constructor(
      * has nothing to show in Now Playing and can drop back to the grid.
      */
     fun markRecordDone() {
+        val revision = enterIdle()
         session.setMetadata(null)
         session.setPlaybackState(
             PlaybackStateCompat.Builder()
@@ -305,11 +351,89 @@ class AutogramMediaPlaybackController @Inject constructor(
                 .setState(PlaybackStateCompat.STATE_NONE, 0L, 0f)
                 .build()
         )
+        // Let the car leave Now Playing first (that is what STATE_NONE is
+        // for), then bring the last-sender card back for the dashboard.
+        mainHandler.postDelayed({
+            if (stateRevision == revision) publishIdle()
+        }, RECORD_DONE_CARD_DELAY_MS)
     }
 
     /** Playback fully stopped — keep the session active so AA still shows our app. */
     fun markStopped() {
-        session.setPlaybackState(idleState())
+        enterIdle()
+        publishIdle()
+    }
+
+    /**
+     * Replace the last-sender card (null hides it). Shown straight away
+     * when the session is idle; otherwise on the next stop.
+     */
+    fun setLastSenderCard(card: LastSenderCard?) {
+        lastSenderCard = card
+        if (idle) publishIdle()
+    }
+
+    /** The card currently on screen, if any — the Reply target. */
+    fun shownLastSenderCard(): LastSenderCard? = if (cardShown) lastSenderCard else null
+
+    private fun enterIdle(): Long {
+        idle = true
+        cardShown = false
+        return ++stateRevision
+    }
+
+    private fun leaveIdle() {
+        idle = false
+        cardShown = false
+        stateRevision++
+    }
+
+    private fun publishIdle() {
+        val card = lastSenderCard
+        // Only in the car: on the phone a paused session would linger in
+        // Bluetooth / system media controls with nothing the user started.
+        if (card == null || !runCatching { carConnectionMonitor.isConnected() }.getOrDefault(false)) {
+            if (cardShown) {
+                cardShown = false
+                session.setMetadata(null)
+            }
+            session.setPlaybackState(idleState())
+            return
+        }
+        if (!session.isActive) session.isActive = true
+        session.setMetadata(
+            MediaMetadataCompat.Builder()
+                .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, card.messageId)
+                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, card.title)
+                .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, card.title)
+                .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, card.subtitle)
+                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, card.title)
+                .apply {
+                    card.artwork?.let {
+                        putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, it)
+                        putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, it)
+                    }
+                }
+                .build()
+        )
+        session.setPlaybackState(
+            PlaybackStateCompat.Builder()
+                .setActions(
+                    PlaybackStateCompat.ACTION_PLAY or
+                        PlaybackStateCompat.ACTION_PLAY_PAUSE or
+                        PlaybackStateCompat.ACTION_PLAY_FROM_MEDIA_ID or
+                        PlaybackStateCompat.ACTION_PLAY_FROM_SEARCH
+                )
+                .addCustomAction(
+                    PlaybackStateCompat.CustomAction.Builder(
+                        ACTION_REPLY_LAST_SENDER, card.replyLabel, R.drawable.ic_mic
+                    ).build()
+                )
+                // Paused at the start of a real message: Play plays it.
+                .setState(PlaybackStateCompat.STATE_PAUSED, 0L, 0f)
+                .build()
+        )
+        cardShown = true
     }
 
     /** Permanent teardown (e.g. process death). Releases the underlying session. */
@@ -370,6 +494,8 @@ class AutogramMediaPlaybackController @Inject constructor(
     companion object {
         private const val SESSION_TAG = "AutogramMediaSession"
         private const val SESSION_ACTIVITY_REQUEST_CODE = 0xA10
+        const val ACTION_REPLY_LAST_SENDER = "com.autogram.app.action.CAR_REPLY_LAST_SENDER"
+        private const val RECORD_DONE_CARD_DELAY_MS = 1_500L
         private const val TRANSPORT_ACTIONS =
             PlaybackStateCompat.ACTION_PLAY or
                 PlaybackStateCompat.ACTION_PAUSE or

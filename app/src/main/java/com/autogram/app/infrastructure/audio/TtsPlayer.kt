@@ -18,6 +18,11 @@ import java.util.Locale
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.resume
@@ -95,6 +100,11 @@ class TtsPlayer @Inject constructor(
     @Volatile private var audioFocusHandle: FocusHandle? = null
     @Volatile private var activeSpeech: ActiveSpeech? = null
     @Volatile private var pausedSpeech: ActiveSpeech? = null
+    // Speech stopped because another app (a navigation prompt) asked us to
+    // duck (issue #2). Its focus request stays registered so AUDIOFOCUS_GAIN
+    // tells us when to speak the rest. Guarded by [speechStateLock].
+    private var duckPausedSpeech: ActiveSpeech? = null
+    private val duckScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     /**
      * Reads [text] aloud. By default picks the voice for the UI locale, but
@@ -132,6 +142,11 @@ class TtsPlayer @Inject constructor(
                     TtsSynthesisException("TTS utterance replaced by a newer request"),
                     stopEngine = true
                 )
+                // Same for speech parked by a duck, so its GAIN / safety timer
+                // cannot later talk over this newer request.
+                takeDuckPausedSpeech()?.let {
+                    deliverError(it, TtsSynthesisException("TTS utterance replaced by a newer request"))
+                }
                 val installed = synchronized(speechStateLock) {
                     if (startGeneration != speechControlGeneration) {
                         false
@@ -208,6 +223,10 @@ class TtsPlayer @Inject constructor(
                     return@withLock
                 }
 
+                val leadInMs = AudioPlayer.carOutputLeadInMs(
+                    carConnectionType = carConnectionMonitor.currentType(),
+                    outputTypes = outputTypes
+                )
                 val speechRate = PlaybackSpeed.coerce(speed ?: settings.playbackSpeed)
                 val progressListener = object : UtteranceProgressListener() {
                     override fun onStart(id: String?) {
@@ -257,7 +276,8 @@ class TtsPlayer @Inject constructor(
                         tts = tts,
                         token = token,
                         chunks = chunks,
-                        utteranceIds = utteranceIds
+                        utteranceIds = utteranceIds,
+                        leadInMs = leadInMs
                     )
                     if (queueFailure == null) return@withLock
 
@@ -305,6 +325,11 @@ class TtsPlayer @Inject constructor(
      * False when nothing had started speaking yet.
      */
     fun pause(): Boolean {
+        takeDuckPausedSpeech()?.let { ducked ->
+            abandonAudioFocus(ducked.token)
+            pausedSpeech = ducked
+            return true
+        }
         val speech = invalidateSpeechRequests() ?: return false
         stopEngineSafely()
         abandonAudioFocus(speech.token)
@@ -322,9 +347,14 @@ class TtsPlayer @Inject constructor(
 
     fun stop() {
         pausedSpeech = null
+        val ducked = takeDuckPausedSpeech()
         val speech = invalidateSpeechRequests()
         stopEngineSafely()
         abandonAudioFocus(speech?.token)
+        ducked?.let {
+            abandonAudioFocus(it.token)
+            deliverSuccess(it)
+        }
         speech?.let(::deliverSuccess)
     }
 
@@ -337,6 +367,7 @@ class TtsPlayer @Inject constructor(
      */
     fun cancel() {
         pausedSpeech = null
+        takeDuckPausedSpeech()?.let { abandonAudioFocus(it.token) }
         val speech = invalidateSpeechRequests()
         stopEngineSafely()
         abandonAudioFocus(speech?.token)
@@ -348,13 +379,16 @@ class TtsPlayer @Inject constructor(
      */
     fun isSpeaking(): Boolean {
         val tracked = synchronized(speechStateLock) {
-            activeSpeech != null ||
+            activeSpeech != null || duckPausedSpeech != null ||
                 pendingStartsByGeneration.getOrDefault(speechControlGeneration, 0) > 0
         }
         return tracked || runCatching { engine?.isSpeaking == true }.getOrDefault(false)
     }
 
     fun shutdown() {
+        takeDuckPausedSpeech()?.let {
+            deliverError(it, TtsSynthesisException("TTS engine shut down during speech"))
+        }
         val speech = invalidateSpeechRequests()
         val engineToShutdown = synchronized(engineStateLock) {
             engineGeneration += 1
@@ -373,11 +407,50 @@ class TtsPlayer @Inject constructor(
         }
     }
 
+    private fun takeDuckPausedSpeech(): ActiveSpeech? = synchronized(speechStateLock) {
+        duckPausedSpeech.also { duckPausedSpeech = null }
+    }
+
+    /**
+     * Another app asked us to duck. Stop the engine but keep the speech, its
+     * position and the focus request, then speak the rest on GAIN. A safety
+     * timer resumes anyway in case the host never sends GAIN back.
+     */
+    private fun onDuckRequested(token: String) {
+        val speech = synchronized(speechStateLock) {
+            val current = activeSpeech
+            if (current?.token != token) return
+            activeSpeech = null
+            duckPausedSpeech = current
+            current
+        }
+        stopEngineSafely()
+        Timber.i("TTS paused for another app's prompt (audio focus duck)")
+        duckScope.launch {
+            delay(AudioPlayer.DUCK_PAUSE_MAX_MS)
+            resumeAfterDuck(speech.token, "duck timeout")
+        }
+    }
+
+    private fun resumeAfterDuck(token: String, reason: String) {
+        val speech = synchronized(speechStateLock) {
+            val ducked = duckPausedSpeech
+            if (ducked?.token != token) return
+            duckPausedSpeech = null
+            ducked
+        }
+        Timber.i("TTS resuming after duck ($reason)")
+        duckScope.launch {
+            speak(speech.remainingText(), speech.locale, speech.onDone, speech.speed, speech.onError)
+        }
+    }
+
     /**
      * v1.24.1 — symmetric with AudioPlayer.requestAudioFocus(). Mode is
      * read from [AppSettings.audioFocusMode] (cycled by the user from
      * Settings → AA audio routing). Permanent and transient focus loss abort
-     * the utterance through its error callback; CAN_DUCK keeps speaking.
+     * the utterance through its error callback; CAN_DUCK pauses it until
+     * focus comes back.
      */
     private fun requestAudioFocus(
         token: String,
@@ -405,10 +478,10 @@ class TtsPlayer @Inject constructor(
                             AudioFocusLostException("TTS", focusChange),
                             stopEngine = true
                         )
-                        // CAN_DUCK is intentionally allowed to continue. The
-                        // navigation path remains audible over the other owner.
-                        AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK,
-                        AudioManager.AUDIOFOCUS_GAIN -> Unit
+                        // Android never auto-ducks CONTENT_TYPE_SPEECH, so
+                        // speaking on would talk over Waze / Maps (issue #2).
+                        AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> onDuckRequested(token)
+                        AudioManager.AUDIOFOCUS_GAIN -> resumeAfterDuck(token, "focus regained")
                     }
                 }
                 .build()
@@ -537,10 +610,23 @@ class TtsPlayer @Inject constructor(
         tts: TextToSpeech,
         token: String,
         chunks: List<String>,
-        utteranceIds: List<String>
+        utteranceIds: List<String>,
+        leadInMs: Long = 0L
     ): TtsRequestFailure? {
+        // Issue #4: on a car output, speak a short silence first so the head
+        // unit has opened its channel before the first word. Its utterance id
+        // is not tracked, so its callbacks never complete or fail the speech.
+        val leadInQueued = leadInMs > 0L && synchronized(engineCommandLock) {
+            isSpeechActive(token) && runCatching {
+                tts.playSilentUtterance(leadInMs, TextToSpeech.QUEUE_FLUSH, "$token:lead-in")
+            }.getOrNull() == TextToSpeech.SUCCESS
+        }
         for ((index, chunk) in chunks.withIndex()) {
-            val queueMode = if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+            val queueMode = if (index == 0 && !leadInQueued) {
+                TextToSpeech.QUEUE_FLUSH
+            } else {
+                TextToSpeech.QUEUE_ADD
+            }
             val result: Result<Int>? = synchronized(engineCommandLock) {
                 if (!isSpeechActive(token)) null
                 else runCatching { tts.speak(chunk, queueMode, null, utteranceIds[index]) }

@@ -319,6 +319,10 @@
     <string name="media_record_sent">已发送给 %1$s ✓</string>
     <string name="media_record_queued">已排队，稍后发送给 %1$s（离线）</string>
     <string name="media_record_failed">无法发送给 %1$s</string>
+    <!-- Issue #3: last-sender card on the Android Auto Now Playing / dashboard tile -->
+    <string name="media_last_sender_voice">语音消息 · 点按“回复”</string>
+    <string name="media_last_sender_text">消息 · 点按“回复”</string>
+    <string name="media_last_sender_reply">回复</string>
     <string name="media_browser_history">历史</string>
     <string name="media_browser_kind_voice">语音</string>
     <string name="media_browser_kind_text">文本</string>

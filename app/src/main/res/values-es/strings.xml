@@ -364,6 +364,10 @@
     <string name="media_record_sent">Enviado a %1$s ✓</string>
     <string name="media_record_queued">En cola para %1$s (sin conexión)</string>
     <string name="media_record_failed">No se pudo enviar a %1$s</string>
+    <!-- Issue #3: last-sender card on the Android Auto Now Playing / dashboard tile -->
+    <string name="media_last_sender_voice">Mensaje de voz · toca Responder para contestar</string>
+    <string name="media_last_sender_text">Mensaje · toca Responder para contestar</string>
+    <string name="media_last_sender_reply">Responder</string>
     <string name="media_browser_history">Historial</string>
     <string name="media_browser_kind_voice">Voz</string>
     <string name="media_browser_kind_text">Texto</string>

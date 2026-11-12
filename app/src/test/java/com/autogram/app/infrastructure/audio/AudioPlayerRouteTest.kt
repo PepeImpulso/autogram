@@ -188,4 +188,30 @@ class AudioPlayerRouteTest {
         assertTrue(!AudioPlayer.shouldRetryMediaPlayerError(what = -38, extra = 0, attempt = 1))
         assertTrue(!AudioPlayer.shouldRetryMediaPlayerError(what = 1, extra = -1004, attempt = 0))
     }
+
+    // Issue #4 — muted lead-in so a car head unit opens its channel before
+    // the first words; never on the phone, where it would only add latency.
+    @Test fun `car projection gets a muted lead-in`() {
+        assertEquals(
+            AudioPlayer.CAR_OUTPUT_LEAD_IN_MS,
+            AudioPlayer.carOutputLeadInMs(CarConnection.CONNECTION_TYPE_PROJECTION)
+        )
+        assertEquals(
+            AudioPlayer.CAR_OUTPUT_LEAD_IN_MS,
+            AudioPlayer.carOutputLeadInMs(
+                carConnectionType = CarConnection.CONNECTION_TYPE_NOT_CONNECTED,
+                outputTypes = listOf(AudioDeviceInfo.TYPE_USB_ACCESSORY)
+            )
+        )
+    }
+
+    @Test fun `phone playback has no lead-in`() {
+        assertEquals(
+            0L,
+            AudioPlayer.carOutputLeadInMs(
+                carConnectionType = CarConnection.CONNECTION_TYPE_NOT_CONNECTED,
+                outputTypes = listOf(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP)
+            )
+        )
+    }
 }
